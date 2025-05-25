@@ -37,7 +37,7 @@
 
 ## 下载源码
 
-git clone https://github.com/Eric0308/zhi-server.git
+git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
 
 ## 修改配置文件
 
