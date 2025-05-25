@@ -1,0 +1,77 @@
+# 服务器基础配置(Basic server configuration)
+server:
+  # 服务器监听地址和端口(Server listening address and port)
+  ip: 0.0.0.0
+  port: 8000
+  # 认证配置
+  auth:
+    # 是否启用认证
+    enabled: false
+    # 允许的设备ID列表
+    allowed_devices: []
+    # 有效的token列表
+    tokens: []
+
+log:
+  # 设置控制台输出的日志格式，时间、日志级别、标签、消息
+  log_format: "{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
+  # 设置日志等级：INFO、DEBUG
+  log_level: INFO
+  # 设置日志路径
+  log_dir: logs
+  # 设置日志文件
+  log_file: "server.log"
+
+# 音频处理相关设置
+delete_audio: true
+use_private_config: false
+
+# 选择使用的模块
+selected_module:
+  ASR: DoubaoASR
+  TTS: DoubaoTTS
+  LLM: OllamaLLM
+
+# ASR配置
+ASR:
+  DoubaoASR:
+    type: doubao
+    appid: "你的appid"
+    access_token: 你的access_token
+    output_dir: tmp/
+
+# TTS配置
+TTS:
+  # EdgeTTS 是微软的语音合成服务，免费使用，容易合成失败，并发未测试
+  EdgeTTS:
+    type: edge
+    voice: zh-CN-XiaoxiaoNeural
+    output_dir: "tmp/"
+  DoubaoTTS:
+    type: doubao
+    voice: zh_female_wanwanxiaohe_moon_bigtts           # 湾湾小何
+    output_dir: "tmp/"
+    appid: "你的appid"
+    token: 你的access_token
+    cluster: 你的cluster
+
+# LLM配置
+LLM:
+    ChatGLMLLM:
+      # 定义LLM API类型
+      type: openai
+      # glm-4-flash 是免费的，但是还是需要注册填写api_key的
+      # 可在这里找到你的api key https://bigmodel.cn/usercenter/proj-mgmt/apikeys
+      model_name: glm-4-flash
+      url: https://open.bigmodel.cn/api/paas/v4/
+      api_key: 你的api_key
+    OllamaLLM:
+      # 定义LLM API类型
+      type: ollama
+      model_name: qwen3 #  使用的模型名称，需要预先使用ollama pull下载
+      url: http://localhost:11434  # Ollama服务地址
+
+# 退出指令
+CMD_exit:
+  - "退出"
+  - "关闭"
