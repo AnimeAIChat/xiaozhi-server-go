@@ -31,6 +31,7 @@ selected_module:
   ASR: DoubaoASR
   TTS: DoubaoTTS
   LLM: OllamaLLM
+  VLLLM: ChatGLMVLLM
 
 # ASR配置
 ASR:
@@ -75,3 +76,37 @@ LLM:
 CMD_exit:
   - "退出"
   - "关闭"
+
+# VLLLM配置（视觉语言大模型）
+VLLLM:
+  ChatGLMVLLM:
+    type: openai
+    model_name: glm-4v-flash  # 智谱AI的视觉模型
+    url: https://open.bigmodel.cn/api/paas/v4/
+    api_key: 你的api_key
+    max_tokens: 4096
+    temperature: 0.7
+    top_p: 0.9
+    security:  # 图片安全配置
+      max_file_size: 10485760    # 10MB
+      max_pixels: 16777216       # 16M像素
+      max_width: 4096
+      max_height: 4096
+      allowed_formats: ["jpeg", "jpg", "png", "webp", "gif"]
+      enable_deep_scan: true
+      validation_timeout: 10s
+  OllamaVLLM:
+    type: ollama
+    model_name: qwen2-vl:7b    # 本地视觉模型
+    url: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    top_p: 0.9
+    security:  # 图片安全配置
+      max_file_size: 10485760    # 10MB
+      max_pixels: 16777216       # 16M像素
+      max_width: 4096
+      max_height: 4096
+      allowed_formats: ["jpeg", "jpg", "png", "webp", "gif"]
+      enable_deep_scan: true
+      validation_timeout: 10s

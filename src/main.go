@@ -15,6 +15,8 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/llm/openai"
 	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
 	_ "xiaozhi-server-go/src/core/providers/tts/edge"
+	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
+	_ "xiaozhi-server-go/src/core/providers/vlllm/ollama"
 )
 
 func main() {
