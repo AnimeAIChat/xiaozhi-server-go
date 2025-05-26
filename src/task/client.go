@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"errors"
 	"sync"
 )
 
@@ -188,7 +187,7 @@ func (rq *ResourceQuota) IncrementQuota(taskType TaskType) error {
 	}
 
 	if rq.UsedQuota[taskType] >= maxQuota {
-    	return errors.New(quotaExceededMsg)
+		return fmt.Errorf("%s", quotaExceededMsg)
 	}
 
 	rq.UsedQuota[taskType]++
