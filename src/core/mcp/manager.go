@@ -15,42 +15,26 @@ import (
 	go_openai "github.com/sashabaranov/go-openai"
 )
 
-// ToolType 定义工具类型
-type ToolType string
-
-const (
-	// MCPClient 表示MCP客户端工具
-	MCPClientTool ToolType = "MCP_CLIENT"
-)
-
-// FunctionRegistry 函数注册接口
-type FunctionRegistry interface {
-	RegisterFunction(name string)
-}
-
-// FunctionHandler 函数处理器
-type FunctionHandler struct {
-	FunctionRegistry FunctionRegistry
-}
-
-// RegisterFunction 注册一个函数到注册表
-func (fh *FunctionHandler) UploadFunctionsDesc() {
-	// 在这里实现上传函数描述的逻辑
-	log.Println("Uploading function descriptions")
+// Conn 是与连接相关的接口，用于发送消息
+type Conn interface {
+	WriteMessage(messageType int, data []byte) error
 }
 
 // Manager MCP服务管理器
 type Manager struct {
-	logger      *utils.Logger
-	funcHandler types.FunctionRegistryInterface
-	configPath  string
-	clients     map[string]MCPClient
-	tools       []string
-	mu          sync.RWMutex
+	logger                *utils.Logger
+	conn                  Conn
+	funcHandler           types.FunctionRegistryInterface
+	configPath            string
+	clients               map[string]MCPClient
+	tools                 []string
+	XiaoZhiMCPClient      *XiaoZhiMCPClient // XiaoZhiMCPClient用于处理小智MCP相关逻辑
+	bRegisteredXiaoZhiMCP bool              // 是否已注册小智MCP工具
+	mu                    sync.RWMutex
 }
 
 // NewManager 创建一个新的MCP管理器
-func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface) *Manager {
+func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn) *Manager {
 
 	projectDir := getProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
@@ -59,13 +43,20 @@ func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface) *Manager {
 		configPath = ""
 	}
 
-	return &Manager{
-		logger:      lg,
-		funcHandler: fh,
-		configPath:  configPath,
-		clients:     make(map[string]MCPClient),
-		tools:       make([]string, 0),
+	mgr := &Manager{
+		logger:                lg,
+		funcHandler:           fh,
+		conn:                  conn,
+		configPath:            configPath,
+		clients:               make(map[string]MCPClient),
+		tools:                 make([]string, 0),
+		bRegisteredXiaoZhiMCP: false,
 	}
+	// 初始化小智MCP客户端
+	mgr.XiaoZhiMCPClient = NewXiaoZhiMCPClient(lg, conn)
+	mgr.clients["xiaozhi"] = mgr.XiaoZhiMCPClient
+
+	return mgr
 }
 
 // getProjectDir 获取项目根目录
@@ -156,6 +147,22 @@ func (m *Manager) InitializeServers(ctx context.Context) error {
 		m.registerTools(clientTools)
 	}
 
+	m.XiaoZhiMCPClient.Start(ctx)
+
+	return nil
+}
+
+func (m *Manager) HandleXiaoZhiMCPMessage(msgMap map[string]interface{}) error {
+	// 处理小智MCP消息
+	if m.XiaoZhiMCPClient == nil {
+		return fmt.Errorf("XiaoZhiMCPClient is not initialized")
+	}
+	m.XiaoZhiMCPClient.HandleMCPMessage(msgMap)
+	if m.XiaoZhiMCPClient.IsReady() && !m.bRegisteredXiaoZhiMCP {
+		// 注册小智MCP工具
+		m.registerTools(m.XiaoZhiMCPClient.GetAvailableTools())
+		m.bRegisteredXiaoZhiMCP = true
+	}
 	return nil
 }
 

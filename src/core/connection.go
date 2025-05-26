@@ -32,9 +32,9 @@ type ConnectionHandler struct {
 	conn      Conn
 	taskMgr   *task.TaskManager
 	providers struct {
-		asr providers.ASRProvider
-		llm providers.LLMProvider
-		tts providers.TTSProvider
+		asr   providers.ASRProvider
+		llm   providers.LLMProvider
+		tts   providers.TTSProvider
 		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
 
@@ -99,9 +99,9 @@ type ConnectionHandler struct {
 func NewConnectionHandler(
 	config *configs.Config,
 	providers struct {
-		asr providers.ASRProvider
-		llm providers.LLMProvider
-		tts providers.TTSProvider
+		asr   providers.ASRProvider
+		llm   providers.LLMProvider
+		tts   providers.TTSProvider
 		vlllm *vlllm.Provider
 	},
 	logger *utils.Logger,
@@ -136,7 +136,7 @@ func NewConnectionHandler(
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
 	handler.functionRegister = function.NewFunctionRegistry()
-	handler.mcpManager = mcp.NewManager(logger, handler.functionRegister)
+
 	return handler
 }
 
@@ -157,6 +157,8 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	go h.processClientTextMessagesCoroutine()  // 添加客户端文本消息处理协程
 	go h.processTTSQueueCoroutine()            // 添加TTS队列处理协程
 	go h.sendAudioMessageCoroutine()           // 添加音频消息发送协程
+
+	h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn)
 
 	h.mcpManager.InitializeServers(context.Background())
 
@@ -321,6 +323,8 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 		return h.handleVisionMessage(msgMap)
 	case "image":
 		return h.handleImageMessage(ctx, msgMap)
+	case "mcp":
+		return h.mcpManager.HandleXiaoZhiMCPMessage(msgMap)
 	default:
 		return fmt.Errorf("未知的消息类型: %s", msgType)
 	}
@@ -904,6 +908,11 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 			}
 			// 递归调用 chat_with_function_calling 逻辑
 			h.genResponseByLLM(context.Background(), messages)
+		} else {
+			h.logger.Error(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
+			// 发送错误消息
+			errorMessage := fmt.Sprintf("函数调用结果解析失败")
+			h.SpeakAndPlay(errorMessage, textIndex)
 		}
 	}
 }
@@ -1430,7 +1439,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 
 	// 添加VLLLM回复到对话历史
 	h.dialogueManager.Put(chat.Message{
-		Role:    "assistant", 
+		Role:    "assistant",
 		Content: content,
 	})
 
