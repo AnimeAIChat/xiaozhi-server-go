@@ -1,0 +1,27 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+ame: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'go 1.24.2'
+
+      - name: Install Make (if not already installed)
+        run: sudo apt-get update && sudo apt-get install -y make
+
+      - name: Build and Test with Makefile
+        run: make
