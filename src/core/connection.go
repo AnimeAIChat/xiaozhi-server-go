@@ -12,8 +12,10 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
+	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/providers"
+	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
@@ -33,6 +35,7 @@ type ConnectionHandler struct {
 		asr providers.ASRProvider
 		llm providers.LLMProvider
 		tts providers.TTSProvider
+		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
 
 	// 会话相关
@@ -99,6 +102,7 @@ func NewConnectionHandler(
 		asr providers.ASRProvider
 		llm providers.LLMProvider
 		tts providers.TTSProvider
+		vlllm *vlllm.Provider
 	},
 	logger *utils.Logger,
 ) *ConnectionHandler {
@@ -315,6 +319,8 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 		return h.handleChatMessage(ctx, text)
 	case "vision":
 		return h.handleVisionMessage(msgMap)
+	case "image":
+		return h.handleImageMessage(ctx, msgMap)
 	default:
 		return fmt.Errorf("未知的消息类型: %s", msgType)
 	}
@@ -323,7 +329,20 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) error {
 	// 处理视觉消息
 	cmd := msgMap["cmd"].(string)
-	if cmd == "read_img" {
+	if cmd == "gen_pic" {
+		text := msgMap["text"].(string)
+		params := map[string]interface{}{
+			"prompt":    text,
+			"size":      "1024x1024",
+			"quality":   "standard",
+			"api_key":   h.config.LLM["ChatGLMLLM"].APIKey,
+			"client_id": h.sessionID,
+		}
+		task, id := task.NewTask(task.TaskTypeImageGen, params, task.NewMessageCallback(h.conn, "vision", cmd))
+		h.taskMgr.SubmitTask(h.sessionID, task)
+		h.logger.Info(fmt.Sprintf("生成图片任务提交成功: %s, %s", text, id))
+	} else if cmd == "gen_video" {
+	} else if cmd == "read_img" {
 	}
 	return nil
 }
@@ -406,15 +425,125 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 			h.providers.asr.Finalize()
 		}
 	case "detect":
-
-		// 处理text参数
-		if text, ok := msgMap["text"].(string); ok {
-			// TODO: 实现去除标点和长度的函数
-			// _, text = removePunctuationAndLength(text)
+		// 检查是否包含图片数据
+		imageBase64, hasImage := msgMap["image"].(string)
+		text, hasText := msgMap["text"].(string)
+		
+		if hasImage && imageBase64 != "" {
+			// 包含图片数据，使用VLLLM处理
+			h.logger.Info("检测到客户端发送的图片数据，使用VLLLM处理", map[string]interface{}{
+				"has_text":     hasText,
+				"text_length":  len(text),
+				"image_length": len(imageBase64),
+			})
+			
+			// 如果没有文本，提供默认提示
+			if !hasText || text == "" {
+				text = "请描述这张图片"
+			}
+			
+			// 构造图片数据结构
+			imageData := image.ImageData{
+				Data:   imageBase64,
+				Format: "jpg", // 默认格式，实际格式会在验证时自动检测
+			}
+			
+			// 调用图片处理逻辑
+			return h.handleImageWithText(context.Background(), imageData, text)
+			
+		} else if hasText && text != "" {
+			// 只有文本，使用普通LLM处理
+			h.logger.Info("检测到纯文本消息，使用LLM处理", map[string]interface{}{
+				"text": text,
+			})
 			return h.handleChatMessage(context.Background(), text)
+		} else {
+			// 既没有图片也没有文本
+			h.logger.Warn("detect消息既没有text也没有image参数")
+			return fmt.Errorf("detect消息缺少text或image参数")
 		}
 	}
 	return nil
+}
+
+// handleImageWithText 处理包含图片和文本的消息
+func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData image.ImageData, text string) error {
+	// 判断是否需要验证
+	if h.isNeedAuth() {
+		if err := h.checkAndBroadcastAuthCode(); err != nil {
+			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
+			return err
+		}
+		h.logger.Info("设备未认证，等待管理员认证")
+		return nil
+	}
+
+	// 检查是否有VLLLM Provider
+	if h.providers.vlllm == nil {
+		h.logger.Warn("未配置VLLLM服务，图片消息将降级为文本处理")
+		return h.handleChatMessage(ctx, text+" (注：无法处理图片，仅处理文本)")
+	}
+
+	h.logger.Info("开始处理图片+文本消息", map[string]interface{}{
+		"text":        text,
+		"has_data":    imageData.Data != "",
+		"data_length": len(imageData.Data),
+	})
+
+	// 立即发送STT消息
+	err := h.sendSTTMessage(text)
+	if err != nil {
+		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
+		return fmt.Errorf("发送STT消息失败: %v", err)
+	}
+
+	// 发送TTS开始状态
+	if err := h.sendTTSMessage("start", "", 0); err != nil {
+		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+		return fmt.Errorf("发送TTS开始状态失败: %v", err)
+	}
+
+	// 立即给用户语音反馈，提升用户体验
+	immediateResponse := "正在识别图片请稍等，这就为你分析"
+	h.logger.Info("立即播放图片识别提示音", map[string]interface{}{
+		"response": immediateResponse,
+	})
+	
+	// 重置语音状态，确保能够播放提示音
+	atomic.StoreInt32(&h.serverVoiceStop, 0)
+	
+	// 立即合成并播放提示音（使用索引0确保优先播放）
+	if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
+		h.logger.Error(fmt.Sprintf("播放图片识别提示音失败: %v", err))
+	}
+
+	// 发送思考状态的情绪
+	if err := h.sendEmotionMessage("thinking"); err != nil {
+		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
+		return fmt.Errorf("发送情绪消息失败: %v", err)
+	}
+
+	// 添加用户消息到对话历史（包含图片信息的描述）
+	userMessage := fmt.Sprintf("%s [用户发送了一张图片]", text)
+	h.dialogueManager.Put(chat.Message{
+		Role:    "user",
+		Content: userMessage,
+	})
+
+	// 获取对话历史（排除当前图片消息）
+	messages := make([]providers.Message, 0)
+	for _, msg := range h.dialogueManager.GetLLMDialogue() {
+		if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张图片]") {
+			continue
+		}
+		messages = append(messages, providers.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	// 使用VLLLM处理图片消息
+	return h.genResponseByVLLM(ctx, messages, imageData, text)
 }
 
 // handleIotMessage 处理IOT设备消息
@@ -459,6 +588,81 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		return nil
 	}
 
+	// 智能检测图片URL并自动转换为图片消息
+	if imageURL, remainingText, detected := h.detectImageURL(text); detected && h.providers.vlllm != nil {
+		h.logger.Info("检测到图片URL，自动转换为图片消息", map[string]interface{}{
+			"url":  imageURL,
+			"text": remainingText,
+		})
+		
+		// 构造图片消息数据
+		imageData := image.ImageData{
+			URL:    imageURL,
+			Format: h.extractImageFormat(imageURL),
+		}
+		
+		// 立即发送STT消息
+		sttText := remainingText
+		if sttText == "" {
+			sttText = "用户发送了一张图片"
+		}
+		err := h.sendSTTMessage(sttText)
+		if err != nil {
+			h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
+			return fmt.Errorf("发送STT消息失败: %v", err)
+		}
+
+		// 发送TTS开始状态
+		if err := h.sendTTSMessage("start", "", 0); err != nil {
+			h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+			return fmt.Errorf("发送TTS开始状态失败: %v", err)
+		}
+
+		// 立即给用户语音反馈，提升用户体验
+		immediateResponse := "检测到图片链接，正在下载并识别图片，这就为你分析"
+		h.logger.Info("立即播放图片URL识别提示音", map[string]interface{}{
+			"response": immediateResponse,
+			"url":      imageURL,
+		})
+		
+		// 重置语音状态，确保能够播放提示音
+		atomic.StoreInt32(&h.serverVoiceStop, 0)
+		
+		// 立即合成并播放提示音（使用索引0确保优先播放）
+		if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
+			h.logger.Error(fmt.Sprintf("播放图片URL识别提示音失败: %v", err))
+		}
+
+		// 发送思考状态的情绪
+		if err := h.sendEmotionMessage("thinking"); err != nil {
+			h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
+			return fmt.Errorf("发送情绪消息失败: %v", err)
+		}
+
+		// 添加用户消息到对话历史（包含图片信息的描述）
+		userMessage := fmt.Sprintf("%s [用户发送了一张图片: %s]", remainingText, imageURL)
+		h.dialogueManager.Put(chat.Message{
+			Role:    "user",
+			Content: userMessage,
+		})
+
+		// 获取对话历史（排除当前图片消息）
+		messages := make([]providers.Message, 0)
+		for _, msg := range h.dialogueManager.GetLLMDialogue() {
+			if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张图片:") {
+				continue
+			}
+			messages = append(messages, providers.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+
+		// 使用VLLLM处理图片消息
+		return h.genResponseByVLLM(ctx, messages, imageData, remainingText)
+	}
+
+	// 普通文本消息处理流程
 	// 立即发送 stt 消息
 	err := h.sendSTTMessage(text)
 	if err != nil {
@@ -1012,4 +1216,228 @@ func (h *ConnectionHandler) Close() {
 	close(h.clientTextQueue)
 
 	h.closeOpusDecoder()
+}
+
+// detectImageURL 检测文本中的图片URL
+func (h *ConnectionHandler) detectImageURL(text string) (imageURL string, remainingText string, detected bool) {
+	// 定义图片URL的正则表达式
+	imageURLPattern := regexp.MustCompile(`(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp))`)
+	
+	// 查找图片URL
+	matches := imageURLPattern.FindStringSubmatch(text)
+	
+	if len(matches) > 0 {
+		imageURL = matches[1]
+		// 移除URL，保留剩余文本
+		remainingText = strings.TrimSpace(strings.Replace(text, imageURL, "", 1))
+		if remainingText == "" {
+			remainingText = "请描述这张图片"
+		}
+		h.logger.Info("检测到图片URL", map[string]interface{}{
+			"url":            imageURL,
+			"remaining_text": remainingText,
+		})
+		return imageURL, remainingText, true
+	}
+	
+	return "", text, false
+}
+
+// extractImageFormat 从URL中提取图片格式
+func (h *ConnectionHandler) extractImageFormat(url string) string {
+	// 从URL中提取文件扩展名
+	if strings.Contains(url, ".") {
+		parts := strings.Split(url, ".")
+		if len(parts) > 0 {
+			ext := strings.ToLower(parts[len(parts)-1])
+			// 处理URL参数的情况
+			if strings.Contains(ext, "?") {
+				ext = strings.Split(ext, "?")[0]
+			}
+			// 验证是否是支持的图片格式
+			supportedFormats := []string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}
+			for _, format := range supportedFormats {
+				if ext == format {
+					return ext
+				}
+			}
+		}
+	}
+	// 默认返回jpg
+	return "jpg"
+}
+
+// handleImageMessage 处理图片消息
+func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[string]interface{}) error {
+	// 判断是否需要验证
+	if h.isNeedAuth() {
+		if err := h.checkAndBroadcastAuthCode(); err != nil {
+			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
+			return err
+		}
+		h.logger.Info("设备未认证，等待管理员认证")
+		return nil
+	}
+
+	// 检查是否有VLLLM Provider
+	if h.providers.vlllm == nil {
+		h.logger.Warn("未配置VLLLM服务，图片消息将被忽略")
+		return h.conn.WriteMessage(1, []byte("系统暂不支持图片处理功能"))
+	}
+
+	// 解析文本内容
+	text, ok := msgMap["text"].(string)
+	if !ok {
+		text = "请描述这张图片" // 默认提示
+	}
+
+	// 解析图片数据
+	imageDataMap, ok := msgMap["image_data"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("缺少图片数据")
+	}
+
+	imageData := image.ImageData{}
+	if url, ok := imageDataMap["url"].(string); ok {
+		imageData.URL = url
+	}
+	if data, ok := imageDataMap["data"].(string); ok {
+		imageData.Data = data
+	}
+	if format, ok := imageDataMap["format"].(string); ok {
+		imageData.Format = format
+	}
+
+	// 验证图片数据
+	if imageData.URL == "" && imageData.Data == "" {
+		return fmt.Errorf("图片数据为空")
+	}
+
+	h.logger.Info("收到图片消息", map[string]interface{}{
+		"text":        text,
+		"has_url":     imageData.URL != "",
+		"has_data":    imageData.Data != "",
+		"format":      imageData.Format,
+		"data_length": len(imageData.Data),
+	})
+
+	// 立即发送STT消息
+	err := h.sendSTTMessage(text)
+	if err != nil {
+		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
+		return fmt.Errorf("发送STT消息失败: %v", err)
+	}
+
+	// 发送TTS开始状态
+	if err := h.sendTTSMessage("start", "", 0); err != nil {
+		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+		return fmt.Errorf("发送TTS开始状态失败: %v", err)
+	}
+
+	// 发送思考状态的情绪
+	if err := h.sendEmotionMessage("thinking"); err != nil {
+		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
+		return fmt.Errorf("发送情绪消息失败: %v", err)
+	}
+
+	// 添加用户消息到对话历史（包含图片信息的描述）
+	userMessage := fmt.Sprintf("%s [用户发送了一张%s格式的图片]", text, imageData.Format)
+	h.dialogueManager.Put(chat.Message{
+		Role:    "user",
+		Content: userMessage,
+	})
+
+	// 获取对话历史
+	messages := make([]providers.Message, 0)
+	for _, msg := range h.dialogueManager.GetLLMDialogue() {
+		// 排除包含图片信息的最后一条消息，因为我们要用VLLLM处理
+		if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张") {
+			continue
+		}
+		messages = append(messages, providers.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	return h.genResponseByVLLM(ctx, messages, imageData, text)
+}
+
+// genResponseByVLLM 使用VLLLM处理包含图片的消息
+func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string) error {
+	h.logger.Info("开始生成VLLLM回复", map[string]interface{}{
+		"text":          text,
+		"has_url":       imageData.URL != "",
+		"has_data":      imageData.Data != "",
+		"format":        imageData.Format,
+		"message_count": len(messages),
+	})
+
+	// 使用VLLLM处理图片和文本
+	responses, err := h.providers.vlllm.ResponseWithImage(ctx, h.sessionID, messages, imageData, text)
+	if err != nil {
+		h.logger.Error(fmt.Sprintf("VLLLM生成回复失败，尝试降级到普通LLM: %v", err))
+		// 降级策略：只使用文本部分调用普通LLM
+		fallbackText := fmt.Sprintf("用户发送了一张图片并询问：%s（注：当前无法处理图片，只能根据文字回答）", text)
+		fallbackMessages := append(messages, providers.Message{
+			Role:    "user",
+			Content: fallbackText,
+		})
+		return h.genResponseByLLM(ctx, fallbackMessages)
+	}
+
+	// 处理VLLLM流式回复
+	var responseMessage []string
+	processedChars := 0
+	textIndex := 0
+
+	atomic.StoreInt32(&h.serverVoiceStop, 0)
+
+	for response := range responses {
+		if response == "" {
+			continue
+		}
+
+		responseMessage = append(responseMessage, response)
+
+		if h.clientAbort {
+			break
+		}
+
+		// 处理分段
+		fullText := joinStrings(responseMessage)
+		currentText := fullText[processedChars:]
+
+		// 按标点符号分割
+		if segment, chars := splitAtLastPunctuation(currentText); chars > 0 {
+			textIndex++
+			h.recode_first_last_text(segment, textIndex)
+			h.SpeakAndPlay(segment, textIndex)
+			processedChars += chars
+		}
+	}
+
+	// 处理剩余文本
+	remainingText := joinStrings(responseMessage)[processedChars:]
+	if remainingText != "" {
+		textIndex++
+		h.recode_first_last_text(remainingText, textIndex)
+		h.SpeakAndPlay(remainingText, textIndex)
+	}
+
+	// 获取完整回复内容
+	content := joinStrings(responseMessage)
+
+	// 添加VLLLM回复到对话历史
+	h.dialogueManager.Put(chat.Message{
+		Role:    "assistant", 
+		Content: content,
+	})
+
+	h.logger.Info("VLLLM回复处理完成", map[string]interface{}{
+		"content_length": len(content),
+		"text_segments":  textIndex,
+	})
+
+	return nil
 }

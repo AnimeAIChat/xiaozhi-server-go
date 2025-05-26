@@ -20,9 +20,9 @@
 * [X]  支持PCM格式的语音对话
 * [X]  支持Opus格式的语音对话
 * [X]  支持的模型 ASR(豆包流式）LLM（OpenAi API）TTS（EdgeTTS，豆包TTS）
-* [ ]  识图解说（智谱)
+* [X]  识图解说（智谱)
 * [ ]  IOT功能
-* [ ]  OTA功能
+* [X]  OTA功能
 * [ ]  支持mqtt连接
 * [ ]  管理后台
 * [ ]  支持function call和mcp

@@ -11,9 +11,10 @@ import (
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/providers/tts"
+	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
-
+	
 	"github.com/gorilla/websocket"
 )
 
@@ -25,9 +26,10 @@ type WebSocketServer struct {
 	logger    *utils.Logger
 	taskMgr   *task.TaskManager
 	providers struct {
-		asr providers.ASRProvider
-		llm providers.LLMProvider
-		tts providers.TTSProvider
+		asr   providers.ASRProvider
+		llm   providers.LLMProvider
+		tts   providers.TTSProvider
+		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
 	activeConnections sync.Map
 }
@@ -73,7 +75,7 @@ func NewWebSocketServer(config *configs.Config, logger *utils.Logger) (*WebSocke
 
 // Start 启动WebSocket服务器
 func (ws *WebSocketServer) Start(ctx context.Context) error {
-	// 检查providers是否已初始化
+	// 检查必要的providers是否已初始化（VLLLM是可选的）
 	if ws.providers.asr == nil || ws.providers.llm == nil || ws.providers.tts == nil {
 		ws.logger.Error("必要的服务提供者未初始化")
 		return fmt.Errorf("必要的服务提供者未初始化")
@@ -189,13 +191,15 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 
 	// 创建新的连接处理器
 	handler := NewConnectionHandler(ws.config, struct {
-		asr providers.ASRProvider
-		llm providers.LLMProvider
-		tts providers.TTSProvider
+		asr   providers.ASRProvider
+		llm   providers.LLMProvider
+		tts   providers.TTSProvider
+		vlllm *vlllm.Provider
 	}{
-		asr: ws.providers.asr,
-		llm: ws.providers.llm,
-		tts: ws.providers.tts,
+		asr:   ws.providers.asr,
+		llm:   ws.providers.llm,
+		tts:   ws.providers.tts,
+		vlllm: ws.providers.vlllm,
 	}, ws.logger)
 
 	// Initialize task manager for the handler
@@ -305,7 +309,26 @@ func (ws *WebSocketServer) initializeProviders() error {
 		}
 	}
 
-	// 最终检查所有必需的provider是否都已初始化
+	// 初始化VLLLM（可选）
+	if vlllmType, ok := selectedModule["VLLLM"]; ok && vlllmType != "" {
+		ws.logger.Info(fmt.Sprintf("正在初始化VLLLM服务(%s)...", vlllmType))
+		if vlllmCfg, ok := ws.config.VLLLM[vlllmType]; ok {
+			provider, err := vlllm.Create(vlllmCfg.Type, &vlllmCfg, ws.logger)
+			if err != nil {
+				ws.logger.Warn(fmt.Sprintf("初始化VLLLM失败（将继续使用普通LLM）: %v", err))
+				// VLLLM初始化失败不影响系统启动，将使用普通LLM
+			} else {
+				ws.providers.vlllm = provider
+				ws.logger.Info("VLLLM服务初始化成功")
+			}
+		} else {
+			ws.logger.Warn(fmt.Sprintf("找不到VLLLM配置: %s（将继续使用普通LLM）", vlllmType))
+		}
+	} else {
+		ws.logger.Info("未配置VLLLM服务，将只使用普通LLM")
+	}
+
+	// 最终检查所有必需的provider是否都已初始化（VLLLM是可选的）
 	if ws.providers.asr == nil || ws.providers.llm == nil || ws.providers.tts == nil {
 		ws.logger.Error("一个或多个必需的服务提供者初始化失败")
 		return fmt.Errorf("一个或多个必需的服务提供者初始化失败")
