@@ -1,2 +1,5 @@
 xiaozhi-server
 /logs
+/tmp
+/.config.yaml
+/.mcp_server_settings.json

@@ -77,7 +77,7 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 
 	// API路由全部挂载到/api前缀下
 	apiGroup := router.Group("/api")
-	otaService := ota.NewDefaultOTAService(config.Web.WWebsocket)
+	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
 	if err := otaService.Start(context.Background(), router, apiGroup); err != nil {
 		logger.Error("OTA 服务启动失败", err)
 		return nil, err

@@ -31,10 +31,10 @@ type Config struct {
 	} `yaml:"log"`
 
 	Web struct {
-		Enabled    bool   `yaml:"enabled"`
-		Port       int    `yaml:"port"`
-		StaticDir  string `yaml:"static_dir"`
-		WWebsocket string `yaml:"websocket"`
+		Enabled   bool   `yaml:"enabled"`
+		Port      int    `yaml:"port"`
+		StaticDir string `yaml:"static_dir"`
+		Websocket string `yaml:"websocket"`
 	} `yaml:"web"`
 
 	DeleteAudio      bool `yaml:"delete_audio"`
