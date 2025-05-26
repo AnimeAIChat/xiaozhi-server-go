@@ -31,9 +31,10 @@ type Config struct {
 	} `yaml:"log"`
 
 	Web struct {
-		Enabled   bool   `yaml:"enabled"`
-		Port      int    `yaml:"port"`
-		StaticDir string `yaml:"static_dir"`
+		Enabled    bool   `yaml:"enabled"`
+		Port       int    `yaml:"port"`
+		StaticDir  string `yaml:"static_dir"`
+		WWebsocket string `yaml:"websocket"`
 	} `yaml:"web"`
 
 	DeleteAudio      bool `yaml:"delete_audio"`
@@ -41,10 +42,10 @@ type Config struct {
 
 	SelectedModule map[string]string `yaml:"selected_module"`
 
-	VAD map[string]VADConfig `yaml:"VAD"`
-	ASR map[string]ASRConfig `yaml:"ASR"`
-	TTS map[string]TTSConfig `yaml:"TTS"`
-	LLM map[string]LLMConfig `yaml:"LLM"`
+	VAD   map[string]VADConfig  `yaml:"VAD"`
+	ASR   map[string]ASRConfig  `yaml:"ASR"`
+	TTS   map[string]TTSConfig  `yaml:"TTS"`
+	LLM   map[string]LLMConfig  `yaml:"LLM"`
 	VLLLM map[string]VLLMConfig `yaml:"VLLLM"`
 
 	CMDExit []string `yaml:"CMD_exit"`
@@ -87,26 +88,26 @@ type LLMConfig struct {
 
 // SecurityConfig 图片安全配置结构
 type SecurityConfig struct {
-	MaxFileSize       int64    `yaml:"max_file_size"`       // 最大文件大小（字节）
-	MaxPixels         int64    `yaml:"max_pixels"`          // 最大像素数量
-	MaxWidth          int      `yaml:"max_width"`           // 最大宽度
-	MaxHeight         int      `yaml:"max_height"`          // 最大高度
-	AllowedFormats    []string `yaml:"allowed_formats"`     // 允许的图片格式
-	EnableDeepScan    bool     `yaml:"enable_deep_scan"`    // 启用深度安全扫描
-	ValidationTimeout string   `yaml:"validation_timeout"`  // 验证超时时间
+	MaxFileSize       int64    `yaml:"max_file_size"`      // 最大文件大小（字节）
+	MaxPixels         int64    `yaml:"max_pixels"`         // 最大像素数量
+	MaxWidth          int      `yaml:"max_width"`          // 最大宽度
+	MaxHeight         int      `yaml:"max_height"`         // 最大高度
+	AllowedFormats    []string `yaml:"allowed_formats"`    // 允许的图片格式
+	EnableDeepScan    bool     `yaml:"enable_deep_scan"`   // 启用深度安全扫描
+	ValidationTimeout string   `yaml:"validation_timeout"` // 验证超时时间
 }
 
 // VLLMConfig VLLLM配置结构（视觉语言大模型）
 type VLLMConfig struct {
-	Type        string                 `yaml:"type"`         // API类型，复用LLM的类型
-	ModelName   string                 `yaml:"model_name"`   // 模型名称，使用支持视觉的模型
-	BaseURL     string                 `yaml:"url"`          // API地址
-	APIKey      string                 `yaml:"api_key"`      // API密钥
-	Temperature float64                `yaml:"temperature"`  // 温度参数
-	MaxTokens   int                    `yaml:"max_tokens"`   // 最大令牌数
-	TopP        float64                `yaml:"top_p"`        // TopP参数
-	Security    SecurityConfig         `yaml:"security"`     // 图片安全配置
-	Extra       map[string]interface{} `yaml:",inline"`      // 额外配置
+	Type        string                 `yaml:"type"`        // API类型，复用LLM的类型
+	ModelName   string                 `yaml:"model_name"`  // 模型名称，使用支持视觉的模型
+	BaseURL     string                 `yaml:"url"`         // API地址
+	APIKey      string                 `yaml:"api_key"`     // API密钥
+	Temperature float64                `yaml:"temperature"` // 温度参数
+	MaxTokens   int                    `yaml:"max_tokens"`  // 最大令牌数
+	TopP        float64                `yaml:"top_p"`       // TopP参数
+	Security    SecurityConfig         `yaml:"security"`    // 图片安全配置
+	Extra       map[string]interface{} `yaml:",inline"`     // 额外配置
 }
 
 // LoadConfig 从文件加载配置

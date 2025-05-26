@@ -25,7 +25,7 @@
 * [X]  OTA功能
 * [ ]  支持mqtt连接
 * [ ]  管理后台
-* [ ]  支持function call和mcp
+* [X]  支持服务端mcp
 
 # 安装和使用
 

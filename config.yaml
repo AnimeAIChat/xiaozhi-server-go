@@ -3,6 +3,8 @@ server:
   # 服务器监听地址和端口(Server listening address and port)
   ip: 0.0.0.0
   port: 8000
+  # 由ota下发的WebSocket地址
+  websocket: ws://你的ip:8000/ws
   # 认证配置
   auth:
     # 是否启用认证
