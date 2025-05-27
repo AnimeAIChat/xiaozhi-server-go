@@ -21,19 +21,19 @@ build-linux:
 
 build-windows:
 	mkdir -p $(OUTPUT_DIR)
-	GOOS=windows GOARCH=amd64 $(GOBUILD) -x -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe -v $(BINARY_PATH)
+	GOOS=windows GOARCH=amd64 $(GOBUILD) CGO_ENABLED=0 -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe -v $(BINARY_PATH)
 
 build-arm64:
 	mkdir -p $(OUTPUT_DIR)
-	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-arm64 -v $(BINARY_PATH)
+	GOOS=linux GOARCH=arm64 $(GOBUILD) CGO_ENABLED=0 -o $(OUTPUT_DIR)/$(BINARY_NAME)-arm64 -v $(BINARY_PATH)
 
 build-macos:
 	mkdir -p $(OUTPUT_DIR)
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-macos -v $(BINARY_PATH)
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) CGO_ENABLED=0 -o $(OUTPUT_DIR)/$(BINARY_NAME)-macos -v $(BINARY_PATH)
 
 build-macos-arm64:
 	mkdir -p $(OUTPUT_DIR)
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-macos-arm64 -v $(BINARY_PATH)
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) CGO_ENABLED=0 -o $(OUTPUT_DIR)/$(BINARY_NAME)-macos-arm64 -v $(BINARY_PATH)
 
 # Build for all platforms
 build-all: build-linux build-windows build-arm64 build-macos build-macos-arm64
