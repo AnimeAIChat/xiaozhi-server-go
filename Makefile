@@ -21,7 +21,7 @@ build-linux:
 
 build-windows:
 	mkdir -p $(OUTPUT_DIR)
-	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe -v $(BINARY_PATH)
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -x -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe -v $(BINARY_PATH)
 
 build-arm64:
 	mkdir -p $(OUTPUT_DIR)
