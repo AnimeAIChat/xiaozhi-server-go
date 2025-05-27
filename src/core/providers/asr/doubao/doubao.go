@@ -556,7 +556,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 	if len(data) > 0 && p.isStreaming {
 		// 直接发送音频数据
 		if err := p.sendAudioData(data, false); err != nil {
-			return fmt.Errorf("发送音频数据失败: %v", err)
+			return err
 		}
 	}
 

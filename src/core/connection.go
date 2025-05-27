@@ -81,15 +81,18 @@ type ConnectionHandler struct {
 	// TTS任务队列
 	ttsQueue chan struct {
 		text      string
+		round     int // 轮次
 		textIndex int
 	}
 
 	audioMessagesQueue chan struct {
 		filepath  string
 		text      string
+		round    int // 轮次
 		textIndex int
 	}
 
+	talkRound int // 轮次计数
 	// functions
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
@@ -116,16 +119,20 @@ func NewConnectionHandler(
 		clientTextQueue:  make(chan string, 100),
 		ttsQueue: make(chan struct {
 			text      string
+			round	 int // 轮次
 			textIndex int
 		}, 100),
 		audioMessagesQueue: make(chan struct {
 			filepath  string
 			text      string
+			round	int // 轮次
 			textIndex int
 		}, 100),
 
 		tts_last_text_index:  -1,
 		tts_first_text_index: -1,
+
+		talkRound : 0,
 
 		serverAudioFormat:        "opus", // 默认使用Opus格式
 		serverAudioSampleRate:    24000,
@@ -474,6 +481,11 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 
 // handleImageWithText 处理包含图片和文本的消息
 func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData image.ImageData, text string) error {
+	 // 增加对话轮次
+	 h.talkRound++
+	 currentRound := h.talkRound
+	 h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
+	 
 	// 判断是否需要验证
 	if h.isNeedAuth() {
 		if err := h.checkAndBroadcastAuthCode(); err != nil {
@@ -519,7 +531,7 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 	atomic.StoreInt32(&h.serverVoiceStop, 0)
 
 	// 立即合成并播放提示音（使用索引0确保优先播放）
-	if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
+	if err := h.SpeakAndPlay(immediateResponse, 0, currentRound); err != nil {
 		h.logger.Error(fmt.Sprintf("播放图片识别提示音失败: %v", err))
 	}
 
@@ -549,7 +561,7 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 	}
 
 	// 使用VLLLM处理图片消息
-	return h.genResponseByVLLM(ctx, messages, imageData, text)
+	return h.genResponseByVLLM(ctx, messages, imageData, text, currentRound)
 }
 
 // handleIotMessage 处理IOT设备消息
@@ -584,6 +596,17 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 
 // handleChatMessage 处理聊天消息
 func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) error {
+	if text == "" {
+		h.logger.Warn("收到空聊天消息，忽略")
+		return nil
+	}
+
+	 // 增加对话轮次
+	 h.talkRound++
+	 currentRound := h.talkRound
+	 h.logger.Info(fmt.Sprintf("开始新的对话轮次: %d", currentRound))
+	 
+
 	// 判断是否需要验证
 	if h.isNeedAuth() {
 		if err := h.checkAndBroadcastAuthCode(); err != nil {
@@ -635,7 +658,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		atomic.StoreInt32(&h.serverVoiceStop, 0)
 
 		// 立即合成并播放提示音（使用索引0确保优先播放）
-		if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
+		if err := h.SpeakAndPlay(immediateResponse, 0, currentRound); err != nil {
 			h.logger.Error(fmt.Sprintf("播放图片URL识别提示音失败: %v", err))
 		}
 
@@ -665,7 +688,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		}
 
 		// 使用VLLLM处理图片消息
-		return h.genResponseByVLLM(ctx, messages, imageData, remainingText)
+		return h.genResponseByVLLM(ctx, messages, imageData, remainingText, currentRound)
 	}
 
 	// 普通文本消息处理流程
@@ -705,11 +728,11 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		})
 	}
 
-	return h.genResponseByLLM(ctx, messages)
+	return h.genResponseByLLM(ctx, messages, currentRound)
 }
 
-func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message) error {
-	h.logger.Info("开始生成LLM回复, 打印message")
+func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message, round int) error {
+	h.logger.FormatInfo("开始生成LLM回复, round:%d 打印message", round)
 	for _, msg := range messages {
 		msg.Print()
 	}
@@ -777,7 +800,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			if segment, chars := splitAtLastPunctuation(currentText); chars > 0 {
 				textIndex++
 				h.recode_first_last_text(segment, textIndex)
-				h.SpeakAndPlay(segment, textIndex)
+				h.SpeakAndPlay(segment, textIndex, round)
 				processedChars += chars
 			}
 		}
@@ -836,7 +859,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	if remainingText != "" {
 		textIndex++
 		h.recode_first_last_text(remainingText, textIndex)
-		h.SpeakAndPlay(remainingText, textIndex)
+		h.SpeakAndPlay(remainingText, textIndex, round)
 	}
 
 	// 分析回复并发送相应的情绪
@@ -861,7 +884,7 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 		h.logger.Info(fmt.Sprintf("函数调用无操作: %v", result.Result))
 	case types.ActionTypeResponse:
 		h.logger.Info(fmt.Sprintf("函数调用直接回复: %v", result.Response))
-		h.SpeakAndPlay(result.Response.(string), textIndex)
+		h.SpeakAndPlay(result.Response.(string), textIndex, h.talkRound)
 	case types.ActionTypeReqLLM:
 		h.logger.Info(fmt.Sprintf("函数调用后请求LLM: %v", result.Result))
 		text, ok := result.Result.(string)
@@ -909,12 +932,12 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 				})
 			}
 			// 递归调用 chat_with_function_calling 逻辑
-			h.genResponseByLLM(context.Background(), messages)
+			h.genResponseByLLM(context.Background(), messages, h.talkRound)
 		} else {
 			h.logger.Error(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
 			// 发送错误消息
 			errorMessage := fmt.Sprintf("函数调用结果解析失败")
-			h.SpeakAndPlay(errorMessage, textIndex)
+			h.SpeakAndPlay(errorMessage, textIndex, h.talkRound)
 		}
 	}
 }
@@ -945,7 +968,7 @@ func (h *ConnectionHandler) isNeedAuth() bool {
 func (h *ConnectionHandler) checkAndBroadcastAuthCode() error {
 	// 这里简化了认证逻辑，实际需要根据具体需求实现
 	text := "请联系管理员进行设备认证"
-	return h.SpeakAndPlay(text, 0)
+	return h.SpeakAndPlay(text, 0, h.talkRound)
 }
 
 // processTTSQueueCoroutine 处理TTS队列
@@ -955,7 +978,7 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 		case <-h.stopChan:
 			return
 		case task := <-h.ttsQueue:
-			h.processTTSTask(task.text, task.textIndex)
+			h.processTTSTask(task.text, task.textIndex, task.round)
 		}
 	}
 }
@@ -966,15 +989,21 @@ func (h *ConnectionHandler) sendAudioMessageCoroutine() {
 		case <-h.stopChan:
 			return
 		case task := <-h.audioMessagesQueue:
-			h.sendAudioMessage(task.filepath, task.text, task.textIndex)
+			h.sendAudioMessage(task.filepath, task.text, task.textIndex, task.round)
 		}
 	}
 }
 
-func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int) {
+func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
 	if len(filepath) == 0 {
 		return
 	}
+	// 检查轮次
+    if round != h.talkRound {
+        h.logger.Info(fmt.Sprintf("sendAudioMessage: 跳过过期轮次的音频: 任务轮次=%d, 当前轮次=%d, 文本=%s", 
+            round, h.talkRound, text))
+        return
+    }
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", text))
@@ -1025,9 +1054,38 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 	}
 	h.logger.Info(fmt.Sprintf("TTS发送(%s): \"%s\" (索引:%d，时长:%f)", h.serverAudioFormat, text, textIndex, duration))
 	now := time.Now()
-	time.Sleep(time.Duration(duration*1000) * time.Millisecond)
-	spent := time.Since(now)
-	h.logger.Info(fmt.Sprintf("%s音频数据发送完成, 已休眠: %v", h.serverAudioFormat, spent))
+
+	//time.Sleep(time.Duration(duration*1000) * time.Millisecond)
+	//spent := time.Since(now)
+	//h.logger.Info(fmt.Sprintf("%s音频数据发送完成, 已休眠: %v", h.serverAudioFormat, spent))
+	// 可中断的休眠等待
+	sleepDuration := time.Duration(duration*1000) * time.Millisecond
+	ticker := time.NewTicker(100 * time.Millisecond) // 每100ms检查一次
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			// 检查是否被打断或轮次变化
+			if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
+				spent := time.Since(now)
+				h.logger.Info(fmt.Sprintf("%s音频数据发送被中断, 已休眠: %v", h.serverAudioFormat, spent))
+				goto endSleep
+			}
+			// 检查是否已休眠足够时间
+			if time.Since(now) >= sleepDuration {
+				spent := time.Since(now)
+				h.logger.Info(fmt.Sprintf("%s音频数据发送完成, 已休眠: %v", h.serverAudioFormat, spent))
+				goto endSleep
+			}
+		case <-h.stopChan:
+			// 连接关闭
+			return
+		}
+	}
+		
+endSleep:
+
 	// 发送TTS状态结束通知
 	if err := h.sendTTSMessage("sentence_end", text, textIndex); err != nil {
 		h.logger.Error(fmt.Sprintf("发送TTS结束状态失败: %v", err))
@@ -1046,6 +1104,7 @@ func (h *ConnectionHandler) stopServerSpeak() {
 			h.logger.Info(fmt.Sprintf("丢弃一个TTS任务: %s", task.text))
 		default:
 			// 队列已清空，退出循环
+			h.logger.Info("ttsQueue队列已清空，停止处理TTS任务,准备清空音频队列")
 			goto clearAudioQueue
 		}
 	}
@@ -1058,13 +1117,14 @@ clearAudioQueue:
 			h.logger.Info(fmt.Sprintf("丢弃一个音频任务: %s", task.text))
 		default:
 			// 队列已清空，退出循环
+			h.logger.Info("audioMessagesQueue队列已清空，停止处理音频任务")
 			return
 		}
 	}
 }
 
 // processTTSTask 处理单个TTS任务
-func (h *ConnectionHandler) processTTSTask(text string, textIndex int) {
+func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
 
@@ -1078,7 +1138,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int) {
 		h.logger.Error(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
 		return
 	} else {
-		h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
+		h.logger.Info(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
 	}
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", text))
@@ -1087,12 +1147,13 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int) {
 	h.audioMessagesQueue <- struct {
 		filepath  string
 		text      string
+		round    int
 		textIndex int
-	}{filepath, text, textIndex}
+	}{filepath, text, round, textIndex}
 }
 
 // speakAndPlay 合成并播放语音
-func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int) error {
+func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
 	if text == "" {
 		return nil
 	}
@@ -1103,8 +1164,9 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int) error {
 	// 将任务加入队列，不阻塞当前流程
 	h.ttsQueue <- struct {
 		text      string
+		round    int
 		textIndex int
-	}{text, textIndex}
+	}{text, round, textIndex}
 
 	return nil
 }
@@ -1281,6 +1343,11 @@ func (h *ConnectionHandler) extractImageFormat(url string) string {
 
 // handleImageMessage 处理图片消息
 func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[string]interface{}) error {
+	// 增加对话轮次
+    h.talkRound++
+    currentRound := h.talkRound
+    h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
+
 	// 判断是否需要验证
 	if h.isNeedAuth() {
 		if err := h.checkAndBroadcastAuthCode(); err != nil {
@@ -1372,11 +1439,11 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 		})
 	}
 
-	return h.genResponseByVLLM(ctx, messages, imageData, text)
+	return h.genResponseByVLLM(ctx, messages, imageData, text, currentRound)
 }
 
 // genResponseByVLLM 使用VLLLM处理包含图片的消息
-func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string) error {
+func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string, round int) error {
 	h.logger.Info("开始生成VLLLM回复", map[string]interface{}{
 		"text":          text,
 		"has_url":       imageData.URL != "",
@@ -1395,7 +1462,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 			Role:    "user",
 			Content: fallbackText,
 		})
-		return h.genResponseByLLM(ctx, fallbackMessages)
+		return h.genResponseByLLM(ctx, fallbackMessages, round)
 	}
 
 	// 处理VLLLM流式回复
@@ -1424,7 +1491,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 		if segment, chars := splitAtLastPunctuation(currentText); chars > 0 {
 			textIndex++
 			h.recode_first_last_text(segment, textIndex)
-			h.SpeakAndPlay(segment, textIndex)
+			h.SpeakAndPlay(segment, textIndex, round)
 			processedChars += chars
 		}
 	}
@@ -1434,7 +1501,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	if remainingText != "" {
 		textIndex++
 		h.recode_first_last_text(remainingText, textIndex)
-		h.SpeakAndPlay(remainingText, textIndex)
+		h.SpeakAndPlay(remainingText, textIndex, round)
 	}
 
 	// 获取完整回复内容
