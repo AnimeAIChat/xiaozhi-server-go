@@ -70,7 +70,7 @@ func (m *Message) Print() {
 		fmt.Println("json marshal error:", err)
 		return
 	}
-	fmt.Println("Message:")
+	//fmt.Println("Message:")
 	fmt.Println(string(jsonStr))
 }
 

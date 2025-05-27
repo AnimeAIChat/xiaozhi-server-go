@@ -135,6 +135,7 @@ func NewConnectionHandler(
 
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
+	handler.dialogueManager.SetSystemMessage(config.DefaultPrompt)
 	handler.functionRegister = function.NewFunctionRegistry()
 
 	return handler
@@ -159,7 +160,6 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	go h.sendAudioMessageCoroutine()           // 添加音频消息发送协程
 
 	h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn)
-
 	h.mcpManager.InitializeServers(context.Background())
 
 	// 主消息循环
@@ -432,7 +432,7 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 		// 检查是否包含图片数据
 		imageBase64, hasImage := msgMap["image"].(string)
 		text, hasText := msgMap["text"].(string)
-		
+
 		if hasImage && imageBase64 != "" {
 			// 包含图片数据，使用VLLLM处理
 			h.logger.Info("检测到客户端发送的图片数据，使用VLLLM处理", map[string]interface{}{
@@ -440,21 +440,21 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 				"text_length":  len(text),
 				"image_length": len(imageBase64),
 			})
-			
+
 			// 如果没有文本，提供默认提示
 			if !hasText || text == "" {
 				text = "请描述这张图片"
 			}
-			
+
 			// 构造图片数据结构
 			imageData := image.ImageData{
 				Data:   imageBase64,
 				Format: "jpg", // 默认格式，实际格式会在验证时自动检测
 			}
-			
+
 			// 调用图片处理逻辑
 			return h.handleImageWithText(context.Background(), imageData, text)
-			
+
 		} else if hasText && text != "" {
 			// 只有文本，使用普通LLM处理
 			h.logger.Info("检测到纯文本消息，使用LLM处理", map[string]interface{}{
@@ -512,10 +512,10 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 	h.logger.Info("立即播放图片识别提示音", map[string]interface{}{
 		"response": immediateResponse,
 	})
-	
+
 	// 重置语音状态，确保能够播放提示音
 	atomic.StoreInt32(&h.serverVoiceStop, 0)
-	
+
 	// 立即合成并播放提示音（使用索引0确保优先播放）
 	if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
 		h.logger.Error(fmt.Sprintf("播放图片识别提示音失败: %v", err))
@@ -598,13 +598,13 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 			"url":  imageURL,
 			"text": remainingText,
 		})
-		
+
 		// 构造图片消息数据
 		imageData := image.ImageData{
 			URL:    imageURL,
 			Format: h.extractImageFormat(imageURL),
 		}
-		
+
 		// 立即发送STT消息
 		sttText := remainingText
 		if sttText == "" {
@@ -628,10 +628,10 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 			"response": immediateResponse,
 			"url":      imageURL,
 		})
-		
+
 		// 重置语音状态，确保能够播放提示音
 		atomic.StoreInt32(&h.serverVoiceStop, 0)
-		
+
 		// 立即合成并播放提示音（使用索引0确保优先播放）
 		if err := h.SpeakAndPlay(immediateResponse, 0); err != nil {
 			h.logger.Error(fmt.Sprintf("播放图片URL识别提示音失败: %v", err))
@@ -1063,6 +1063,9 @@ clearAudioQueue:
 
 // processTTSTask 处理单个TTS任务
 func (h *ConnectionHandler) processTTSTask(text string, textIndex int) {
+	// 过滤表情
+	text = utils.RemoveAllEmoji(text)
+
 	if text == "" {
 		return
 	}
@@ -1073,7 +1076,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int) {
 		h.logger.Error(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
 		return
 	} else {
-		h.logger.Info(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
+		h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
 	}
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", text))
@@ -1231,10 +1234,10 @@ func (h *ConnectionHandler) Close() {
 func (h *ConnectionHandler) detectImageURL(text string) (imageURL string, remainingText string, detected bool) {
 	// 定义图片URL的正则表达式
 	imageURLPattern := regexp.MustCompile(`(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp))`)
-	
+
 	// 查找图片URL
 	matches := imageURLPattern.FindStringSubmatch(text)
-	
+
 	if len(matches) > 0 {
 		imageURL = matches[1]
 		// 移除URL，保留剩余文本
@@ -1248,7 +1251,7 @@ func (h *ConnectionHandler) detectImageURL(text string) (imageURL string, remain
 		})
 		return imageURL, remainingText, true
 	}
-	
+
 	return "", text, false
 }
 

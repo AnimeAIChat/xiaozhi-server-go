@@ -25,6 +25,23 @@ func NewDialogueManager(logger *utils.Logger, memory MemoryInterface) *DialogueM
 	}
 }
 
+func (dm *DialogueManager) SetSystemMessage(systemMessage string) {
+	if systemMessage == "" {
+		return
+	}
+
+	// 如果对话中已经有系统消息，则不再添加
+	if len(dm.dialogue) > 0 && dm.dialogue[0].Role == "system" {
+		dm.dialogue[0].Content = systemMessage
+		return
+	}
+
+	// 添加新的系统消息到对话开头
+	dm.dialogue = append([]Message{
+		{Role: "system", Content: systemMessage},
+	}, dm.dialogue...)
+}
+
 // Put 添加新消息到对话
 func (dm *DialogueManager) Put(message Message) {
 	dm.dialogue = append(dm.dialogue, message)

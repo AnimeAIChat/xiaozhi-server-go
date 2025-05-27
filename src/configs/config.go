@@ -37,8 +37,9 @@ type Config struct {
 		Websocket string `yaml:"websocket"`
 	} `yaml:"web"`
 
-	DeleteAudio      bool `yaml:"delete_audio"`
-	UsePrivateConfig bool `yaml:"use_private_config"`
+	DefaultPrompt    string `yaml:"prompt"`
+	DeleteAudio      bool   `yaml:"delete_audio"`
+	UsePrivateConfig bool   `yaml:"use_private_config"`
 
 	SelectedModule map[string]string `yaml:"selected_module"`
 
