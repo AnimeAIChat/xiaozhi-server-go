@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -123,7 +122,7 @@ func (m *Manager) InitializeServers(ctx context.Context) error {
 		}
 
 		// 创建客户端
-		client, err := NewClient(clientConfig)
+		client, err := NewClient(clientConfig, m.logger)
 		if err != nil {
 			m.logger.Error(fmt.Sprintf("Failed to create MCP client for server %s: %v", name, err))
 			continue
@@ -140,7 +139,7 @@ func (m *Manager) InitializeServers(ctx context.Context) error {
 		m.clients[name] = client
 		m.mu.Unlock()
 
-		m.logger.Info(fmt.Sprintf("Initialized MCP client: %s", name))
+		//m.logger.Info(fmt.Sprintf("Initialized MCP client: %s", name))
 
 		// 获取并注册工具
 		clientTools := client.GetAvailableTools()
@@ -235,7 +234,7 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 		m.tools = append(m.tools, toolName)
 		if m.funcHandler != nil {
 			m.funcHandler.RegisterFunction(toolName, tool)
-			log.Printf("Registered tool: [%s] %s", toolName, tool.Function.Description)
+			m.logger.FormatInfo("Registered tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}
 }

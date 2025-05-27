@@ -178,6 +178,14 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 		//  map[content:[map[text:{"audio_speaker":{"volume":10},"screen":{},"network":{"type":"wifi","ssid":"zgcinnotown","signal":"weak"}} type:text]] isError:false]
 		// 将里面的text提取出来
 		if resultMap, ok := result.(map[string]interface{}); ok {
+			// 先判断isError是否为true
+			if isError, ok := resultMap["isError"].(bool); ok && isError {
+				if errorMsg, ok := resultMap["error"].(string); ok {
+					return nil, fmt.Errorf("工具调用错误: %s", errorMsg)
+				}
+				return nil, fmt.Errorf("工具调用返回错误，但未提供具体错误信息")
+			}
+			// 检查content字段是否存在且为非空数组
 			if content, ok := resultMap["content"].([]interface{}); ok && len(content) > 0 {
 				if textMap, ok := content[0].(map[string]interface{}); ok {
 					if text, ok := textMap["text"].(string); ok {
@@ -260,7 +268,7 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListRequest() error {
 		return fmt.Errorf("序列化MCP工具列表请求失败: %v", err)
 	}
 
-	c.logger.Info("发送MCP工具列表请求")
+	c.logger.Debug("发送MCP工具列表请求")
 	return c.conn.WriteMessage(msgTypeText, data)
 }
 
@@ -315,19 +323,19 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 		c.callResultsLock.Unlock()
 
 		if id == mcpInitializeID { // 如果是初始化响应
-			c.logger.Info("收到MCP初始化响应")
+			c.logger.Debug("收到MCP初始化响应")
 
 			// 解析服务器信息
 			if serverInfo, ok := result.(map[string]interface{})["serverInfo"].(map[string]interface{}); ok {
 				name := serverInfo["name"]
 				version := serverInfo["version"]
-				c.logger.Info(fmt.Sprintf("MCP服务器信息: name=%v, version=%v", name, version))
+				c.logger.Info(fmt.Sprintf("客户端MCP服务器信息: name=%v, version=%v", name, version))
 			}
 
 			// 初始化完成后，请求工具列表
 			return c.SendMCPToolsListRequest()
 		} else if id == mcpToolsListID { // 如果是tools/list响应
-			c.logger.Info("收到MCP工具列表响应")
+			c.logger.Debug("收到MCP工具列表响应")
 
 			// 解析工具列表
 			if toolsData, ok := result.(map[string]interface{}); ok {
@@ -336,7 +344,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					return fmt.Errorf("工具列表格式错误")
 				}
 
-				c.logger.Info(fmt.Sprintf("设备支持的工具数量: %d", len(tools)))
+				c.logger.Info(fmt.Sprintf("客户端设备支持的工具数量: %d", len(tools)))
 
 				// 解析工具并添加到列表中
 				c.mu.Lock()
@@ -380,7 +388,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					}
 
 					c.tools = append(c.tools, newTool)
-					c.logger.Info(fmt.Sprintf("工具 #%d: %v", i+1, name))
+					c.logger.Debug(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
 				}
 
 				// 检查是否需要继续获取下一页工具

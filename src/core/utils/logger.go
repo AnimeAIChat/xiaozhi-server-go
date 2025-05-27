@@ -114,6 +114,31 @@ func (l *Logger) Error(msg string, fields ...interface{}) {
 	l.log(ErrorLevel, "", msg, fields...)
 }
 
+func (l *Logger) FormatInfo(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.log(InfoLevel, "", msg)
+}
+
+// FormatDebug 格式化并记录调试级别日志
+func (l *Logger) FormatDebug(format string, args ...interface{}) {
+	if l.config.Log.LogLevel == "DEBUG" {
+		msg := fmt.Sprintf(format, args...)
+		l.log(DebugLevel, "", msg)
+	}
+}
+
+// FormatWarn 格式化并记录警告级别日志
+func (l *Logger) FormatWarn(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.log(WarnLevel, "", msg)
+}
+
+// FormatError 格式化并记录错误级别日志
+func (l *Logger) FormatError(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	l.log(ErrorLevel, "", msg)
+}
+
 // WithTag 添加标签的日志记录器
 type TaggedLogger struct {
 	*Logger

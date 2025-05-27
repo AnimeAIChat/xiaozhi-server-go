@@ -14,7 +14,7 @@ import (
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
-	
+
 	"github.com/gorilla/websocket"
 )
 
@@ -236,7 +236,7 @@ func (ws *WebSocketServer) initializeProviders() error {
 			provider, err := asr.Create(asrType, &asr.Config{
 				Type: asrType,
 				Data: asrCfg,
-			}, ws.config.DeleteAudio)
+			}, ws.config.DeleteAudio, ws.logger)
 			if err != nil {
 				ws.logger.Error(fmt.Sprintf("初始化ASR失败: %v", err))
 				return fmt.Errorf("初始化ASR失败: %v", err)

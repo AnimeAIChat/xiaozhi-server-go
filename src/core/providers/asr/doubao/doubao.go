@@ -128,7 +128,7 @@ type responsePayload struct {
 }
 
 // NewProvider 创建豆包ASR提供者实例
-func NewProvider(config *asr.Config, deleteFile bool) (*Provider, error) {
+func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Provider, error) {
 	base := asr.NewBaseProvider(config, deleteFile)
 
 	// 从config.Data中获取配置
@@ -153,9 +153,6 @@ func NewProvider(config *asr.Config, deleteFile bool) (*Provider, error) {
 
 	// 创建连接ID
 	connectID := fmt.Sprintf("%d", time.Now().UnixNano())
-
-	// 创建一个简单的日志输出，不使用文件记录
-	logger := &utils.Logger{}
 
 	provider := &Provider{
 		BaseProvider:  base,
@@ -390,7 +387,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 	p.connMutex.Unlock()
 
 	if !isStreaming {
-		fmt.Print("开始流式识别\n")
+		p.logger.Info("----开始流式识别----")
 		// 加锁保护连接初始化
 		p.connMutex.Lock()
 		defer p.connMutex.Unlock()
@@ -641,9 +638,8 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	if p.logger != nil {
-		p.logger.Info("ASR状态已重置")
-	}
+	p.logger.Info("ASR状态已重置")
+
 	return nil
 }
 
@@ -665,9 +661,8 @@ func (p *Provider) Cleanup() error {
 	// 确保WebSocket连接关闭
 	p.closeConnection()
 
-	if p.logger != nil {
-		p.logger.Info("ASR资源已清理")
-	}
+	p.logger.Info("ASR资源已清理")
+
 	return nil
 }
 
@@ -691,7 +686,7 @@ func (p *Provider) Finalize() error {
 
 func init() {
 	// 注册豆包ASR提供者
-	asr.Register("doubao", func(config *asr.Config, deleteFile bool) (asr.Provider, error) {
-		return NewProvider(config, deleteFile)
+	asr.Register("doubao", func(config *asr.Config, deleteFile bool, logger *utils.Logger) (asr.Provider, error) {
+		return NewProvider(config, deleteFile, logger)
 	})
 }

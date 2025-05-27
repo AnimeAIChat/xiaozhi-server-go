@@ -3,9 +3,10 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	"xiaozhi-server-go/src/core/utils"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -31,14 +32,16 @@ type Client struct {
 	client         *mcpclient.Client
 	stdioClient    *mcpclient.Client
 	config         *Config
+	name           string
 	tools          []Tool
 	ready          bool
 	mu             sync.RWMutex
 	useStdioClient bool
+	logger         *utils.Logger
 }
 
 // NewClient 创建一个新的MCP客户端实例
-func NewClient(config *Config) (*Client, error) {
+func NewClient(config *Config, logger *utils.Logger) (*Client, error) {
 	if !config.Enabled {
 		return nil, fmt.Errorf("MCP client is disabled in config")
 	}
@@ -47,6 +50,7 @@ func NewClient(config *Config) (*Client, error) {
 		config: config,
 		tools:  make([]Tool, 0),
 		ready:  false,
+		logger: logger,
 	}
 
 	// 根据配置选择适当的客户端类型
@@ -70,7 +74,7 @@ func NewClient(config *Config) (*Client, error) {
 // Start 启动MCP客户端并监听资源更新
 func (c *Client) Start(ctx context.Context) error {
 	if c.useStdioClient {
-		log.Printf("Starting MCP stdio client with command: %s", c.config.Command)
+		//c.logger.FormatInfo("Starting MCP stdio client with command: %s", c.config.Command)
 
 		// 创建初始化请求
 		initRequest := mcp.InitializeRequest{}
@@ -89,9 +93,11 @@ func (c *Client) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize stdio MCP client: %w", err)
 		}
-		log.Printf("Initialized with server: %s %s",
+		c.name = initResult.ServerInfo.Name
+		c.logger.FormatInfo("Initialized server: %s %s with conmmand: %s",
 			initResult.ServerInfo.Name,
-			initResult.ServerInfo.Version)
+			initResult.ServerInfo.Version,
+			c.config.Command)
 
 		// 获取工具列表
 		err = c.fetchTools(ctx)
@@ -109,7 +115,6 @@ func (c *Client) Start(ctx context.Context) error {
 
 // fetchTools 获取可用的工具列表
 func (c *Client) fetchTools(ctx context.Context) error {
-	log.Println("Fetching available tools")
 
 	if c.useStdioClient {
 		// 使用协议方式获取工具列表
@@ -126,6 +131,7 @@ func (c *Client) fetchTools(ctx context.Context) error {
 		c.tools = make([]Tool, 0, len(tools.Tools))
 
 		// 添加获取到的工具
+		toolNames := ""
 		for _, tool := range tools.Tools {
 			c.tools = append(c.tools, Tool{
 				Name:        tool.Name,
@@ -136,8 +142,10 @@ func (c *Client) fetchTools(ctx context.Context) error {
 					Required:   tool.InputSchema.Required,
 				},
 			})
+			toolNames += fmt.Sprintf("%s, ", tool.Name)
 			//log.Printf("Added tool: %s - %s %v; %v; %v", tool.Name, tool.Description, tool.InputSchema, tool.RawInputSchema, tool.Annotations)
 		}
+		c.logger.FormatInfo("Fetching %s available tools %s", c.name, toolNames)
 		return nil
 	} else {
 		// 原有方式的实现保持不变
@@ -150,12 +158,12 @@ func (c *Client) fetchTools(ctx context.Context) error {
 func (c *Client) Stop() {
 	if c.useStdioClient {
 		if c.stdioClient != nil {
-			log.Println("Stopping MCP stdio client")
+			c.logger.Info("Stopping MCP stdio client")
 			c.stdioClient.Close()
 		}
 	} else {
 		if c.client != nil {
-			log.Println("Stopping MCP client")
+			c.logger.Info("Stopping MCP client")
 			c.client.Close()
 		}
 	}
