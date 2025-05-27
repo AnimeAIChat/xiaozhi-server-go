@@ -276,9 +276,10 @@ func (h *ConnectionHandler) OnAsrResult(result string) bool {
 			return false
 		}
 		h.stopServerSpeak()
+		h.providers.asr.Reset() // 重置ASR状态，准备下一次识别
 		h.logger.Info(fmt.Sprintf("[%s] ASR识别结果: %s", h.clientListenMode, result))
 		h.handleChatMessage(context.Background(), result)
-		return false
+		return true
 	}
 	return false
 }
@@ -405,17 +406,18 @@ func (h *ConnectionHandler) handleAbortMessage() error {
 
 // handleListenMessage 处理语音相关消息
 func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) error {
-	// 处理mode参数
-	if mode, ok := msgMap["mode"].(string); ok {
-		h.clientListenMode = mode
-		h.logger.Info(fmt.Sprintf("客户端拾音模式：%s", h.clientListenMode))
-		h.providers.asr.SetListener(h)
-	}
 
 	// 处理state参数
 	state, ok := msgMap["state"].(string)
 	if !ok {
 		return fmt.Errorf("listen消息缺少state参数")
+	}
+
+	// 处理mode参数
+	if mode, ok := msgMap["mode"].(string); ok {
+		h.clientListenMode = mode
+		h.logger.Info(fmt.Sprintf("客户端拾音模式：%s， %s", h.clientListenMode, state))
+		h.providers.asr.SetListener(h)
 	}
 
 	switch state {
@@ -1150,9 +1152,7 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 	h.logger.Info("清除服务端讲话状态 ")
 	h.tts_last_text_index = -1
 	h.tts_first_text_index = -1
-	if h.clientListenMode != "realtime" {
-		h.providers.asr.Reset() // 重置ASR状态
-	}
+	h.providers.asr.Reset() // 重置ASR状态
 }
 
 func (h *ConnectionHandler) recode_first_last_text(text string, text_index int) {
