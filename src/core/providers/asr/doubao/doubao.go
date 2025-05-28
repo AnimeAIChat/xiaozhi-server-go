@@ -77,31 +77,6 @@ type Provider struct {
 	connMutex   sync.Mutex // 添加互斥锁保护连接状态
 }
 
-// requestPayload 请求数据结构
-type requestPayload struct {
-	App struct {
-		AppID   string `json:"appid"`
-		Cluster string `json:"cluster"`
-		Token   string `json:"token"`
-	} `json:"app"`
-	User struct {
-		UID string `json:"uid"`
-	} `json:"user"`
-	Request struct {
-		ReqID          string `json:"reqid"`
-		ShowUtterances bool   `json:"show_utterances"`
-		Sequence       int    `json:"sequence"`
-	} `json:"request"`
-	Audio struct {
-		Format   string `json:"format"`
-		Rate     int    `json:"rate"`
-		Language string `json:"language"`
-		Bits     int    `json:"bits"`
-		Channel  int    `json:"channel"`
-		Codec    string `json:"codec"`
-	} `json:"audio"`
-}
-
 // responsePayload 响应数据结构
 type Utterance struct {
 	Text      string `json:"text"`
@@ -662,24 +637,6 @@ func (p *Provider) Cleanup() error {
 	p.closeConnection()
 
 	p.logger.Info("ASR资源已清理")
-
-	return nil
-}
-
-// Finalize 实现ASRProvider接口的Finalize方法，完成最终处理
-func (p *Provider) Finalize() error {
-	p.connMutex.Lock()
-	defer p.connMutex.Unlock()
-
-	// 如果不是流式识别状态，直接返回
-	if !p.isStreaming || p.conn == nil {
-		return nil
-	}
-
-	// 发送一个空音频帧但标记为最后一帧，触发最终识别结果
-	if err := p.sendAudioData([]byte{}, true); err != nil {
-		return fmt.Errorf("发送最终帧失败: %v", err)
-	}
 
 	return nil
 }

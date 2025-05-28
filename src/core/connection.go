@@ -319,7 +319,7 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 	case "hello":
 		return h.handleHelloMessage(msgMap)
 	case "abort":
-		return h.handleAbortMessage()
+		return h.clientAbortChat()
 	case "listen":
 		return h.handleListenMessage(msgMap)
 	case "iot":
@@ -403,8 +403,8 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 	return nil
 }
 
-// handleAbortMessage 处理中止消息
-func (h *ConnectionHandler) handleAbortMessage() error {
+// clientAbortChat 处理中止消息
+func (h *ConnectionHandler) clientAbortChat() error {
 	h.logger.Info("收到客户端中止消息，停止语音识别")
 	h.stopServerSpeak()
 	h.sendTTSMessage("stop", "", 0)
@@ -430,14 +430,14 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 
 	switch state {
 	case "start":
+		if h.client_asr_text != "" && h.clientListenMode == "manual" {
+			h.clientAbortChat()
+		}
 		h.clientVoiceStop = false
 		h.client_asr_text = ""
 	case "stop":
 		h.clientVoiceStop = true
 		h.logger.Info("客户端停止语音识别")
-		if h.clientListenMode == "manual" {
-			h.providers.asr.Finalize()
-		}
 	case "detect":
 		// 检查是否包含图片数据
 		imageBase64, hasImage := msgMap["image"].(string)
@@ -599,6 +599,7 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) error {
 	if text == "" {
 		h.logger.Warn("收到空聊天消息，忽略")
+		h.clientAbortChat()
 		return nil
 	}
 
@@ -931,7 +932,7 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 		} else {
 			h.logger.Error(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
 			// 发送错误消息
-			errorMessage := fmt.Sprintf("函数调用结果解析失败")
+			errorMessage := fmt.Sprintf("函数调用结果解析失败 %v", result.Result)
 			h.SpeakAndPlay(errorMessage, textIndex, h.talkRound)
 		}
 	}
