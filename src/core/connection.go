@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -1002,15 +1003,40 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
     if round != h.talkRound {
         h.logger.Info(fmt.Sprintf("sendAudioMessage: 跳过过期轮次的音频: 任务轮次=%d, 当前轮次=%d, 文本=%s", 
             round, h.talkRound, text))
+        // 即使跳过，也要根据配置删除音频文件
+        if h.config.DeleteAudio {
+            if err := os.Remove(filepath); err != nil {
+                h.logger.Error(fmt.Sprintf("删除跳过的音频文件失败: %v", err))
+            } else {
+                h.logger.Info(fmt.Sprintf("已删除跳过的音频文件: %s", filepath))
+            }
+        }
         return
     }
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", text))
+		// 服务端语音停止时也要根据配置删除音频文件
+        if h.config.DeleteAudio {
+            if err := os.Remove(filepath); err != nil {
+                h.logger.Error(fmt.Sprintf("删除停止的音频文件失败: %v", err))
+            } else {
+                h.logger.Info(fmt.Sprintf("已删除停止的音频文件: %s", filepath))
+            }
+        }
 		return
 	}
 
 	defer func() {
+		// 音频发送完成后，根据配置决定是否删除文件
+		if h.config.DeleteAudio {
+			if err := os.Remove(filepath); err != nil {
+				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
+			} else {
+				h.logger.Info(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
+			}
+		}
+		
 		if textIndex == h.tts_last_text_index {
 			h.sendTTSMessage("stop", "", textIndex)
 			h.clearSpeakStatus()
@@ -1115,6 +1141,14 @@ clearAudioQueue:
 		select {
 		case task := <-h.audioMessagesQueue:
 			h.logger.Info(fmt.Sprintf("丢弃一个音频任务: %s", task.text))
+			// 根据配置删除被丢弃的音频文件
+			if h.config.DeleteAudio && task.filepath != "" {
+				if err := os.Remove(task.filepath); err != nil {
+					h.logger.Error(fmt.Sprintf("删除被丢弃的音频文件失败: %v", err))
+				} else {
+					h.logger.Info(fmt.Sprintf("已删除被丢弃的音频文件: %s", task.filepath))
+				}
+			}
 		default:
 			// 队列已清空，退出循环
 			h.logger.Info("audioMessagesQueue队列已清空，停止处理音频任务")
@@ -1142,6 +1176,14 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	}
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", text))
+		// 服务端语音停止时，根据配置删除已生成的音频文件
+		if h.config.DeleteAudio && filepath != "" {
+			if err := os.Remove(filepath); err != nil {
+				h.logger.Error(fmt.Sprintf("删除停止任务的音频文件失败: %v", err))
+			} else {
+				h.logger.Info(fmt.Sprintf("已删除停止任务的音频文件: %s", filepath))
+			}
+		}
 		return
 	}
 	h.audioMessagesQueue <- struct {
@@ -1286,6 +1328,39 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 // Close 清理资源
 func (h *ConnectionHandler) Close() {
 	close(h.stopChan)
+	
+	// 清理待处理的音频文件
+	if h.config.DeleteAudio {
+		// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
+		for {
+			select {
+			case task := <-h.ttsQueue:
+				h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
+			default:
+				goto clearAudioQueue
+			}
+		}
+		
+	clearAudioQueue:
+		// 清理音频消息队列中的文件
+		for {
+			select {
+			case task := <-h.audioMessagesQueue:
+				h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
+				if task.filepath != "" {
+					if err := os.Remove(task.filepath); err != nil {
+						h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
+					} else {
+						h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
+					}
+				}
+			default:
+				goto closeChannels
+			}
+		}
+	}
+	
+closeChannels:
 	close(h.clientAudioQueue)
 	close(h.clientTextQueue)
 
