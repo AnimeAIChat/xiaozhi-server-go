@@ -7,6 +7,9 @@ on:
       - 'v*'  # 例如 v1.0.0
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows-amd64:
     runs-on: ubuntu-latest
@@ -132,3 +135,5 @@ jobs:
             artifacts/**/windows-amd64-server.exe
             artifacts/**/linux-amd64-server
             artifacts/**/linux-arm64-server
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
