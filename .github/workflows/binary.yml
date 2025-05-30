@@ -131,8 +131,8 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/windows-amd64-server.exe
-            artifacts/linux-amd64-server
-            artifacts/linux-arm64-server
+            artifacts/**/windows-amd64-server.exe
+            artifacts/**/linux-amd64-server
+            artifacts/**/linux-arm64-server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
