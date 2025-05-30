@@ -19,7 +19,7 @@ web:
   # Web服务监听端口
   port: 8080
   # 由ota下发的WebSocket地址
-  websocket: ws://你的ip:8000/ws
+  websocket: ws://你的ip:8000
 
 log:
   # 设置控制台输出的日志格式，时间、日志级别、标签、消息
