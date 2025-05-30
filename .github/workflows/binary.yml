@@ -60,8 +60,8 @@ jobs:
           go build -v \
             -ldflags "-s -w -extldflags '-static'" \
             -o ../windows-amd64-server.exe
-          upx --best ../windows-amd64-server.exe
           cp ../windows-amd64-server.exe ../windows-amd64-server-upx.exe
+          upx --best ../windows-amd64-server.exe          
 
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
@@ -104,8 +104,8 @@ jobs:
               CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.arch }} \
                 go build -v -ldflags '-s -w -extldflags "-static"' \
                 -o ../linux-${{ matrix.arch }}-server && \
-              upx --best ../linux-${{ matrix.arch }}-server && \
               cp ../linux-${{ matrix.arch }}-server ../linux-${{ matrix.arch }}-server-upx\
+              upx --best ../linux-${{ matrix.arch }}-server && \
             "
 
       - name: Upload Linux binaries
