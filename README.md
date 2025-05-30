@@ -63,3 +63,7 @@ go build -o xiaozhi-server.exe src/main.go
 ```
 .\xiaozhi-server.exe
 ```
+
+## Centos系统下安装指南
+
+- [Centos 8 安装指南](Centos_Guide.md)
