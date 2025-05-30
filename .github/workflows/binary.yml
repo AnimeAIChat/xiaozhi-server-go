@@ -53,18 +53,15 @@ jobs:
           echo "GOARCH=amd64"                   >> $GITHUB_ENV
           echo "CC=x86_64-w64-mingw32-gcc"      >> $GITHUB_ENV
 
-      - name: Build Windows binary
+      - name: Build & compress Windows binaries
         run: |
           go mod tidy
           cd src
           go build -v \
             -ldflags "-s -w -extldflags '-static'" \
             -o ../windows-amd64-server.exe
-
-      - name: Compress with UPX (Windows)
-        run: |
-          upx --best windows-amd64-server.exe
-          mv windows-amd64-server.exe windows-amd64-server-upx.exe
+          upx --best ../windows-amd64-server.exe
+          cp ../windows-amd64-server.exe ../windows-amd64-server-upx.exe
 
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
@@ -91,13 +88,13 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Compile in container
+      - name: Compile & compress in container
         run: |
           docker run --rm --platform=linux/${{ matrix.arch }} \
             -v "${{ github.workspace }}:/src" \
             -w /src \
             golang:1.24.2-alpine sh -c "\
-              apk add --no-cache build-base autoconf automake libtool pkgconfig musl-dev wget && \
+              apk add --no-cache build-base autoconf automake libtool pkgconfig musl-dev wget upx && \
               wget https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz && \
               tar xf opus-${OPUS_VERSION}.tar.gz && \
               cd opus-${OPUS_VERSION} && \
@@ -105,20 +102,11 @@ jobs:
               make -j$(nproc) && make install && \
               cd /src && go mod tidy && cd src && \
               CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.arch }} \
-                go build -v -ldflags "-s -w -extldflags '-static'" \
-                -o ../linux-${{ matrix.arch }}-server\
+                go build -v -ldflags '-s -w -extldflags "-static"' \
+                -o ../linux-${{ matrix.arch }}-server && \
+              upx --best ../linux-${{ matrix.arch }}-server && \
+              cp ../linux-${{ matrix.arch }}-server ../linux-${{ matrix.arch }}-server-upx\
             "
-
-      - name: Install UPX (Linux)
-        run: |
-          sudo apt update
-          sudo apt install -y upx-ucl
-
-      - name: Compress with UPX (Linux)
-        run: |
-          BIN=linux-${{ matrix.arch }}-server
-          upx --best "$BIN"
-          mv "$BIN" "$BIN-upx"
 
       - name: Upload Linux binaries
         uses: actions/upload-artifact@v4
