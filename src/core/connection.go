@@ -1300,7 +1300,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
 	originText := text // 保存原始文本用于日志
 	text = utils.RemoveAllEmoji(text)
-
+	text = utils.RemoveMarkdownSyntax(text) // 移除Markdown语法
 	if text == "" {
 		h.logger.FormatWarn("SpeakAndPlay 收到空文本，无法合成语音, %d, text:%s.", textIndex, originText)
 		return errors.New("收到空文本，无法合成语音")
