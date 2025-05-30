@@ -17,18 +17,58 @@
 
 # 功能清单
 
-* [X]  支持PCM格式的语音对话
-* [X]  支持Opus格式的语音对话
-* [X]  支持的模型 ASR(豆包流式）LLM（OpenAi API）TTS（EdgeTTS，豆包TTS）
-* [X]  识图解说（智谱)
-* [ ]  IOT功能
-* [X]  OTA功能
-* [ ]  支持mqtt连接
-* [ ]  管理后台
-* [X]  支持服务端mcp
-* [X]  支持小智客户端mcp调用
+* [x] 支持PCM格式的语音对话
+* [x] 支持Opus格式的语音对话
+* [x] 支持的模型 ASR(豆包流式）LLM（OpenAi API）TTS（EdgeTTS，豆包TTS）
+* [x] 识图解说（智谱)
+* [x] OTA功能
+* [x] 支持服务端mcp
+* [x] 支持小智客户端mcp调用
+* [ ] 管理后台
+* [ ] 支持mqtt连接
+* [ ] IOT功能
 
 # 安装和使用
+
+## 下载Release版
+
+推荐下载[Releases ](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)版体验，避免配置开发环境，尽快体验服务效果
+
+选择对应平台的版本，以windows为例，可以下载windows-amd64-server.exe，也可以下载windows-amd64-server-upx.exe（经过upx压缩，体积更小，效果相同，方便远程部署，其他平台均有upx版本）
+
+下载后放到一个目录，尽量使用英文路径
+
+## 配置config
+
+在同目录下拷贝一份config.yaml文件，推荐改名为.config.yaml
+
+### 配置WS地址
+
+修改配置下web选项的websocket ，将其设为你的ip，格式为ws://xxx.xxx.xxx.xxx:8000，端口8000和server配置的端口保持一致
+
+此地址通过ota下发给客户端，最新版本的esp32小智不能配置ws地址，只能通过ota下发
+
+### 配置ota地址
+
+esp32硬件编码，将ota地址写入到硬件；有ota配置的功能的设备可以直接配置地址，地址为
+
+http://xxx.x.x.x:8080/api/ota/
+
+8080端口为ota服务配置的地址，如果修改了配置文件，此处做相应修改
+
+### 配置ASR，LLM，TTS
+
+根据配置文件的格式，配置好相关模型服务，尽量不要增减字段
+
+## 开始体验
+
+启动服务，重启小智，如果正确连接到ota服务，服务日志会有打印
+
+... POST     "/api/ota/"
+
+表示客户端已经连接到ota服务，并获取了ws地址，后面请尽情体验
+
+# 源码安装和部署
 
 ## 前置条件
 
@@ -44,10 +84,34 @@ git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
 
 复制一份config.yaml到.config.yaml，并在配置中填好相应的key等信息，避免密钥泄漏
 
+## windows安装opus库
+
+由于使用了cgo链接opus库，在windows上配置稍微复杂，需要安装cgo编译环境
+
+首先，下载msys2，安装 GCC 工具链：
+```
+pacman -Syu
+
+pacman -S mingw-w64-x86_64-gcc
+
+pacman -S mingw-w64-x86_64-go mingw-w64-x86_64-opus
+
+pacman -S mingw-w64-x86_64-pkg-config
+```
+可以在msys2 MINGW64的环境下运行 go run ./src/main.go
+
+如果想要在windows的powershell中运行，可以把mingw64\bin加入环境变量path中，若还有报错，请检查设置
+```
+set PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig #使用你自己的pkgconfig路径
+set CGO_ENABLED=1
+```
+再执行
+go run ./src/main.go
+
 ## 源码运行
 
 ```
- go mod tidy
+go mod tidy
 
  go run ./src/main.go
 ```
