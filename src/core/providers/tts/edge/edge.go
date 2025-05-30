@@ -27,6 +27,7 @@ func NewProvider(config *tts.Config, deleteFile bool) (*Provider, error) {
 // 使用的edge库是github.com/wujunwei928/edge-tts-go，默认使用24k采样率
 func (p *Provider) ToTTS(text string) (string, error) {
 	// 获取配置的声音，如果未配置则使用默认值
+	edgeTTSStartTime := time.Now()
 	voice := p.BaseProvider.Config().Voice
 	if voice == "" {
 		voice = "zh-CN-XiaoxiaoNeural" // 默认声音
@@ -60,6 +61,9 @@ func (p *Provider) ToTTS(text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("edge-tts-go 获取音频流失败: %v", err)
 	}
+
+	ttsDuration := time.Since(edgeTTSStartTime)
+	fmt.Println(fmt.Sprintf("edge-tts-go 语音合成完成，耗时: %s", ttsDuration))
 
 	// 将音频数据写入临时文件
 	err = os.WriteFile(tempFile, audioData, 0644)
