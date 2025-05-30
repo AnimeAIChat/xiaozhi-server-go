@@ -122,7 +122,7 @@ VLLLM:
       validation_timeout: 10s
   OllamaVLLM:
     type: ollama
-    model_name: qwen2-vl:7b    # 本地视觉模型
+    model_name: qwen2.5vl    # 本地视觉模型
     url: http://localhost:11434
     max_tokens: 4096
     temperature: 0.7
