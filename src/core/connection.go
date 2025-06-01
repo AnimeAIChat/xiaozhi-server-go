@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -40,11 +41,7 @@ type ConnectionHandler struct {
 	}
 
 	// 会话相关
-	sessionID    string
-	headers      map[string]string
-	clientIP     string
-	clientIPInfo map[string]interface{}
-
+	sessionID string
 	// 客户端音频相关
 	clientAudioFormat        string
 	clientAudioSampleRate    int
@@ -67,10 +64,9 @@ type ConnectionHandler struct {
 	opusDecoder *utils.OpusDecoder // Opus解码器
 
 	// 对话相关
-	dialogueManager      *chat.DialogueManager
-	tts_first_text_index int
-	tts_last_text_index  int
-	client_asr_text      string // 客户端ASR文本
+	dialogueManager     *chat.DialogueManager
+	tts_last_text_index int
+	client_asr_text     string // 客户端ASR文本
 
 	// 并发控制
 	stopChan         chan struct{}
@@ -91,7 +87,8 @@ type ConnectionHandler struct {
 		textIndex int
 	}
 
-	talkRound int // 轮次计数
+	talkRound      int       // 轮次计数
+	roundStartTime time.Time // 轮次开始时间
 	// functions
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
@@ -128,8 +125,7 @@ func NewConnectionHandler(
 			textIndex int
 		}, 100),
 
-		tts_last_text_index:  -1,
-		tts_first_text_index: -1,
+		tts_last_text_index: -1,
 
 		talkRound: 0,
 
@@ -605,6 +601,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 
 	// 增加对话轮次
 	h.talkRound++
+	h.roundStartTime = time.Now()
 	currentRound := h.talkRound
 	h.logger.Info(fmt.Sprintf("开始新的对话轮次: %d", currentRound))
 
@@ -733,6 +730,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 }
 
 func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message, round int) error {
+	llmStartTime := time.Now()
 	h.logger.FormatInfo("开始生成LLM回复, round:%d 打印message", round)
 	for _, msg := range messages {
 		msg.Print()
@@ -793,10 +791,22 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			currentText := fullText[processedChars:]
 
 			// 按标点符号分割
-			if segment, chars := splitAtLastPunctuation(currentText); chars > 0 {
+			if segment, chars := utils.SplitAtLastPunctuation(currentText); chars > 0 {
 				textIndex++
-				h.recode_first_last_text(segment, textIndex)
-				h.SpeakAndPlay(segment, textIndex, round)
+				if textIndex == 1 {
+					now := time.Now()
+					llmSpentTime := now.Sub(llmStartTime)
+					h.logger.Info(fmt.Sprintf("LLM回复耗时 %s 生成第一句话【%s】, round: %d", llmSpentTime, segment, round))
+				} else {
+					h.logger.Info(fmt.Sprintf("LLM回复分段: %s, index: %d, round:%d", segment, textIndex, round))
+				}
+
+				err := h.SpeakAndPlay(segment, textIndex, round)
+				if err == nil {
+					h.tts_last_text_index = textIndex
+				} else {
+					h.logger.Error(fmt.Sprintf("播放LLM回复分段失败: %v", err))
+				}
 				processedChars += chars
 			}
 		}
@@ -854,8 +864,11 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	remainingText := joinStrings(responseMessage)[processedChars:]
 	if remainingText != "" {
 		textIndex++
-		h.recode_first_last_text(remainingText, textIndex)
-		h.SpeakAndPlay(remainingText, textIndex, round)
+		h.logger.Info(fmt.Sprintf("LLM回复分段[剩余文本]: %s, index: %d, round:%d", remainingText, textIndex, round))
+		err := h.SpeakAndPlay(remainingText, textIndex, round)
+		if err == nil {
+			h.tts_last_text_index = textIndex
+		}
 	}
 
 	// 分析回复并发送相应的情绪
@@ -1028,10 +1041,11 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 			if err := os.Remove(filepath); err != nil {
 				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
 			} else {
-				h.logger.Info(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
+				h.logger.Debug(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
 			}
 		}
 
+		h.logger.Info(fmt.Sprintf("TTS音频发送完成: %s, 索引: %d/%d", text, textIndex, h.tts_last_text_index))
 		if textIndex == h.tts_last_text_index {
 			h.sendTTSMessage("stop", "", textIndex)
 			h.clearSpeakStatus()
@@ -1064,7 +1078,12 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		return
 	}
 
-	h.logger.Info(fmt.Sprintf("TTS发送(%s): \"%s\" (索引:%d，时长:%f，帧数:%d)", h.serverAudioFormat, text, textIndex, duration, len(audioData)))
+	if textIndex == 1 {
+		now := time.Now()
+		spentTime := now.Sub(h.roundStartTime)
+		h.logger.Info(fmt.Sprintf("回复首句耗时 %s 第一句话【%s】, round: %d", spentTime, text, round))
+	}
+	h.logger.Info(fmt.Sprintf("TTS发送(%s): \"%s\" (索引:%d/%d，时长:%f，帧数:%d)", h.serverAudioFormat, text, textIndex, h.tts_last_text_index, duration, len(audioData)))
 
 	// 分时发送音频数据
 	if err := h.sendAudioFrames(audioData, text, textIndex, round); err != nil {
@@ -1233,10 +1252,12 @@ clearAudioQueue:
 
 // processTTSTask 处理单个TTS任务
 func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
+	ttsStartTime := time.Now()
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
 
 	if text == "" {
+		h.logger.Warn(fmt.Sprintf("收到空文本，无法合成语音, 索引: %d", textIndex))
 		return
 	}
 
@@ -1260,6 +1281,13 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		}
 		return
 	}
+
+	if textIndex == 1 {
+		now := time.Now()
+		ttsSpentTime := now.Sub(ttsStartTime)
+		h.logger.Info(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
+	}
+
 	h.audioMessagesQueue <- struct {
 		filepath  string
 		text      string
@@ -1270,12 +1298,17 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 
 // speakAndPlay 合成并播放语音
 func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
+	originText := text // 保存原始文本用于日志
+	text = utils.RemoveAllEmoji(text)
+	text = utils.RemoveMarkdownSyntax(text) // 移除Markdown语法
 	if text == "" {
-		return nil
+		h.logger.FormatWarn("SpeakAndPlay 收到空文本，无法合成语音, %d, text:%s.", textIndex, originText)
+		return errors.New("收到空文本，无法合成语音")
 	}
+
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("speakAndPlay 服务端语音停止, 不再发送音频数据：%s", text))
-		return nil
+		return errors.New("服务端语音已停止，无法合成语音")
 	}
 	// 将任务加入队列，不阻塞当前流程
 	h.ttsQueue <- struct {
@@ -1329,17 +1362,7 @@ func (h *ConnectionHandler) sendSTTMessage(text string) error {
 func (h *ConnectionHandler) clearSpeakStatus() {
 	h.logger.Info("清除服务端讲话状态 ")
 	h.tts_last_text_index = -1
-	h.tts_first_text_index = -1
 	h.providers.asr.Reset() // 重置ASR状态
-}
-
-func (h *ConnectionHandler) recode_first_last_text(text string, text_index int) {
-	if h.tts_first_text_index == -1 {
-		h.logger.Info(fmt.Sprintf("大模型说出第一句话:%s", text))
-		h.tts_first_text_index = text_index
-	}
-
-	h.tts_last_text_index = text_index
 }
 
 // joinStrings 连接字符串切片
@@ -1349,24 +1372,6 @@ func joinStrings(strs []string) string {
 		result += s
 	}
 	return result
-}
-
-// splitAtLastPunctuation 在最后一个标点符号处分割文本
-func splitAtLastPunctuation(text string) (string, int) {
-	punctuations := []string{"。", "？", "！", "；", "："}
-	lastIndex := -1
-
-	for _, punct := range punctuations {
-		if idx := strings.LastIndex(text, punct); idx > lastIndex {
-			lastIndex = idx
-		}
-	}
-
-	if lastIndex == -1 {
-		return "", 0
-	}
-
-	return text[:lastIndex+len("。")], lastIndex + len("。")
 }
 
 // sendHelloMessage 发送欢迎消息
@@ -1632,10 +1637,12 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 		currentText := fullText[processedChars:]
 
 		// 按标点符号分割
-		if segment, chars := splitAtLastPunctuation(currentText); chars > 0 {
+		if segment, chars := utils.SplitAtLastPunctuation(currentText); chars > 0 {
 			textIndex++
-			h.recode_first_last_text(segment, textIndex)
-			h.SpeakAndPlay(segment, textIndex, round)
+			err := h.SpeakAndPlay(segment, textIndex, round)
+			if err == nil {
+				h.tts_last_text_index = textIndex
+			}
 			processedChars += chars
 		}
 	}
@@ -1644,8 +1651,10 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	remainingText := joinStrings(responseMessage)[processedChars:]
 	if remainingText != "" {
 		textIndex++
-		h.recode_first_last_text(remainingText, textIndex)
-		h.SpeakAndPlay(remainingText, textIndex, round)
+		err := h.SpeakAndPlay(remainingText, textIndex, round)
+		if err == nil {
+			h.tts_last_text_index = textIndex
+		}
 	}
 
 	// 获取完整回复内容

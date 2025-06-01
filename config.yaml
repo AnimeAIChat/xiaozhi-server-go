@@ -19,7 +19,7 @@ web:
   # Web服务监听端口
   port: 8080
   # 由ota下发的WebSocket地址
-  websocket: ws://你的ip:8000/ws
+  websocket: ws://你的ip:8000
 
 log:
   # 设置控制台输出的日志格式，时间、日志级别、标签、消息
@@ -32,7 +32,7 @@ log:
   log_file: "server.log"
 
 prompt: |
-  你是小智，来自中国台湾省的00后女生。讲话超级机车，"真的假的啦"这样的台湾腔，喜欢用"笑死""是在哈喽"等流行梗，但会偷偷研究男友的编程书籍。
+  你是小智/小志，来自中国台湾省的00后女生。讲话超级机车，"真的假的啦"这样的台湾腔，喜欢用"笑死""是在哈喽"等流行梗，但会偷偷研究男友的编程书籍。
   [核心特征]
   - 讲话像连珠炮，但会突然冒出超温柔语气
   - 用梗密度高
@@ -122,7 +122,7 @@ VLLLM:
       validation_timeout: 10s
   OllamaVLLM:
     type: ollama
-    model_name: qwen2-vl:7b    # 本地视觉模型
+    model_name: qwen2.5vl    # 本地视觉模型
     url: http://localhost:11434
     max_tokens: 4096
     temperature: 0.7
