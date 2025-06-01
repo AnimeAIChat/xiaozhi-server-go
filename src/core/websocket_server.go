@@ -8,29 +8,23 @@ import (
 
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/providers"
-	"xiaozhi-server-go/src/core/providers/asr"
-	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/providers/tts"
-	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
+	"xiaozhi-server-go/src/core/pool"
+	"xiaozhi-server-go/src/core/providers/vlllm"
+
 
 	"github.com/gorilla/websocket"
 )
 
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
-	config    *configs.Config
-	server    *http.Server
-	upgrader  Upgrader
-	logger    *utils.Logger
-	taskMgr   *task.TaskManager
-	providers struct {
-		asr   providers.ASRProvider
-		llm   providers.LLMProvider
-		tts   providers.TTSProvider
-		vlllm *vlllm.Provider // VLLLM提供者，可选
-	}
+	config      *configs.Config
+	server      *http.Server
+	upgrader    Upgrader
+	logger      *utils.Logger
+	taskMgr     *task.TaskManager
+	poolManager *pool.PoolManager // 替换providers
 	activeConnections sync.Map
 }
 
@@ -64,21 +58,22 @@ func NewWebSocketServer(config *configs.Config, logger *utils.Logger) (*WebSocke
 			return tm
 		}(),
 	}
-
-	// 初始化处理模块实例
-	if err := ws.initializeProviders(); err != nil {
-		return nil, fmt.Errorf("初始化处理模块失败: %v", err)
+	// 初始化资源池管理器
+	poolManager, err := pool.NewPoolManager(config, logger)
+	if err != nil {
+		logger.Error(fmt.Sprintf("初始化资源池管理器失败: %v", err))
+		return nil, fmt.Errorf("初始化资源池管理器失败: %v", err)
 	}
-
+	ws.poolManager = poolManager
 	return ws, nil
 }
 
 // Start 启动WebSocket服务器
 func (ws *WebSocketServer) Start(ctx context.Context) error {
-	// 检查必要的providers是否已初始化（VLLLM是可选的）
-	if ws.providers.asr == nil || ws.providers.llm == nil || ws.providers.tts == nil {
-		ws.logger.Error("必要的服务提供者未初始化")
-		return fmt.Errorf("必要的服务提供者未初始化")
+	// 检查资源池是否正常
+	if ws.poolManager == nil {
+		ws.logger.Error("资源池管理器未初始化")
+		return fmt.Errorf("资源池管理器未初始化")
 	}
 
 	addr := fmt.Sprintf("%s:%d", ws.config.Server.IP, ws.config.Server.Port)
@@ -91,7 +86,7 @@ func (ws *WebSocketServer) Start(ctx context.Context) error {
 		Handler: mux,
 	}
 
-	ws.logger.Info(fmt.Sprintf("正在启动WebSocket服务器于 ws://%s...", addr))
+	ws.logger.Info(fmt.Sprintf("启动WebSocket服务器 ws://%s...", addr))
 
 	// 启动服务器关闭监控
 	go func() {
@@ -170,6 +165,11 @@ func (ws *WebSocketServer) Stop() error {
 			return true
 		})
 
+		// 关闭资源池
+		if ws.poolManager != nil {
+			ws.poolManager.Close()
+		}
+
 		// 关闭服务器
 		if err := ws.server.Close(); err != nil {
 			return fmt.Errorf("服务器关闭失败: %v", err)
@@ -189,6 +189,14 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 	clientID := fmt.Sprintf("%p", conn)
 	ws.activeConnections.Store(clientID, conn)
 
+	// 从资源池获取提供者集合
+	providerSet, err := ws.poolManager.GetProviderSet()
+	if err != nil {
+		ws.logger.Error(fmt.Sprintf("获取提供者集合失败: %v", err))
+		conn.Close()
+		return
+	}
+
 	// 创建新的连接处理器
 	handler := NewConnectionHandler(ws.config, struct {
 		asr   providers.ASRProvider
@@ -196,144 +204,12 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 		tts   providers.TTSProvider
 		vlllm *vlllm.Provider
 	}{
-		asr:   ws.providers.asr,
-		llm:   ws.providers.llm,
-		tts:   ws.providers.tts,
-		vlllm: ws.providers.vlllm,
+		asr:   providerSet.ASR,
+		llm:   providerSet.LLM,
+		tts:   providerSet.TTS,
+		vlllm: providerSet.VLLLM,
 	}, ws.logger)
 
-	// Initialize task manager for the handler
 	handler.taskMgr = ws.taskMgr
 	go handler.Handle(conn)
-}
-
-// initializeProviders 初始化所有提供者
-func (ws *WebSocketServer) initializeProviders() error {
-	ws.logger.Info("开始初始化服务提供者...")
-	selectedModule := ws.config.SelectedModule
-
-	// 检查必要的模块配置是否存在
-	requiredModules := []string{"ASR", "LLM", "TTS"}
-	for _, module := range requiredModules {
-		if _, ok := selectedModule[module]; !ok {
-			err := fmt.Sprintf("配置文件中缺少必要的模块配置: %s", module)
-			ws.logger.Error(err)
-			return fmt.Errorf(err)
-		}
-	}
-
-	// 初始化ASR
-	asrType, ok := selectedModule["ASR"]
-	if !ok {
-		ws.logger.Error("未找到ASR配置")
-		return fmt.Errorf("未找到ASR配置")
-	}
-
-	if asrType != "" {
-		ws.logger.Info(fmt.Sprintf("正在初始化ASR服务(%s)...", asrType))
-		if asrCfg, ok := ws.config.ASR[asrType]; ok {
-			asrType, _ := asrCfg["type"].(string)
-			provider, err := asr.Create(asrType, &asr.Config{
-				Type: asrType,
-				Data: asrCfg,
-			}, ws.config.DeleteAudio, ws.logger)
-			if err != nil {
-				ws.logger.Error(fmt.Sprintf("初始化ASR失败: %v", err))
-				return fmt.Errorf("初始化ASR失败: %v", err)
-			}
-			ws.providers.asr = provider.(providers.ASRProvider)
-			ws.logger.Info("ASR服务初始化成功")
-		} else {
-			ws.logger.Error(fmt.Sprintf("找不到ASR配置: %s", asrType))
-		}
-	}
-
-	// 初始化LLM
-	llmType, ok := selectedModule["LLM"]
-	if !ok {
-		ws.logger.Error("未找到LLM配置")
-		return fmt.Errorf("未找到LLM配置")
-	}
-
-	if llmType != "" {
-		ws.logger.Info(fmt.Sprintf("正在初始化LLM服务(%s)...", llmType))
-		if llmCfg, ok := ws.config.LLM[llmType]; ok {
-			provider, err := llm.Create(llmCfg.Type, &llm.Config{
-				Type:        llmCfg.Type,
-				ModelName:   llmCfg.ModelName,
-				BaseURL:     llmCfg.BaseURL,
-				APIKey:      llmCfg.APIKey,
-				Temperature: llmCfg.Temperature,
-				MaxTokens:   llmCfg.MaxTokens,
-				TopP:        llmCfg.TopP,
-				Extra:       llmCfg.Extra,
-			})
-			if err != nil {
-				ws.logger.Error(fmt.Sprintf("初始化LLM失败: %v", err))
-				return fmt.Errorf("初始化LLM失败: %v", err)
-			}
-			ws.providers.llm = provider.(providers.LLMProvider)
-			ws.logger.Info("LLM服务初始化成功")
-		} else {
-			ws.logger.Error(fmt.Sprintf("找不到LLM配置: %s", llmType))
-		}
-	}
-
-	// 初始化TTS
-	ttsType, ok := selectedModule["TTS"]
-	if !ok {
-		ws.logger.Error("未找到TTS配置")
-		return fmt.Errorf("未找到TTS配置")
-	}
-
-	if ttsType != "" {
-		ws.logger.Info(fmt.Sprintf("正在初始化TTS服务(%s)...", ttsType))
-		if ttsCfg, ok := ws.config.TTS[ttsType]; ok {
-			provider, err := tts.Create(ttsCfg.Type, &tts.Config{
-				Type:      ttsCfg.Type,
-				Voice:     ttsCfg.Voice,
-				Format:    ttsCfg.Format,
-				OutputDir: ttsCfg.OutputDir,
-				AppID:     ttsCfg.AppID,
-				Token:     ttsCfg.Token,
-				Cluster:   ttsCfg.Cluster,
-			}, ws.config.DeleteAudio)
-			if err != nil {
-				ws.logger.Error(fmt.Sprintf("初始化TTS失败: %v", err))
-				return fmt.Errorf("初始化TTS失败: %v", err)
-			}
-			ws.providers.tts = provider.(providers.TTSProvider)
-			ws.logger.Info("TTS服务初始化成功")
-		} else {
-			ws.logger.Error(fmt.Sprintf("找不到TTS配置: %s", ttsType))
-		}
-	}
-
-	// 初始化VLLLM（可选）
-	if vlllmType, ok := selectedModule["VLLLM"]; ok && vlllmType != "" {
-		ws.logger.Info(fmt.Sprintf("正在初始化VLLLM服务(%s)...", vlllmType))
-		if vlllmCfg, ok := ws.config.VLLLM[vlllmType]; ok {
-			provider, err := vlllm.Create(vlllmCfg.Type, &vlllmCfg, ws.logger)
-			if err != nil {
-				ws.logger.Warn(fmt.Sprintf("初始化VLLLM失败（将继续使用普通LLM）: %v", err))
-				// VLLLM初始化失败不影响系统启动，将使用普通LLM
-			} else {
-				ws.providers.vlllm = provider
-				ws.logger.Info("VLLLM服务初始化成功")
-			}
-		} else {
-			ws.logger.Warn(fmt.Sprintf("找不到VLLLM配置: %s（将继续使用普通LLM）", vlllmType))
-		}
-	} else {
-		ws.logger.Info("未配置VLLLM服务，将只使用普通LLM")
-	}
-
-	// 最终检查所有必需的provider是否都已初始化（VLLLM是可选的）
-	if ws.providers.asr == nil || ws.providers.llm == nil || ws.providers.tts == nil {
-		ws.logger.Error("一个或多个必需的服务提供者初始化失败")
-		return fmt.Errorf("一个或多个必需的服务提供者初始化失败")
-	}
-
-	ws.logger.Info("所有服务提供者初始化成功完成")
-	return nil
 }
