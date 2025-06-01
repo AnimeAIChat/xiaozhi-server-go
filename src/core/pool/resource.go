@@ -2,6 +2,7 @@ package pool
 
 import (
     "context"
+    "fmt"
     "sync"
     "time"
     "xiaozhi-server-go/src/core/utils"
@@ -78,7 +79,14 @@ func (p *ResourcePool) Get() (interface{}, error) {
         p.mutex.Unlock()
         return resource, nil
     default:
-        // 池中没有资源，直接创建
+        // 池中没有资源时，检查是否可以创建新资源
+        p.mutex.Lock()
+        if p.currentSize >= p.maxSize {
+            p.mutex.Unlock()
+            return nil, fmt.Errorf("资源池已达到最大容量 %d，无法创建新资源", p.maxSize)
+        }
+        p.currentSize++
+        p.mutex.Unlock()
         return p.factory.Create()
     }
 }
@@ -150,9 +158,58 @@ func (p *ResourcePool) Close() {
     }
 }
 
+// Put 将资源归还到池中
+func (p *ResourcePool) Put(resource interface{}) error {
+    if resource == nil {
+        return fmt.Errorf("不能将nil资源归还到池中")
+    }
+
+    // 检查池是否已关闭
+    select {
+    case <-p.ctx.Done():
+        // 池已关闭，直接销毁资源
+        return p.factory.Destroy(resource)
+    default:
+    }
+
+    select {
+    case p.pool <- resource:
+        p.mutex.Lock()
+        p.currentSize++
+        p.mutex.Unlock()
+        return nil
+    default:
+        // 池已满，销毁多余的资源
+        p.logger.Debug("资源池已满，销毁归还的资源")
+        return p.factory.Destroy(resource)
+    }
+}
+
+// Reset 重置资源状态（在归还前调用）
+func (p *ResourcePool) Reset(resource interface{}) error {
+    // 尝试调用资源的Reset方法
+    if resetter, ok := resource.(interface{ Reset() error }); ok {
+        return resetter.Reset()
+    }
+    return nil
+}
+
 // GetStats 获取池状态
 func (p *ResourcePool) GetStats() (available, total int) {
     p.mutex.RLock()
     defer p.mutex.RUnlock()
     return len(p.pool), p.currentSize
+}
+
+// GetDetailedStats 获取详细的池状态
+func (p *ResourcePool) GetDetailedStats() map[string]int {
+    p.mutex.RLock()
+    defer p.mutex.RUnlock()
+    return map[string]int{
+        "available": len(p.pool),
+        "total":     p.currentSize,
+        "max":       p.maxSize,
+        "min":       p.minSize,
+        "in_use":    p.currentSize - len(p.pool),
+    }
 }

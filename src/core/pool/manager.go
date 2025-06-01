@@ -166,6 +166,76 @@ func (pm *PoolManager) Close() {
     }
 }
 
+// ReturnProviderSet 归还提供者集合到池中
+func (pm *PoolManager) ReturnProviderSet(set *ProviderSet) error {
+    if set == nil {
+        return fmt.Errorf("提供者集合为空，无法归还")
+    }
+
+    var errs []error
+
+    // 归还ASR提供者
+    if set.ASR != nil && pm.asrPool != nil {
+        // 重置资源状态
+        if err := pm.asrPool.Reset(set.ASR); err != nil {
+            pm.logger.Warn("重置ASR资源状态失败: %v", err)
+        }
+        // 归还到池中
+        if err := pm.asrPool.Put(set.ASR); err != nil {
+            errs = append(errs, fmt.Errorf("归还ASR提供者失败: %v", err))
+            pm.logger.Error("归还ASR提供者失败: %v", err)
+        } else {
+            pm.logger.Debug("ASR提供者已成功归还到池中")
+        }
+    }
+
+    // 归还LLM提供者
+    if set.LLM != nil && pm.llmPool != nil {
+        if err := pm.llmPool.Reset(set.LLM); err != nil {
+            pm.logger.Warn("重置LLM资源状态失败: %v", err)
+        }
+        if err := pm.llmPool.Put(set.LLM); err != nil {
+            errs = append(errs, fmt.Errorf("归还LLM提供者失败: %v", err))
+            pm.logger.Error("归还LLM提供者失败: %v", err)
+        } else {
+            pm.logger.Debug("LLM提供者已成功归还到池中")
+        }
+    }
+
+    // 归还TTS提供者
+    if set.TTS != nil && pm.ttsPool != nil {
+        if err := pm.ttsPool.Reset(set.TTS); err != nil {
+            pm.logger.Warn("重置TTS资源状态失败: %v", err)
+        }
+        if err := pm.ttsPool.Put(set.TTS); err != nil {
+            errs = append(errs, fmt.Errorf("归还TTS提供者失败: %v", err))
+            pm.logger.Error("归还TTS提供者失败: %v", err)
+        } else {
+            pm.logger.Debug("TTS提供者已成功归还到池中")
+        }
+    }
+
+    // 归还VLLLM提供者
+    if set.VLLLM != nil && pm.vlllmPool != nil {
+        if err := pm.vlllmPool.Reset(set.VLLLM); err != nil {
+            pm.logger.Warn("重置VLLLM资源状态失败: %v", err)
+        }
+        if err := pm.vlllmPool.Put(set.VLLLM); err != nil {
+            errs = append(errs, fmt.Errorf("归还VLLLM提供者失败: %v", err))
+            pm.logger.Error("归还VLLLM提供者失败: %v", err)
+        } else {
+            pm.logger.Debug("VLLLM提供者已成功归还到池中")
+        }
+    }
+
+    if len(errs) > 0 {
+        return fmt.Errorf("归还过程中发生多个错误: %v", errs)
+    }
+
+    pm.logger.Debug("所有提供者已成功归还到池中")
+    return nil
+}
+
 // GetStats 获取所有池的统计信息
 func (pm *PoolManager) GetStats() map[string]map[string]int {
     stats := make(map[string]map[string]int)
@@ -188,6 +258,29 @@ func (pm *PoolManager) GetStats() map[string]map[string]int {
     if pm.vlllmPool != nil {
         available, total := pm.vlllmPool.GetStats()
         stats["vlllm"] = map[string]int{"available": available, "total": total}
+    }
+    
+    return stats
+}
+
+// GetDetailedStats 获取所有池的详细统计信息
+func (pm *PoolManager) GetDetailedStats() map[string]map[string]int {
+    stats := make(map[string]map[string]int)
+    
+    if pm.asrPool != nil {
+        stats["asr"] = pm.asrPool.GetDetailedStats()
+    }
+    
+    if pm.llmPool != nil {
+        stats["llm"] = pm.llmPool.GetDetailedStats()
+    }
+    
+    if pm.ttsPool != nil {
+        stats["tts"] = pm.ttsPool.GetDetailedStats()
+    }
+    
+    if pm.vlllmPool != nil {
+        stats["vlllm"] = pm.vlllmPool.GetDetailedStats()
     }
     
     return stats
