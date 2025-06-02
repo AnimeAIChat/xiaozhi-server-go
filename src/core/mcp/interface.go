@@ -38,6 +38,9 @@ type MCPClient interface {
 
 	// IsReady 检查客户端是否已初始化完成并准备就绪
 	IsReady() bool
+
+	// ResetConnection 重置连接状态但保留客户端结构
+	ResetConnection() error
 }
 
 // 确保Client实现了MCPClient接口

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
@@ -16,6 +17,7 @@ type PoolManager struct {
 	llmPool   *ResourcePool
 	ttsPool   *ResourcePool
 	vlllmPool *ResourcePool
+	mcpPool   *ResourcePool
 	logger    *utils.Logger
 }
 
@@ -25,6 +27,7 @@ type ProviderSet struct {
 	LLM   providers.LLMProvider
 	TTS   providers.TTSProvider
 	VLLLM *vlllm.Provider
+	MCP   *mcp.Manager
 }
 
 // NewPoolManager 创建资源池管理器
@@ -114,6 +117,21 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 	}
 
+	// 初始化MCP池（总是初始化，因为MCP是核心功能）
+	logger.Info("开始初始化MCP资源池，请等待...")
+	mcpFactory := NewMCPFactory(config, logger)
+	if mcpFactory != nil {
+		mcpPool, err := NewResourcePool(mcpFactory, poolConfig, logger)
+		if err != nil {
+			return nil, fmt.Errorf("初始化MCP资源池失败: %v", err)
+		}
+		pm.mcpPool = mcpPool
+		_, cnt := mcpPool.GetStats()
+		logger.FormatInfo("MCP资源池初始化成功，数量：%d", cnt)
+	} else {
+		logger.Warn("创建MCP工厂失败，MCP功能将不可用")
+	}
+
 	return pm, nil
 }
 
@@ -153,6 +171,14 @@ func (pm *PoolManager) GetProviderSet() (*ProviderSet, error) {
 		}
 	}
 
+	if pm.mcpPool != nil {
+		mcpManager, err := pm.mcpPool.Get()
+		if err == nil {
+			// 直接转换，因为我们知道这是从 mcp 工厂创建的
+			set.MCP = mcpManager.(*mcp.Manager)
+		}
+	}
+
 	return set, nil
 }
 
@@ -169,6 +195,9 @@ func (pm *PoolManager) Close() {
 	}
 	if pm.vlllmPool != nil {
 		pm.vlllmPool.Close()
+	}
+	if pm.mcpPool != nil {
+		pm.mcpPool.Close()
 	}
 }
 
@@ -234,6 +263,19 @@ func (pm *PoolManager) ReturnProviderSet(set *ProviderSet) error {
 		}
 	}
 
+	// 归还MCP提供者
+	if set.MCP != nil && pm.mcpPool != nil {
+		if err := pm.mcpPool.Reset(set.MCP); err != nil {
+			pm.logger.Warn("重置MCP资源状态失败: %v", err)
+		}
+		if err := pm.mcpPool.Put(set.MCP); err != nil {
+			errs = append(errs, fmt.Errorf("归还MCP提供者失败: %v", err))
+			pm.logger.Error("归还MCP提供者失败: %v", err)
+		} else {
+			pm.logger.Debug("MCP提供者已成功归还到池中")
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("归还过程中发生多个错误: %v", errs)
 	}
@@ -264,6 +306,11 @@ func (pm *PoolManager) GetStats() map[string]map[string]int {
 	if pm.vlllmPool != nil {
 		available, total := pm.vlllmPool.GetStats()
 		stats["vlllm"] = map[string]int{"available": available, "total": total}
+	}
+
+	if pm.mcpPool != nil {
+		available, total := pm.mcpPool.GetStats()
+		stats["mcp"] = map[string]int{"available": available, "total": total}
 	}
 
 	return stats
@@ -311,6 +358,10 @@ func (pm *PoolManager) GetDetailedStats() map[string]map[string]int {
 
 	if pm.vlllmPool != nil {
 		stats["vlllm"] = pm.vlllmPool.GetDetailedStats()
+	}
+
+	if pm.mcpPool != nil {
+		stats["mcp"] = pm.mcpPool.GetDetailedStats()
 	}
 
 	return stats

@@ -272,3 +272,20 @@ func (c *Client) IsReady() bool {
 	defer c.mu.RUnlock()
 	return c.ready
 }
+
+// ResetConnection 重置连接状态
+func (c *Client) ResetConnection() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 保留工具信息，只重置连接状态
+	c.ready = false
+
+	// 如果有活跃连接，优雅关闭
+	if c.useStdioClient && c.stdioClient != nil {
+		// 不完全关闭，只标记为未就绪
+		// 在下次Start时会重新建立连接
+	}
+
+	return nil
+}
