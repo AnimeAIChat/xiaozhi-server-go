@@ -25,6 +25,7 @@ const (
 type XiaoZhiMCPClient struct {
 	logger     *utils.Logger
 	conn       Conn
+	sessionID  string // 会话ID，用于标识连接
 	tools      []Tool
 	ready      bool
 	mu         sync.RWMutex
@@ -38,10 +39,11 @@ type XiaoZhiMCPClient struct {
 }
 
 // NewXiaoZhiMCPClient 创建一个新的MCP客户端
-func NewXiaoZhiMCPClient(logger *utils.Logger, conn Conn) *XiaoZhiMCPClient {
+func NewXiaoZhiMCPClient(logger *utils.Logger, conn Conn, sessionID string) *XiaoZhiMCPClient {
 	return &XiaoZhiMCPClient{
 		logger:      logger,
 		conn:        conn,
+		sessionID:   sessionID,
 		tools:       make([]Tool, 0),
 		ready:       false,
 		callResults: make(map[int]chan interface{}),
@@ -156,7 +158,8 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 
 	// 构造工具调用请求
 	mcpMessage := map[string]interface{}{
-		"type": "mcp",
+		"type":       "mcp",
+		"session_id": c.sessionID, // 使用连接的session_id
 		"payload": map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      id,
@@ -240,7 +243,8 @@ func (c *XiaoZhiMCPClient) IsReady() bool {
 func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
 	// 构造MCP初始化消息
 	mcpMessage := map[string]interface{}{
-		"type": "mcp",
+		"type":       "mcp",
+		"session_id": c.sessionID,
 		"payload": map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      mcpInitializeID,
@@ -274,7 +278,8 @@ func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
 func (c *XiaoZhiMCPClient) SendMCPToolsListRequest() error {
 	// 构造MCP工具列表请求
 	mcpMessage := map[string]interface{}{
-		"type": "mcp",
+		"type":       "mcp",
+		"session_id": c.sessionID,
 		"payload": map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      mcpToolsListID, // 使用新的ID
@@ -295,7 +300,8 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListRequest() error {
 func (c *XiaoZhiMCPClient) SendMCPToolsListContinueRequest(cursor string) error {
 	// 构造MCP工具列表请求
 	mcpMessage := map[string]interface{}{
-		"type": "mcp",
+		"type":       "mcp",
+		"session_id": c.sessionID,
 		"payload": map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      mcpToolsListID, // 使用相同的ID
@@ -452,7 +458,8 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 func (c *XiaoZhiMCPClient) SendMCPToolCallRequest(toolName string, arguments map[string]interface{}) error {
 	// 构造MCP工具调用请求
 	mcpMessage := map[string]interface{}{
-		"type": "mcp",
+		"type":       "mcp",
+		"session_id": c.sessionID,
 		"payload": map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      mcpToolCallID, // 使用新的ID，与前面的请求区分
