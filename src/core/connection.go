@@ -208,44 +208,6 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	}
 }
 
-// handleMessage 处理接收到的消息
-func (h *ConnectionHandler) handleMessage(messageType int, message []byte) error {
-	switch messageType {
-	case 1: // 文本消息
-		h.clientTextQueue <- string(message)
-		return nil
-	case 2: // 二进制消息（音频数据）
-		if h.clientAudioFormat == "pcm" {
-			// 直接将PCM数据放入队列
-			h.clientAudioQueue <- message
-		} else if h.clientAudioFormat == "opus" {
-			// 检查是否初始化了opus解码器
-			if h.opusDecoder != nil {
-				// 解码opus数据为PCM
-				decodedData, err := h.opusDecoder.Decode(message)
-				if err != nil {
-					h.logger.Error(fmt.Sprintf("解码Opus音频失败: %v", err))
-					// 即使解码失败，也尝试将原始数据传递给ASR处理
-					h.clientAudioQueue <- message
-				} else {
-					// 解码成功，将PCM数据放入队列
-					h.logger.Debug(fmt.Sprintf("Opus解码成功: %d bytes -> %d bytes", len(message), len(decodedData)))
-					if len(decodedData) > 0 {
-						h.clientAudioQueue <- decodedData
-					}
-				}
-			} else {
-				// 没有解码器，直接传递原始数据
-				h.clientAudioQueue <- message
-			}
-		}
-		return nil
-	default:
-		h.logger.Error(fmt.Sprintf("未知的消息类型: %d", messageType))
-		return fmt.Errorf("未知的消息类型: %d", messageType)
-	}
-}
-
 // processClientTextMessagesCoroutine 处理文本消息队列
 func (h *ConnectionHandler) processClientTextMessagesCoroutine() {
 	for {
@@ -270,6 +232,17 @@ func (h *ConnectionHandler) processClientAudioMessagesCoroutine() {
 			if err := h.providers.asr.AddAudio(audioData); err != nil {
 				h.logger.Error(fmt.Sprintf("处理音频数据失败: %v", err))
 			}
+		}
+	}
+}
+
+func (h *ConnectionHandler) sendAudioMessageCoroutine() {
+	for {
+		select {
+		case <-h.stopChan:
+			return
+		case task := <-h.audioMessagesQueue:
+			h.sendAudioMessage(task.filepath, task.text, task.textIndex, task.round)
 		}
 	}
 }
@@ -308,119 +281,6 @@ func (h *ConnectionHandler) OnAsrResult(result string) bool {
 	return false
 }
 
-// processClientTextMessage 处理文本数据
-func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text string) error {
-	// 解析JSON消息
-	var msgJSON interface{}
-	if err := json.Unmarshal([]byte(text), &msgJSON); err != nil {
-		return h.conn.WriteMessage(1, []byte(text))
-	}
-
-	// 检查是否为整数类型
-	if _, ok := msgJSON.(float64); ok {
-		return h.conn.WriteMessage(1, []byte(text))
-	}
-
-	// 解析为map类型处理具体消息
-	msgMap, ok := msgJSON.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("消息格式错误")
-	}
-
-	// 根据消息类型分发处理
-	msgType, ok := msgMap["type"].(string)
-	if !ok {
-		return fmt.Errorf("消息类型错误")
-	}
-
-	switch msgType {
-	case "hello":
-		return h.handleHelloMessage(msgMap)
-	case "abort":
-		return h.clientAbortChat()
-	case "listen":
-		return h.handleListenMessage(msgMap)
-	case "iot":
-		return h.handleIotMessage(msgMap)
-	case "chat":
-		return h.handleChatMessage(ctx, text)
-	case "vision":
-		return h.handleVisionMessage(msgMap)
-	case "image":
-		return h.handleImageMessage(ctx, msgMap)
-	case "mcp":
-		return h.mcpManager.HandleXiaoZhiMCPMessage(msgMap)
-	default:
-		return fmt.Errorf("未知的消息类型: %s", msgType)
-	}
-}
-
-func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) error {
-	// 处理视觉消息
-	cmd := msgMap["cmd"].(string)
-	if cmd == "gen_pic" {
-		text := msgMap["text"].(string)
-		params := map[string]interface{}{
-			"prompt":    text,
-			"size":      "1024x1024",
-			"quality":   "standard",
-			"api_key":   h.config.LLM["ChatGLMLLM"].APIKey,
-			"client_id": h.sessionID,
-		}
-		task, id := task.NewTask(task.TaskTypeImageGen, params, task.NewMessageCallback(h.conn, "vision", cmd))
-		h.taskMgr.SubmitTask(h.sessionID, task)
-		h.logger.Info(fmt.Sprintf("生成图片任务提交成功: %s, %s", text, id))
-	} else if cmd == "gen_video" {
-	} else if cmd == "read_img" {
-	}
-	return nil
-}
-
-// handleHelloMessage 处理欢迎消息
-// 客户端会上传语音格式和采样率等信息
-func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) error {
-	h.logger.Info("收到客户端欢迎消息: " + fmt.Sprintf("%v", msgMap))
-	// 获取客户端编码格式
-	if audioParams, ok := msgMap["audio_params"].(map[string]interface{}); ok {
-		if format, ok := audioParams["format"].(string); ok {
-			h.logger.Info("客户端音频格式: " + format)
-			h.clientAudioFormat = format
-			if format == "pcm" {
-				// 客户端使用PCM格式，服务端也使用PCM格式
-				h.serverAudioFormat = "pcm"
-				h.sendHelloMessage()
-			}
-		}
-		if sampleRate, ok := audioParams["sample_rate"].(float64); ok {
-			h.logger.Info("客户端采样率: " + fmt.Sprintf("%d", int(sampleRate)))
-			h.clientAudioSampleRate = int(sampleRate)
-		}
-		if channels, ok := audioParams["channels"].(float64); ok {
-			h.logger.Info("客户端声道数: " + fmt.Sprintf("%d", int(channels)))
-			h.clientAudioChannels = int(channels)
-		}
-		if frameDuration, ok := audioParams["frame_duration"].(float64); ok {
-			h.logger.Info("客户端帧时长: " + fmt.Sprintf("%d", int(frameDuration)))
-			h.clientAudioFrameDuration = int(frameDuration)
-		}
-	}
-
-	h.closeOpusDecoder()
-	// 初始化opus解码器
-	opusDecoder, err := utils.NewOpusDecoder(&utils.OpusDecoderConfig{
-		SampleRate:  h.clientAudioSampleRate, // 客户端使用24kHz采样率
-		MaxChannels: h.clientAudioChannels,   // 单声道音频
-	})
-	if err != nil {
-		h.logger.Error(fmt.Sprintf("初始化Opus解码器失败: %v", err))
-	} else {
-		h.opusDecoder = opusDecoder
-		h.logger.Info("Opus解码器初始化成功")
-	}
-
-	return nil
-}
-
 // clientAbortChat 处理中止消息
 func (h *ConnectionHandler) clientAbortChat() error {
 	h.logger.Info("收到客户端中止消息，停止语音识别")
@@ -428,189 +288,6 @@ func (h *ConnectionHandler) clientAbortChat() error {
 	h.sendTTSMessage("stop", "", 0)
 	h.clearSpeakStatus()
 	return nil
-}
-
-// handleListenMessage 处理语音相关消息
-func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) error {
-
-	// 处理state参数
-	state, ok := msgMap["state"].(string)
-	if !ok {
-		return fmt.Errorf("listen消息缺少state参数")
-	}
-
-	// 处理mode参数
-	if mode, ok := msgMap["mode"].(string); ok {
-		h.clientListenMode = mode
-		h.logger.Info(fmt.Sprintf("客户端拾音模式：%s， %s", h.clientListenMode, state))
-		h.providers.asr.SetListener(h)
-	}
-
-	switch state {
-	case "start":
-		if h.client_asr_text != "" && h.clientListenMode == "manual" {
-			h.clientAbortChat()
-		}
-		h.clientVoiceStop = false
-		h.client_asr_text = ""
-	case "stop":
-		h.clientVoiceStop = true
-		h.logger.Info("客户端停止语音识别")
-	case "detect":
-		// 检查是否包含图片数据
-		imageBase64, hasImage := msgMap["image"].(string)
-		text, hasText := msgMap["text"].(string)
-
-		if hasImage && imageBase64 != "" {
-			// 包含图片数据，使用VLLLM处理
-			h.logger.Info("检测到客户端发送的图片数据，使用VLLLM处理", map[string]interface{}{
-				"has_text":     hasText,
-				"text_length":  len(text),
-				"image_length": len(imageBase64),
-			})
-
-			// 如果没有文本，提供默认提示
-			if !hasText || text == "" {
-				text = "请描述这张图片"
-			}
-
-			// 构造图片数据结构
-			imageData := image.ImageData{
-				Data:   imageBase64,
-				Format: "jpg", // 默认格式，实际格式会在验证时自动检测
-			}
-
-			// 调用图片处理逻辑
-			return h.handleImageWithText(context.Background(), imageData, text)
-
-		} else if hasText && text != "" {
-			// 只有文本，使用普通LLM处理
-			h.logger.Info("检测到纯文本消息，使用LLM处理", map[string]interface{}{
-				"text": text,
-			})
-			return h.handleChatMessage(context.Background(), text)
-		} else {
-			// 既没有图片也没有文本
-			h.logger.Warn("detect消息既没有text也没有image参数")
-			return fmt.Errorf("detect消息缺少text或image参数")
-		}
-	}
-	return nil
-}
-
-// handleImageWithText 处理包含图片和文本的消息
-func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData image.ImageData, text string) error {
-	// 增加对话轮次
-	h.talkRound++
-	currentRound := h.talkRound
-	h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
-
-	// 判断是否需要验证
-	if h.isNeedAuth() {
-		if err := h.checkAndBroadcastAuthCode(); err != nil {
-			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
-			return err
-		}
-		h.logger.Info("设备未认证，等待管理员认证")
-		return nil
-	}
-
-	// 检查是否有VLLLM Provider
-	if h.providers.vlllm == nil {
-		h.logger.Warn("未配置VLLLM服务，图片消息将降级为文本处理")
-		return h.handleChatMessage(ctx, text+" (注：无法处理图片，仅处理文本)")
-	}
-
-	h.logger.Info("开始处理图片+文本消息", map[string]interface{}{
-		"text":        text,
-		"has_data":    imageData.Data != "",
-		"data_length": len(imageData.Data),
-	})
-
-	// 立即发送STT消息
-	err := h.sendSTTMessage(text)
-	if err != nil {
-		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
-		return fmt.Errorf("发送STT消息失败: %v", err)
-	}
-
-	// 发送TTS开始状态
-	if err := h.sendTTSMessage("start", "", 0); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
-		return fmt.Errorf("发送TTS开始状态失败: %v", err)
-	}
-
-	// 立即给用户语音反馈，提升用户体验
-	immediateResponse := "正在识别图片请稍等，这就为你分析"
-	h.logger.Info("立即播放图片识别提示音", map[string]interface{}{
-		"response": immediateResponse,
-	})
-
-	// 重置语音状态，确保能够播放提示音
-	atomic.StoreInt32(&h.serverVoiceStop, 0)
-
-	// 立即合成并播放提示音（使用索引0确保优先播放）
-	if err := h.SpeakAndPlay(immediateResponse, 0, currentRound); err != nil {
-		h.logger.Error(fmt.Sprintf("播放图片识别提示音失败: %v", err))
-	}
-
-	// 发送思考状态的情绪
-	if err := h.sendEmotionMessage("thinking"); err != nil {
-		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
-		return fmt.Errorf("发送情绪消息失败: %v", err)
-	}
-
-	// 添加用户消息到对话历史（包含图片信息的描述）
-	userMessage := fmt.Sprintf("%s [用户发送了一张图片]", text)
-	h.dialogueManager.Put(chat.Message{
-		Role:    "user",
-		Content: userMessage,
-	})
-
-	// 获取对话历史（排除当前图片消息）
-	messages := make([]providers.Message, 0)
-	for _, msg := range h.dialogueManager.GetLLMDialogue() {
-		if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张图片]") {
-			continue
-		}
-		messages = append(messages, providers.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	// 使用VLLLM处理图片消息
-	return h.genResponseByVLLM(ctx, messages, imageData, text, currentRound)
-}
-
-// handleIotMessage 处理IOT设备消息
-func (h *ConnectionHandler) handleIotMessage(msgMap map[string]interface{}) error {
-	if descriptors, ok := msgMap["descriptors"].([]interface{}); ok {
-		// 处理设备描述符
-		// 这里需要实现具体的IOT设备描述符处理逻辑
-		h.logger.Info(fmt.Sprintf("收到IOT设备描述符：%v", descriptors))
-	}
-	if states, ok := msgMap["states"].([]interface{}); ok {
-		// 处理设备状态
-		// 这里需要实现具体的IOT设备状态处理逻辑
-		h.logger.Info(fmt.Sprintf("收到IOT设备状态：%v", states))
-	}
-	return nil
-}
-
-// sendEmotionMessage 发送情绪消息
-func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
-	data := map[string]interface{}{
-		"type":       "llm",
-		"text":       utils.GetEmotionEmoji(emotion),
-		"emotion":    emotion,
-		"session_id": h.sessionID,
-	}
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("序列化情绪消息失败: %v", err)
-	}
-	return h.conn.WriteMessage(1, jsonData)
 }
 
 // handleChatMessage 处理聊天消息
@@ -809,7 +486,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				responseMessage = append(responseMessage, content)
 			}
 			// 处理分段
-			fullText := joinStrings(responseMessage)
+			fullText := utils.JoinStrings(responseMessage)
 			currentText := fullText[processedChars:]
 
 			// 按标点符号分割
@@ -837,7 +514,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	if toolCallFlag {
 		bHasError := false
 		if functionID == "" {
-			a := extract_json_from_string(contentArguments)
+			a := utils.Extract_json_from_string(contentArguments)
 			if a != nil {
 				functionName = a["name"].(string)
 				functionArguments = a["arguments"].(string)
@@ -883,7 +560,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}
 
 	// 处理剩余文本
-	remainingText := joinStrings(responseMessage)[processedChars:]
+	remainingText := utils.JoinStrings(responseMessage)[processedChars:]
 	if remainingText != "" {
 		textIndex++
 		h.logger.Info(fmt.Sprintf("LLM回复分段[剩余文本]: %s, index: %d, round:%d", remainingText, textIndex, round))
@@ -894,7 +571,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}
 
 	// 分析回复并发送相应的情绪
-	content := joinStrings(responseMessage)
+	content := utils.JoinStrings(responseMessage)
 
 	// 添加助手回复到对话历史
 	h.dialogueManager.Put(chat.Message{
@@ -973,20 +650,6 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 	}
 }
 
-// extract_json_from_string 提取字符串中的 JSON 部分
-func extract_json_from_string(input string) map[string]interface{} {
-	pattern := `(\{.*\})`
-	re := regexp.MustCompile(pattern)
-	matches := re.FindStringSubmatch(input)
-	if len(matches) > 1 {
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(matches[1]), &result); err == nil {
-			return result
-		}
-	}
-	return nil
-}
-
 // isNeedAuth 判断是否需要验证
 func (h *ConnectionHandler) isNeedAuth() bool {
 	if !h.config.Server.Auth.Enabled {
@@ -1012,226 +675,6 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 			h.processTTSTask(task.text, task.textIndex, task.round)
 		}
 	}
-}
-
-func (h *ConnectionHandler) sendAudioMessageCoroutine() {
-	for {
-		select {
-		case <-h.stopChan:
-			return
-		case task := <-h.audioMessagesQueue:
-			h.sendAudioMessage(task.filepath, task.text, task.textIndex, task.round)
-		}
-	}
-}
-
-func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
-	if len(filepath) == 0 {
-		return
-	}
-	// 检查轮次
-	if round != h.talkRound {
-		h.logger.Info(fmt.Sprintf("sendAudioMessage: 跳过过期轮次的音频: 任务轮次=%d, 当前轮次=%d, 文本=%s",
-			round, h.talkRound, text))
-		// 即使跳过，也要根据配置删除音频文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除跳过的音频文件失败: %v", err))
-			} else {
-				h.logger.Info(fmt.Sprintf("已删除跳过的音频文件: %s", filepath))
-			}
-		}
-		return
-	}
-
-	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
-		h.logger.Info(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", text))
-		// 服务端语音停止时也要根据配置删除音频文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除停止的音频文件失败: %v", err))
-			} else {
-				h.logger.Info(fmt.Sprintf("已删除停止的音频文件: %s", filepath))
-			}
-		}
-		return
-	}
-
-	defer func() {
-		// 音频发送完成后，根据配置决定是否删除文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
-			} else {
-				h.logger.Debug(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
-			}
-		}
-
-		h.logger.Info(fmt.Sprintf("TTS音频发送完成: %s, 索引: %d/%d", text, textIndex, h.tts_last_text_index))
-		if textIndex == h.tts_last_text_index {
-			h.sendTTSMessage("stop", "", textIndex)
-			h.clearSpeakStatus()
-		}
-	}()
-
-	var audioData [][]byte
-	var duration float64
-	var err error
-
-	// 使用TTS提供者的方法将音频转为Opus格式
-	if h.serverAudioFormat == "pcm" {
-		h.logger.Info("服务端音频格式为PCM，直接发送")
-		audioData, duration, err = utils.AudioToPCMData(filepath)
-		if err != nil {
-			h.logger.Error(fmt.Sprintf("音频转PCM失败: %v", err))
-			return
-		}
-	} else if h.serverAudioFormat == "opus" {
-		audioData, duration, err = utils.AudioToOpusData(filepath)
-		if err != nil {
-			h.logger.Error(fmt.Sprintf("音频转Opus失败: %v", err))
-			return
-		}
-	}
-
-	// 发送TTS状态开始通知
-	if err := h.sendTTSMessage("sentence_start", text, textIndex); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
-		return
-	}
-
-	if textIndex == 1 {
-		now := time.Now()
-		spentTime := now.Sub(h.roundStartTime)
-		h.logger.Info(fmt.Sprintf("回复首句耗时 %s 第一句话【%s】, round: %d", spentTime, text, round))
-	}
-	h.logger.Info(fmt.Sprintf("TTS发送(%s): \"%s\" (索引:%d/%d，时长:%f，帧数:%d)", h.serverAudioFormat, text, textIndex, h.tts_last_text_index, duration, len(audioData)))
-
-	// 分时发送音频数据
-	if err := h.sendAudioFrames(audioData, text, textIndex, round); err != nil {
-		h.logger.Error(fmt.Sprintf("分时发送音频数据失败: %v", err))
-		return
-	}
-
-	// 发送TTS状态结束通知
-	if err := h.sendTTSMessage("sentence_end", text, textIndex); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS结束状态失败: %v", err))
-		return
-	}
-}
-
-// sendAudioFrames 分时发送音频帧，避免撑爆客户端缓冲区
-func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, textIndex int, round int) error {
-	if len(audioData) == 0 {
-		return nil
-	}
-
-	// 流控参数
-	frameDuration := time.Duration(h.serverAudioFrameDuration) * time.Millisecond // 帧时长，默认60ms
-	startTime := time.Now()
-	playPosition := 0 // 播放位置（毫秒）
-
-	// 预缓冲：发送前几帧，提升播放流畅度
-	preBufferFrames := 3
-	if len(audioData) < preBufferFrames {
-		preBufferFrames = len(audioData)
-	}
-
-	// 发送预缓冲帧
-	for i := 0; i < preBufferFrames; i++ {
-		// 检查是否被打断
-		if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-			h.logger.Info(fmt.Sprintf("音频发送被中断(预缓冲阶段): 帧=%d/%d, 文本=%s", i+1, preBufferFrames, text))
-			return nil
-		}
-
-		if err := h.conn.WriteMessage(2, audioData[i]); err != nil {
-			return fmt.Errorf("发送预缓冲音频帧失败: %v", err)
-		}
-		playPosition += h.serverAudioFrameDuration
-	}
-
-	// 发送剩余音频帧
-	remainingFrames := audioData[preBufferFrames:]
-	for i, chunk := range remainingFrames {
-		// 检查是否被打断或轮次变化
-		if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-			h.logger.Info(fmt.Sprintf("音频发送被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), text))
-			return nil
-		}
-
-		// 检查连接是否关闭
-		select {
-		case <-h.stopChan:
-			return nil
-		default:
-		}
-
-		// 计算预期发送时间
-		expectedTime := startTime.Add(time.Duration(playPosition) * time.Millisecond)
-		currentTime := time.Now()
-		delay := expectedTime.Sub(currentTime)
-
-		// 如果需要延迟，则等待
-		if delay > 0 {
-			// 使用可中断的延迟
-			checkInterval := frameDuration / 2 // 使用帧时长的一半作为检查间隔
-			if checkInterval < 10*time.Millisecond {
-				checkInterval = 10 * time.Millisecond // 最小10ms
-			}
-
-			select {
-			case <-time.After(delay):
-				// 正常延迟结束
-			case <-h.stopChan:
-				// 连接关闭
-				return nil
-			case <-time.After(checkInterval):
-				// 定期检查中断条件
-				if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-					h.logger.Info(fmt.Sprintf("音频发送在延迟中被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), text))
-					return nil
-				}
-				// 如果还需要继续延迟，重新计算剩余时间
-				newCurrentTime := time.Now()
-				remainingDelay := expectedTime.Sub(newCurrentTime)
-				if remainingDelay > 0 {
-					// 递归式等待剩余时间
-					for remainingDelay > 0 {
-						select {
-						case <-time.After(minDuration(remainingDelay, checkInterval)):
-							if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-								h.logger.Info(fmt.Sprintf("音频发送在延迟中被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), text))
-								return nil
-							}
-							newCurrentTime = time.Now()
-							remainingDelay = expectedTime.Sub(newCurrentTime)
-						case <-h.stopChan:
-							return nil
-						}
-					}
-				}
-			}
-		}
-
-		// 发送音频帧
-		if err := h.conn.WriteMessage(2, chunk); err != nil {
-			return fmt.Errorf("发送音频帧失败: %v", err)
-		}
-
-		playPosition += h.serverAudioFrameDuration
-	}
-
-	h.logger.Info(fmt.Sprintf("音频帧发送完成: 总帧数=%d, 总时长=%dms, 文本=%s", len(audioData), playPosition, text))
-	return nil
-}
-
-// 辅助函数：返回两个时间间隔中较小的一个
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // 服务端打断说话
@@ -1274,6 +717,16 @@ clearAudioQueue:
 
 // processTTSTask 处理单个TTS任务
 func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
+	filepath := ""
+	defer func() {
+		h.audioMessagesQueue <- struct {
+			filepath  string
+			text      string
+			round     int
+			textIndex int
+		}{filepath, text, round, textIndex}
+	}()
+
 	ttsStartTime := time.Now()
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
@@ -1310,12 +763,6 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		h.logger.Info(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
 
-	h.audioMessagesQueue <- struct {
-		filepath  string
-		text      string
-		round     int
-		textIndex int
-	}{filepath, text, round, textIndex}
 }
 
 // speakAndPlay 合成并播放语音
@@ -1332,6 +779,12 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 		h.logger.Info(fmt.Sprintf("speakAndPlay 服务端语音停止, 不再发送音频数据：%s", text))
 		return errors.New("服务端语音已停止，无法合成语音")
 	}
+
+	if len(text) > 255 {
+		h.logger.Warn(fmt.Sprintf("文本过长，超过255字符限制，无法合成语音: %s", text))
+		return errors.New("文本过长，超过255字符限制，无法合成语音")
+	}
+
 	// 将任务加入队列，不阻塞当前流程
 	h.ttsQueue <- struct {
 		text      string
@@ -1342,79 +795,10 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 	return nil
 }
 
-func (h *ConnectionHandler) sendTTSMessage(state string, text string, textIndex int) error {
-	// 发送TTS状态结束通知
-	stateMsg := map[string]interface{}{
-		"type":        "tts",
-		"state":       state,
-		"session_id":  h.sessionID,
-		"text":        text,
-		"index":       textIndex,
-		"audio_codec": "opus", // 标识使用Opus编码
-	}
-	data, err := json.Marshal(stateMsg)
-	if err != nil {
-		return fmt.Errorf("序列化%s状态失败: %v", state, err)
-	}
-	if err := h.conn.WriteMessage(1, data); err != nil {
-		return fmt.Errorf("发送%s状态失败: %v", state, err)
-	}
-	return nil
-}
-
-func (h *ConnectionHandler) sendSTTMessage(text string) error {
-
-	// 立即发送 stt 消息
-	sttMsg := map[string]interface{}{
-		"type":       "stt",
-		"text":       text,
-		"session_id": h.sessionID,
-	}
-	jsonData, err := json.Marshal(sttMsg)
-	if err != nil {
-		return fmt.Errorf("序列化 STT 消息失败: %v", err)
-	}
-	if err := h.conn.WriteMessage(1, jsonData); err != nil {
-		return fmt.Errorf("发送 STT 消息失败: %v", err)
-	}
-
-	return nil
-}
-
 func (h *ConnectionHandler) clearSpeakStatus() {
 	h.logger.Info("清除服务端讲话状态 ")
 	h.tts_last_text_index = -1
 	h.providers.asr.Reset() // 重置ASR状态
-}
-
-// joinStrings 连接字符串切片
-func joinStrings(strs []string) string {
-	var result string
-	for _, s := range strs {
-		result += s
-	}
-	return result
-}
-
-// sendHelloMessage 发送欢迎消息
-func (h *ConnectionHandler) sendHelloMessage() error {
-	hello := make(map[string]interface{})
-	hello["type"] = "hello"
-	hello["version"] = 1
-	hello["transport"] = "websocket"
-	hello["session_id"] = h.sessionID
-	hello["audio_params"] = map[string]interface{}{
-		"format":         h.serverAudioFormat,
-		"sample_rate":    h.serverAudioSampleRate,
-		"channels":       h.serverAudioChannels,
-		"frame_duration": h.serverAudioFrameDuration,
-	}
-	data, err := json.Marshal(hello)
-	if err != nil {
-		return fmt.Errorf("序列化欢迎消息失败: %v", err)
-	}
-
-	return h.conn.WriteMessage(1, data)
 }
 
 func (h *ConnectionHandler) closeOpusDecoder() {
@@ -1520,107 +904,6 @@ func (h *ConnectionHandler) extractImageFormat(url string) string {
 	return "jpg"
 }
 
-// handleImageMessage 处理图片消息
-func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[string]interface{}) error {
-	// 增加对话轮次
-	h.talkRound++
-	currentRound := h.talkRound
-	h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
-
-	// 判断是否需要验证
-	if h.isNeedAuth() {
-		if err := h.checkAndBroadcastAuthCode(); err != nil {
-			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
-			return err
-		}
-		h.logger.Info("设备未认证，等待管理员认证")
-		return nil
-	}
-
-	// 检查是否有VLLLM Provider
-	if h.providers.vlllm == nil {
-		h.logger.Warn("未配置VLLLM服务，图片消息将被忽略")
-		return h.conn.WriteMessage(1, []byte("系统暂不支持图片处理功能"))
-	}
-
-	// 解析文本内容
-	text, ok := msgMap["text"].(string)
-	if !ok {
-		text = "请描述这张图片" // 默认提示
-	}
-
-	// 解析图片数据
-	imageDataMap, ok := msgMap["image_data"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("缺少图片数据")
-	}
-
-	imageData := image.ImageData{}
-	if url, ok := imageDataMap["url"].(string); ok {
-		imageData.URL = url
-	}
-	if data, ok := imageDataMap["data"].(string); ok {
-		imageData.Data = data
-	}
-	if format, ok := imageDataMap["format"].(string); ok {
-		imageData.Format = format
-	}
-
-	// 验证图片数据
-	if imageData.URL == "" && imageData.Data == "" {
-		return fmt.Errorf("图片数据为空")
-	}
-
-	h.logger.Info("收到图片消息", map[string]interface{}{
-		"text":        text,
-		"has_url":     imageData.URL != "",
-		"has_data":    imageData.Data != "",
-		"format":      imageData.Format,
-		"data_length": len(imageData.Data),
-	})
-
-	// 立即发送STT消息
-	err := h.sendSTTMessage(text)
-	if err != nil {
-		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
-		return fmt.Errorf("发送STT消息失败: %v", err)
-	}
-
-	// 发送TTS开始状态
-	if err := h.sendTTSMessage("start", "", 0); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
-		return fmt.Errorf("发送TTS开始状态失败: %v", err)
-	}
-
-	// 发送思考状态的情绪
-	if err := h.sendEmotionMessage("thinking"); err != nil {
-		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
-		return fmt.Errorf("发送情绪消息失败: %v", err)
-	}
-
-	// 添加用户消息到对话历史（包含图片信息的描述）
-	userMessage := fmt.Sprintf("%s [用户发送了一张%s格式的图片]", text, imageData.Format)
-	h.dialogueManager.Put(chat.Message{
-		Role:    "user",
-		Content: userMessage,
-	})
-
-	// 获取对话历史
-	messages := make([]providers.Message, 0)
-	for _, msg := range h.dialogueManager.GetLLMDialogue() {
-		// 排除包含图片信息的最后一条消息，因为我们要用VLLLM处理
-		if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张") {
-			continue
-		}
-		messages = append(messages, providers.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	return h.genResponseByVLLM(ctx, messages, imageData, text, currentRound)
-}
-
 // genResponseByVLLM 使用VLLLM处理包含图片的消息
 func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string, round int) error {
 	h.logger.Info("开始生成VLLLM回复", map[string]interface{}{
@@ -1658,7 +941,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 
 		responseMessage = append(responseMessage, response)
 		// 处理分段
-		fullText := joinStrings(responseMessage)
+		fullText := utils.JoinStrings(responseMessage)
 		currentText := fullText[processedChars:]
 
 		// 按标点符号分割
@@ -1673,7 +956,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	}
 
 	// 处理剩余文本
-	remainingText := joinStrings(responseMessage)[processedChars:]
+	remainingText := utils.JoinStrings(responseMessage)[processedChars:]
 	if remainingText != "" {
 		textIndex++
 		err := h.SpeakAndPlay(remainingText, textIndex, round)
@@ -1683,7 +966,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	}
 
 	// 获取完整回复内容
-	content := joinStrings(responseMessage)
+	content := utils.JoinStrings(responseMessage)
 
 	// 添加VLLLM回复到对话历史
 	h.dialogueManager.Put(chat.Message{
