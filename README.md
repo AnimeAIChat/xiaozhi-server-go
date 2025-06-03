@@ -68,6 +68,10 @@ http://xxx.x.x.x:8080/api/ota/
 
 表示客户端已经连接到ota服务，并获取了ws地址，后面请尽情体验
 
+## MCP配置使用
+
+参考MCP目录下的[README文件](https://github.com/AnimeAIChat/xiaozhi-server-go/blob/main/src/core/mcp/README.md)
+
 # 源码安装和部署
 
 ## 前置条件
