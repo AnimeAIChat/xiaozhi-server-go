@@ -68,6 +68,10 @@ http://xxx.x.x.x:8080/api/ota/
 
 表示客户端已经连接到ota服务，并获取了ws地址，后面请尽情体验
 
+## MCP配置使用
+
+参考MCP目录下的[README文件](https://github.com/AnimeAIChat/xiaozhi-server-go/blob/main/src/core/mcp/README.md)
+
 # 源码安装和部署
 
 ## 前置条件
@@ -128,6 +132,14 @@ go build -o xiaozhi-server.exe src/main.go
 .\xiaozhi-server.exe
 ```
 
-## Centos系统下安装指南
+## Centos系统下源码部署安装指南
 
 - [Centos 8 安装指南](Centos_Guide.md)
+
+# 贡献指南
+欢迎任何形式的贡献！如果您有好的想法或发现问题，请通过以下方式联系我们：
+
+<img src="https://github.com/user-attachments/assets/c23960b3-1f1c-4159-8d82-d181b1b96024" width="450" alt="微信群二维码">
+
+## 定制开发
+我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。

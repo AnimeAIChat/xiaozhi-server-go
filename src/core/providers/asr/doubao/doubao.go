@@ -548,18 +548,17 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) closeConnection() {
+	defer func() {
+		if r := recover(); r != nil {
+			// 静默处理panic，避免程序崩溃
+			p.logger.Error(fmt.Sprintf("关闭连接时发生错误: %v", r))
+		}
+	}()
+
 	if p.conn != nil {
-		_ = p.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-
-		// 尝试发送关闭消息
-		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "client closing connection")
-		_ = p.conn.WriteMessage(websocket.CloseMessage, closeMsg)
-
-		// 关闭连接
+		// 不发送关闭消息，直接关闭连接
 		_ = p.conn.Close()
 		p.conn = nil
-
-		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -568,6 +567,17 @@ func (p *Provider) sendAudioData(data []byte, isLast bool) error {
 	// 如果没有数据且不是最后一帧，不发送
 	if len(data) == 0 && !isLast {
 		return nil
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			// 捕获WebSocket写入时的panic，避免程序崩溃
+			p.logger.Error(fmt.Sprintf("发送音频数据时发生panic: %v", r))
+		}
+	}()
+
+	// 检查连接是否存在
+	if p.conn == nil {
+		return fmt.Errorf("WebSocket连接不存在")
 	}
 
 	var compressBuffer bytes.Buffer

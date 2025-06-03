@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 )
@@ -37,4 +38,27 @@ func RemoveMarkdownSyntax(text string) string {
 	cleaned := re.ReplaceAllString(text, " ")
 
 	return cleaned
+}
+
+// extract_json_from_string 提取字符串中的 JSON 部分
+func Extract_json_from_string(input string) map[string]interface{} {
+	pattern := `(\{.*\})`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(input)
+	if len(matches) > 1 {
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(matches[1]), &result); err == nil {
+			return result
+		}
+	}
+	return nil
+}
+
+// joinStrings 连接字符串切片
+func JoinStrings(strs []string) string {
+	var result string
+	for _, s := range strs {
+		result += s
+	}
+	return result
 }

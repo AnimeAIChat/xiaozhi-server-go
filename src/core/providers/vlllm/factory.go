@@ -50,7 +50,7 @@ func Create(name string, vlllmConfig *configs.VLLMConfig, logger *utils.Logger) 
 		return nil, fmt.Errorf("初始化VLLLM提供者失败: %v", err)
 	}
 
-	logger.Info("VLLLM提供者创建成功", map[string]interface{}{
+	logger.FormatDebug("VLLLM提供者创建成功 %v", map[string]interface{}{
 		"name":       name,
 		"type":       config.Type,
 		"model_name": config.ModelName,
