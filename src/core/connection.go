@@ -717,6 +717,16 @@ clearAudioQueue:
 
 // processTTSTask 处理单个TTS任务
 func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
+	filepath := ""
+	defer func() {
+		h.audioMessagesQueue <- struct {
+			filepath  string
+			text      string
+			round     int
+			textIndex int
+		}{filepath, text, round, textIndex}
+	}()
+
 	ttsStartTime := time.Now()
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
@@ -753,12 +763,6 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		h.logger.Info(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
 
-	h.audioMessagesQueue <- struct {
-		filepath  string
-		text      string
-		round     int
-		textIndex int
-	}{filepath, text, round, textIndex}
 }
 
 // speakAndPlay 合成并播放语音

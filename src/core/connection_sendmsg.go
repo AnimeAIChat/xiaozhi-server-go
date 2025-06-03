@@ -83,6 +83,24 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 }
 
 func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
+	bFinishSuccess := false
+	defer func() {
+		// 音频发送完成后，根据配置决定是否删除文件
+		if h.config.DeleteAudio && len(filepath) > 0 {
+			if err := os.Remove(filepath); err != nil {
+				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
+			} else {
+				h.logger.Debug(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
+			}
+		}
+
+		h.logger.Info(fmt.Sprintf("TTS音频发送任务结束(%t): %s, 索引: %d/%d", bFinishSuccess, text, textIndex, h.tts_last_text_index))
+		if textIndex == h.tts_last_text_index {
+			h.sendTTSMessage("stop", "", textIndex)
+			h.clearSpeakStatus()
+		}
+	}()
+
 	if len(filepath) == 0 {
 		return
 	}
@@ -113,23 +131,6 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		}
 		return
 	}
-
-	defer func() {
-		// 音频发送完成后，根据配置决定是否删除文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
-			} else {
-				h.logger.Debug(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
-			}
-		}
-
-		h.logger.Info(fmt.Sprintf("TTS音频发送完成: %s, 索引: %d/%d", text, textIndex, h.tts_last_text_index))
-		if textIndex == h.tts_last_text_index {
-			h.sendTTSMessage("stop", "", textIndex)
-			h.clearSpeakStatus()
-		}
-	}()
 
 	var audioData [][]byte
 	var duration float64
@@ -165,7 +166,7 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 	h.logger.Info(fmt.Sprintf("TTS发送(%s): \"%s\" (索引:%d/%d，时长:%f，帧数:%d)", h.serverAudioFormat, text, textIndex, h.tts_last_text_index, duration, len(audioData)))
 
 	// 分时发送音频数据
-	if err := h.sendAudioFrames(audioData, text, textIndex, round); err != nil {
+	if err := h.sendAudioFrames(audioData, text, round); err != nil {
 		h.logger.Error(fmt.Sprintf("分时发送音频数据失败: %v", err))
 		return
 	}
@@ -175,10 +176,12 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.logger.Error(fmt.Sprintf("发送TTS结束状态失败: %v", err))
 		return
 	}
+
+	bFinishSuccess = true
 }
 
 // sendAudioFrames 分时发送音频帧，避免撑爆客户端缓冲区
-func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, textIndex int, round int) error {
+func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, round int) error {
 	if len(audioData) == 0 {
 		return nil
 	}
