@@ -117,6 +117,13 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 	}
 
+	poolConfig = PoolConfig{
+		MinSize:       2,
+		MaxSize:       20,
+		RefillSize:    1,
+		CheckInterval: 30 * time.Second,
+	}
+
 	// 初始化MCP池（总是初始化，因为MCP是核心功能）
 	logger.Info("开始初始化MCP资源池，请等待...")
 	mcpFactory := NewMCPFactory(config, logger)

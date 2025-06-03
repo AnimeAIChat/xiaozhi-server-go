@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +34,7 @@ type ConnectionHandler struct {
 	config    *configs.Config
 	logger    *utils.Logger
 	conn      Conn
+	closeOnce sync.Once
 	taskMgr   *task.TaskManager
 	providers struct {
 		asr   providers.ASRProvider
@@ -1426,44 +1428,47 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 
 // Close 清理资源
 func (h *ConnectionHandler) Close() {
-	close(h.stopChan)
+	h.closeOnce.Do(func() {
 
-	// 清理待处理的音频文件
-	if h.config.DeleteAudio {
-		// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
-		for {
-			select {
-			case task := <-h.ttsQueue:
-				h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
-			default:
-				goto clearAudioQueue
-			}
-		}
+		close(h.stopChan)
 
-	clearAudioQueue:
-		// 清理音频消息队列中的文件
-		for {
-			select {
-			case task := <-h.audioMessagesQueue:
-				h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
-				if task.filepath != "" {
-					if err := os.Remove(task.filepath); err != nil {
-						h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
-					} else {
-						h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
-					}
+		// 清理待处理的音频文件
+		if h.config.DeleteAudio {
+			// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
+			for {
+				select {
+				case task := <-h.ttsQueue:
+					h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
+				default:
+					goto clearAudioQueue
 				}
-			default:
-				goto closeChannels
+			}
+
+		clearAudioQueue:
+			// 清理音频消息队列中的文件
+			for {
+				select {
+				case task := <-h.audioMessagesQueue:
+					h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
+					if task.filepath != "" {
+						if err := os.Remove(task.filepath); err != nil {
+							h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
+						} else {
+							h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
+						}
+					}
+				default:
+					goto closeChannels
+				}
 			}
 		}
-	}
 
-closeChannels:
-	close(h.clientAudioQueue)
-	close(h.clientTextQueue)
+	closeChannels:
+		close(h.clientAudioQueue)
+		close(h.clientTextQueue)
 
-	h.closeOpusDecoder()
+		h.closeOpusDecoder()
+	})
 }
 
 // detectImageURL 检测文本中的图片URL

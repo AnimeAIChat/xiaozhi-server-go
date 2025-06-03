@@ -139,8 +139,6 @@ func (m *Manager) preInitializeServers() error {
 			continue
 		}
 		m.clients[name] = client
-		clientTools := client.GetAvailableTools()
-		m.tools = append(m.tools, extractToolNames(clientTools)...)
 	}
 
 	m.isInitialized = true
@@ -194,7 +192,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 		m.bRegisteredXiaoZhiMCP = true
 	}
 
-	// 注册其他客户端工具
+	// 注册其他外部MCP客户端工具
 	for name, client := range m.clients {
 		if name != "xiaozhi" && client.IsReady() {
 			tools := client.GetAvailableTools()
@@ -203,6 +201,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 				if !m.isToolRegistered(toolName) {
 					m.funcHandler.RegisterFunction(toolName, tool)
 					m.tools = append(m.tools, toolName)
+					//m.logger.FormatInfo("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
 				}
 			}
 		}
@@ -217,21 +216,6 @@ func (m *Manager) isToolRegistered(toolName string) bool {
 		}
 	}
 	return false
-}
-
-// registerAllTools 注册所有已知工具
-func (m *Manager) registerAllTools() {
-	if m.funcHandler == nil {
-		return
-	}
-
-	for _, client := range m.clients {
-		tools := client.GetAvailableTools()
-		for _, tool := range tools {
-			toolName := tool.Function.Name
-			m.funcHandler.RegisterFunction(toolName, tool)
-		}
-	}
 }
 
 // 改进Reset方法
@@ -443,9 +427,18 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 
 	for _, tool := range tools {
 		toolName := tool.Function.Name
+
+		// 检查工具是否已注册
+		if m.isToolRegistered(toolName) {
+			continue // 跳过已注册的工具
+		}
+
 		m.tools = append(m.tools, toolName)
 		if m.funcHandler != nil {
-			m.funcHandler.RegisterFunction(toolName, tool)
+			if err := m.funcHandler.RegisterFunction(toolName, tool); err != nil {
+				m.logger.Error(fmt.Sprintf("注册工具失败: %s, 错误: %v", toolName, err))
+				continue
+			}
 			m.logger.FormatInfo("Registered tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}

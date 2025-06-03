@@ -18,7 +18,7 @@ func NewFunctionRegistry() *FunctionRegistry {
 
 func (fr *FunctionRegistry) RegisterFunction(name string, function openai.Tool) error {
 	if _, exists := fr.functions[name]; exists {
-		panic("Function already registered: " + name)
+		return fmt.Errorf("function already registered: %s", name)
 	}
 	fr.functions[name] = function
 	return nil
@@ -28,7 +28,7 @@ func (fr *FunctionRegistry) GetFunction(name string) (openai.Tool, error) {
 	if function, exists := fr.functions[name]; exists {
 		return function, nil
 	}
-	return openai.Tool{}, fmt.Errorf("Function not found: %s", name)
+	return openai.Tool{}, fmt.Errorf("function not found: %s", name)
 }
 
 func (fr *FunctionRegistry) GetAllFunctions() []openai.Tool {
@@ -52,7 +52,7 @@ func (fr *FunctionRegistry) UnregisterFunction(name string) error {
 	if _, exists := fr.functions[name]; exists {
 		delete(fr.functions, name)
 	} else {
-		panic("Function not found: " + name)
+		return fmt.Errorf("function not found: %s", name)
 	}
 	return nil
 }
