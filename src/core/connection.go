@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/mcp"
+	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/types"
@@ -32,6 +34,7 @@ type ConnectionHandler struct {
 	config    *configs.Config
 	logger    *utils.Logger
 	conn      Conn
+	closeOnce sync.Once
 	taskMgr   *task.TaskManager
 	providers struct {
 		asr   providers.ASRProvider
@@ -97,17 +100,11 @@ type ConnectionHandler struct {
 // NewConnectionHandler 创建新的连接处理器
 func NewConnectionHandler(
 	config *configs.Config,
-	providers struct {
-		asr   providers.ASRProvider
-		llm   providers.LLMProvider
-		tts   providers.TTSProvider
-		vlllm *vlllm.Provider
-	},
+	providerSet *pool.ProviderSet,
 	logger *utils.Logger,
 ) *ConnectionHandler {
 	handler := &ConnectionHandler{
 		config:           config,
-		providers:        providers,
 		logger:           logger,
 		clientListenMode: "auto",
 		stopChan:         make(chan struct{}),
@@ -133,6 +130,15 @@ func NewConnectionHandler(
 		serverAudioSampleRate:    24000,
 		serverAudioChannels:      1,
 		serverAudioFrameDuration: 60,
+	}
+
+	// 正确设置providers
+	if providerSet != nil {
+		handler.providers.asr = providerSet.ASR
+		handler.providers.llm = providerSet.LLM
+		handler.providers.tts = providerSet.TTS
+		handler.providers.vlllm = providerSet.VLLLM
+		handler.mcpManager = providerSet.MCP
 	}
 
 	// 初始化对话管理器
@@ -161,8 +167,24 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	go h.processTTSQueueCoroutine()            // 添加TTS队列处理协程
 	go h.sendAudioMessageCoroutine()           // 添加音频消息发送协程
 
-	h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn)
-	h.mcpManager.InitializeServers(context.Background())
+	// 优化后的MCP管理器处理
+	if h.mcpManager == nil {
+		h.logger.Info("从资源池未获取到MCP管理器，创建新的MCP管理器")
+		h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn)
+		// 只有在创建新实例时才需要完整初始化
+		if err := h.mcpManager.InitializeServers(context.Background()); err != nil {
+			h.logger.Error(fmt.Sprintf("初始化MCP服务器失败: %v", err))
+		}
+	} else {
+		h.logger.Info("使用从资源池获取的MCP管理器，快速绑定连接")
+		// 池化的管理器已经预初始化，只需要绑定连接
+		if err := h.mcpManager.BindConnection(conn, h.functionRegister); err != nil {
+			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
+			return
+		}
+		// 不需要重新初始化服务器，只需要确保连接相关的服务正常
+		h.logger.Info("MCP管理器连接绑定完成，跳过重复初始化")
+	}
 
 	// 主消息循环
 	for {
@@ -1406,44 +1428,47 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 
 // Close 清理资源
 func (h *ConnectionHandler) Close() {
-	close(h.stopChan)
+	h.closeOnce.Do(func() {
 
-	// 清理待处理的音频文件
-	if h.config.DeleteAudio {
-		// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
-		for {
-			select {
-			case task := <-h.ttsQueue:
-				h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
-			default:
-				goto clearAudioQueue
-			}
-		}
+		close(h.stopChan)
 
-	clearAudioQueue:
-		// 清理音频消息队列中的文件
-		for {
-			select {
-			case task := <-h.audioMessagesQueue:
-				h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
-				if task.filepath != "" {
-					if err := os.Remove(task.filepath); err != nil {
-						h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
-					} else {
-						h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
-					}
+		// 清理待处理的音频文件
+		if h.config.DeleteAudio {
+			// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
+			for {
+				select {
+				case task := <-h.ttsQueue:
+					h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
+				default:
+					goto clearAudioQueue
 				}
-			default:
-				goto closeChannels
+			}
+
+		clearAudioQueue:
+			// 清理音频消息队列中的文件
+			for {
+				select {
+				case task := <-h.audioMessagesQueue:
+					h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
+					if task.filepath != "" {
+						if err := os.Remove(task.filepath); err != nil {
+							h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
+						} else {
+							h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
+						}
+					}
+				default:
+					goto closeChannels
+				}
 			}
 		}
-	}
 
-closeChannels:
-	close(h.clientAudioQueue)
-	close(h.clientTextQueue)
+	closeChannels:
+		close(h.clientAudioQueue)
+		close(h.clientTextQueue)
 
-	h.closeOpusDecoder()
+		h.closeOpusDecoder()
+	})
 }
 
 // detectImageURL 检测文本中的图片URL

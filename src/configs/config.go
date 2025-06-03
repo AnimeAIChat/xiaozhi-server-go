@@ -50,6 +50,9 @@ type Config struct {
 	VLLLM map[string]VLLMConfig `yaml:"VLLLM"`
 
 	CMDExit []string `yaml:"CMD_exit"`
+
+	// 连通性检查配置
+	ConnectivityCheck ConnectivityCheckConfig `yaml:"connectivity_check"`
 }
 
 // VADConfig VAD配置结构
@@ -96,6 +99,19 @@ type SecurityConfig struct {
 	AllowedFormats    []string `yaml:"allowed_formats"`    // 允许的图片格式
 	EnableDeepScan    bool     `yaml:"enable_deep_scan"`   // 启用深度安全扫描
 	ValidationTimeout string   `yaml:"validation_timeout"` // 验证超时时间
+}
+
+// ConnectivityCheckConfig 连通性检查配置结构
+type ConnectivityCheckConfig struct {
+	Enabled       bool   `yaml:"enabled"`        // 是否启用连通性检查
+	Timeout       string `yaml:"timeout"`        // 检查超时时间
+	RetryAttempts int    `yaml:"retry_attempts"` // 重试次数
+	RetryDelay    string `yaml:"retry_delay"`    // 重试延迟
+	TestModes     struct {
+		ASRTestAudio  string `yaml:"asr_test_audio"`  // ASR测试音频文件
+		LLMTestPrompt string `yaml:"llm_test_prompt"` // LLM测试提示词
+		TTSTestText   string `yaml:"tts_test_text"`   // TTS测试文本
+	} `yaml:"test_modes"`
 }
 
 // VLLMConfig VLLLM配置结构（视觉语言大模型）

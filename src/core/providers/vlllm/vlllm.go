@@ -118,7 +118,7 @@ func (p *Provider) Initialize() error {
 		if p.config.BaseURL == "" {
 			p.config.BaseURL = "http://localhost:11434" // 默认Ollama地址
 		}
-		p.logger.Info("Ollama VLLLM初始化成功", map[string]interface{}{
+		p.logger.FormatDebug("Ollama VLLLM初始化成功 %v", map[string]interface{}{
 			"base_url": p.config.BaseURL,
 			"model":    p.config.ModelName,
 		})
@@ -127,7 +127,7 @@ func (p *Provider) Initialize() error {
 		return fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
 	}
 
-	p.logger.Info("VLLLM Provider初始化成功", map[string]interface{}{
+	p.logger.FormatDebug("VLLLM Provider初始化成功 %v", map[string]interface{}{
 		"type":       p.config.Type,
 		"model_name": p.config.ModelName,
 	})

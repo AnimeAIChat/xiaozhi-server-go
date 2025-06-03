@@ -49,6 +49,25 @@ func NewXiaoZhiMCPClient(logger *utils.Logger, conn Conn) *XiaoZhiMCPClient {
 	}
 }
 
+// SetConnection 设置新的连接
+func (c *XiaoZhiMCPClient) SetConnection(conn Conn) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.conn = conn
+}
+
+// ResetConnection 重置连接状态
+func (c *XiaoZhiMCPClient) ResetConnection() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 重置连接状态但保留工具注册
+	c.conn = nil
+	c.ready = false
+
+	return nil
+}
+
 // Start 启动MCP客户端
 func (c *XiaoZhiMCPClient) Start(ctx context.Context) error {
 	c.mu.Lock()
