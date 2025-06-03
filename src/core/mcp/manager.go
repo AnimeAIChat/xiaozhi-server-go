@@ -57,7 +57,7 @@ func extractToolNames(tools []go_openai.Tool) []string {
 // NewManager 创建一个新的MCP管理器
 func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn) *Manager {
 
-	projectDir := getProjectDir()
+	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -82,7 +82,7 @@ func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn)
 
 // NewManagerForPool 创建用于资源池的MCP管理器
 func NewManagerForPool(lg *utils.Logger) *Manager {
-	projectDir := getProjectDir()
+	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -252,17 +252,6 @@ func (m *Manager) Cleanup() error {
 	defer cancel()
 	m.CleanupAll(ctx)
 	return m.Reset()
-}
-
-// getProjectDir 获取项目根目录
-func getProjectDir() string {
-	// 实际实现中应该根据实际项目结构确定
-	// 这里简单返回当前工作目录
-	dir, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return dir
 }
 
 // LoadConfig 加载MCP服务配置
