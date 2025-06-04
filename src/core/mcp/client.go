@@ -133,13 +133,17 @@ func (c *Client) fetchTools(ctx context.Context) error {
 		// 添加获取到的工具
 		toolNames := ""
 		for _, tool := range tools.Tools {
+			required := tool.InputSchema.Required
+			if required == nil {
+				required = make([]string, 0)
+			}
 			c.tools = append(c.tools, Tool{
 				Name:        tool.Name,
 				Description: tool.Description,
 				InputSchema: ToolInputSchema{
 					Type:       tool.InputSchema.Type,
 					Properties: tool.InputSchema.Properties,
-					Required:   tool.InputSchema.Required,
+					Required:   required,
 				},
 			})
 			toolNames += fmt.Sprintf("%s, ", tool.Name)

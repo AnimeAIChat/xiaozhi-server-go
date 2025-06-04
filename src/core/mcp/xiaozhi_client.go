@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,9 @@ type XiaoZhiMCPClient struct {
 	callResults     map[int]chan interface{}
 	callResultsLock sync.Mutex
 	nextID          int
+
+	// 工具名称映射：sanitized name -> original name
+	toolNameMap map[string]string
 }
 
 // NewXiaoZhiMCPClient 创建一个新的MCP客户端
@@ -46,6 +50,7 @@ func NewXiaoZhiMCPClient(logger *utils.Logger, conn Conn) *XiaoZhiMCPClient {
 		ready:       false,
 		callResults: make(map[int]chan interface{}),
 		nextID:      1,
+		toolNameMap: make(map[string]string),
 	}
 }
 
@@ -100,17 +105,28 @@ func (c *XiaoZhiMCPClient) Stop() {
 	}
 }
 
-// HasTool 检查是否有指定名称的工具
+// HasTool 检查是否有指定名称的工具（支持sanitized名称）
 func (c *XiaoZhiMCPClient) HasTool(name string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// 首先检查原始名称
 	for _, tool := range c.tools {
 		if tool.Name == name {
 			return true
 		}
 	}
+
+	// 然后检查是否为sanitized名称
+	if _, exists := c.toolNameMap[name]; exists {
+		return true
+	}
+
 	return false
+}
+
+func sanitizeToolName(name string) string {
+	return strings.ReplaceAll(name, ".", "_")
 }
 
 // GetAvailableTools 获取所有可用工具
@@ -123,7 +139,7 @@ func (c *XiaoZhiMCPClient) GetAvailableTools() []openai.Tool {
 		result = append(result, openai.Tool{
 			Type: "function",
 			Function: &openai.FunctionDefinition{
-				Name:        tool.Name,
+				Name:        sanitizeToolName(tool.Name),
 				Description: tool.Description,
 				Parameters: map[string]interface{}{
 					"type":       tool.InputSchema.Type,
@@ -142,7 +158,11 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 		return nil, fmt.Errorf("MCP客户端尚未准备就绪")
 	}
 
-	if !c.HasTool(name) {
+	// 获取原始的工具名称
+	originalName := name
+	if mappedName, exists := c.toolNameMap[name]; exists {
+		originalName = mappedName
+	} else if !c.HasTool(name) {
 		return nil, fmt.Errorf("工具 %s 不存在", name)
 	}
 
@@ -162,7 +182,7 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 			"id":      id,
 			"method":  "tools/call",
 			"params": map[string]interface{}{
-				"name":      name,
+				"name":      originalName,
 				"arguments": args,
 			},
 		},
@@ -397,6 +417,8 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 									inputSchema.Required = append(inputSchema.Required, s)
 								}
 							}
+						} else {
+							inputSchema.Required = make([]string, 0) // 确保是空切片而不是nil
 						}
 					}
 
@@ -407,6 +429,9 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					}
 
 					c.tools = append(c.tools, newTool)
+					// 建立名称映射关系
+					sanitizedName := sanitizeToolName(name)
+					c.toolNameMap[sanitizedName] = name
 					c.logger.Debug(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
 				}
 

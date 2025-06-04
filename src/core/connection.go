@@ -420,8 +420,10 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	messages := make([]providers.Message, 0)
 	for _, msg := range h.dialogueManager.GetLLMDialogue() {
 		messages = append(messages, providers.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
+			Role:       msg.Role,
+			Content:    msg.Content,
+			ToolCalls:  msg.ToolCalls,
+			ToolCallID: msg.ToolCallID,
 		})
 	}
 
@@ -499,11 +501,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				} else {
 					h.logger.Info(fmt.Sprintf("LLM回复分段: %s, index: %d, round:%d", segment, textIndex, round))
 				}
-
+				h.tts_last_text_index = textIndex
 				err := h.SpeakAndPlay(segment, textIndex, round)
-				if err == nil {
-					h.tts_last_text_index = textIndex
-				} else {
+				if err != nil {
 					h.logger.Error(fmt.Sprintf("播放LLM回复分段失败: %v", err))
 				}
 				processedChars += chars
@@ -564,20 +564,20 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	if remainingText != "" {
 		textIndex++
 		h.logger.Info(fmt.Sprintf("LLM回复分段[剩余文本]: %s, index: %d, round:%d", remainingText, textIndex, round))
-		err := h.SpeakAndPlay(remainingText, textIndex, round)
-		if err == nil {
-			h.tts_last_text_index = textIndex
-		}
+		h.tts_last_text_index = textIndex
+		h.SpeakAndPlay(remainingText, textIndex, round)
 	}
 
 	// 分析回复并发送相应的情绪
 	content := utils.JoinStrings(responseMessage)
 
 	// 添加助手回复到对话历史
-	h.dialogueManager.Put(chat.Message{
-		Role:    "assistant",
-		Content: content,
-	})
+	if !toolCallFlag {
+		h.dialogueManager.Put(chat.Message{
+			Role:    "assistant",
+			Content: content,
+		})
+	}
 
 	return nil
 }
@@ -767,6 +767,15 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 
 // speakAndPlay 合成并播放语音
 func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
+	defer func() {
+		// 将任务加入队列，不阻塞当前流程
+		h.ttsQueue <- struct {
+			text      string
+			round     int
+			textIndex int
+		}{text, round, textIndex}
+	}()
+
 	originText := text // 保存原始文本用于日志
 	text = utils.RemoveAllEmoji(text)
 	text = utils.RemoveMarkdownSyntax(text) // 移除Markdown语法
@@ -777,20 +786,15 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("speakAndPlay 服务端语音停止, 不再发送音频数据：%s", text))
+		text = ""
 		return errors.New("服务端语音已停止，无法合成语音")
 	}
 
 	if len(text) > 255 {
 		h.logger.Warn(fmt.Sprintf("文本过长，超过255字符限制，无法合成语音: %s", text))
+		text = ""
 		return errors.New("文本过长，超过255字符限制，无法合成语音")
 	}
-
-	// 将任务加入队列，不阻塞当前流程
-	h.ttsQueue <- struct {
-		text      string
-		round     int
-		textIndex int
-	}{text, round, textIndex}
 
 	return nil
 }
@@ -947,10 +951,8 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 		// 按标点符号分割
 		if segment, chars := utils.SplitAtLastPunctuation(currentText); chars > 0 {
 			textIndex++
-			err := h.SpeakAndPlay(segment, textIndex, round)
-			if err == nil {
-				h.tts_last_text_index = textIndex
-			}
+			h.tts_last_text_index = textIndex
+			h.SpeakAndPlay(segment, textIndex, round)
 			processedChars += chars
 		}
 	}
@@ -959,10 +961,8 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	remainingText := utils.JoinStrings(responseMessage)[processedChars:]
 	if remainingText != "" {
 		textIndex++
-		err := h.SpeakAndPlay(remainingText, textIndex, round)
-		if err == nil {
-			h.tts_last_text_index = textIndex
-		}
+		h.tts_last_text_index = textIndex
+		h.SpeakAndPlay(remainingText, textIndex, round)
 	}
 
 	// 获取完整回复内容
