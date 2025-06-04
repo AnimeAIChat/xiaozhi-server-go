@@ -85,6 +85,10 @@ TTS:
     appid: "你的appid"
     token: 你的access_token
     cluster: 你的cluster
+  GoSherpaTTS:
+    type: gosherpa
+    cluster: "ws://127.0.0.1:8848/tts"
+    output_dir: "tmp/"
 
 # LLM配置
 LLM:

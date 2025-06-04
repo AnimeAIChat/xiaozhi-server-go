@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/hajimehoshi/go-mp3"
@@ -384,33 +385,44 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 
 // AudioToOpusData 将音频文件转换为Opus数据块
 func AudioToOpusData(audioFile string) ([][]byte, float64, error) {
-	// 先将MP3转为PCM
-	pcmData, duration, err := AudioToPCMData(audioFile)
-	if err != nil {
-		return nil, 0, fmt.Errorf("PCM转换失败: %v", err)
-	}
 
-	if len(pcmData) == 0 {
-		return nil, 0, fmt.Errorf("PCM转换结果为空")
-	}
-
-	// 打开MP3文件获取采样率
-	file, err := os.Open(audioFile)
-	if err != nil {
-		return nil, 0, fmt.Errorf("打开音频文件失败: %v", err)
-	}
-	defer file.Close()
-
-	// 检查MP3文件格式是否有效
-	_, err = mp3.NewDecoder(file)
-	if err != nil {
-		return nil, 0, fmt.Errorf("创建MP3解码器失败: %v", err)
-	}
+	var pcmData [][]byte
+	var err error
+	var duration float64
 
 	// 获取采样率 (固定使用24000Hz作为Opus编码的采样率)
 	// 如果采样率不是24000Hz，PCMSlicesToOpusData会处理重采样
 	opusSampleRate := 24000
 	channels := 1
+
+	if strings.HasSuffix(audioFile, ".mp3") {
+		// 先将MP3转为PCM
+		pcmData, duration, err = AudioToPCMData(audioFile)
+		if err != nil {
+			return nil, 0, fmt.Errorf("PCM转换失败: %v", err)
+		}
+
+		if len(pcmData) == 0 {
+			return nil, 0, fmt.Errorf("PCM转换结果为空")
+		}
+
+		// 打开MP3文件获取采样率
+		file, err := os.Open(audioFile)
+		if err != nil {
+			return nil, 0, fmt.Errorf("打开音频文件失败: %v", err)
+		}
+		defer file.Close()
+
+		// 检查MP3文件格式是否有效
+		_, err = mp3.NewDecoder(file)
+		if err != nil {
+			return nil, 0, fmt.Errorf("创建MP3解码器失败: %v", err)
+		}
+	} else {
+		var singlePcmData []byte
+		singlePcmData, err = ReadPCMDataFromWavFile(audioFile)
+		pcmData = [][]byte{singlePcmData}
+	}
 
 	// 将PCM转换为Opus
 	opusData, err := PCMSlicesToOpusData(pcmData, opusSampleRate, channels, 0)
