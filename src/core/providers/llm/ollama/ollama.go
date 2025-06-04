@@ -150,10 +150,33 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		// 转换消息格式
 		chatMessages := make([]openai.ChatCompletionMessage, len(messages))
 		for i, msg := range messages {
-			chatMessages[i] = openai.ChatCompletionMessage{
+			chatMessage := openai.ChatCompletionMessage{
 				Role:    msg.Role,
 				Content: msg.Content,
 			}
+
+			// 处理tool_call_id字段（tool消息必需）
+			if msg.ToolCallID != "" {
+				chatMessage.ToolCallID = msg.ToolCallID
+			}
+
+			// 处理tool_calls字段（assistant消息中的工具调用）
+			if len(msg.ToolCalls) > 0 {
+				openaiToolCalls := make([]openai.ToolCall, len(msg.ToolCalls))
+				for j, tc := range msg.ToolCalls {
+					openaiToolCalls[j] = openai.ToolCall{
+						ID:   tc.ID,
+						Type: openai.ToolType(tc.Type),
+						Function: openai.FunctionCall{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					}
+				}
+				chatMessage.ToolCalls = openaiToolCalls
+			}
+
+			chatMessages[i] = chatMessage
 		}
 
 		stream, err := p.client.CreateChatCompletionStream(
@@ -187,7 +210,7 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 				delta := response.Choices[0].Delta
 
 				// 处理工具调用
-				if delta.ToolCalls != nil && len(delta.ToolCalls) > 0 {
+				if len(delta.ToolCalls) > 0 {
 					toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
 					for i, tc := range delta.ToolCalls {
 						toolCalls[i] = types.ToolCall{
