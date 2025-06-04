@@ -66,6 +66,8 @@ func NewClient(config *Config, logger *utils.Logger) (*Client, error) {
 		}
 		c.stdioClient = stdioClient
 		c.useStdioClient = true
+	} else {
+		fmt.Println("Unsupported MCP client type, only stdio client is supported")
 	}
 
 	return c, nil

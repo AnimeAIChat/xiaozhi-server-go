@@ -120,22 +120,27 @@ func (m *Manager) preInitializeServers() error {
 		}
 
 		srvConfigMap, ok := srvConfig.(map[string]interface{})
+
 		if !ok {
+			m.logger.Warn(fmt.Sprintf("Invalid configuration format for server %s", name))
 			continue
 		}
 
 		// 创建并启动外部MCP客户端
 		clientConfig, err := convertConfig(srvConfigMap)
 		if err != nil {
+			m.logger.Error(fmt.Sprintf("Failed to convert config for server %s: %v", name, err))
 			continue
 		}
 
 		client, err := NewClient(clientConfig, m.logger)
 		if err != nil {
+			m.logger.Error(fmt.Sprintf("Failed to create MCP client for server %s: %v", name, err))
 			continue
 		}
 
 		if err := client.Start(context.Background()); err != nil {
+			m.logger.Error(fmt.Sprintf("Failed to start MCP client %s: %v", name, err))
 			continue
 		}
 		m.clients[name] = client

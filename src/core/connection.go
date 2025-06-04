@@ -433,6 +433,15 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 }
 
 func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message, round int) error {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error(fmt.Sprintf("genResponseByLLM发生panic: %v", r))
+			errorMsg := "抱歉，处理您的请求时发生了错误"
+			h.tts_last_text_index = 1 // 重置文本索引
+			h.SpeakAndPlay(errorMsg, 1, round)
+		}
+	}()
+
 	llmStartTime := time.Now()
 	h.logger.FormatInfo("开始生成LLM回复, round:%d 打印message", round)
 	for _, msg := range messages {
@@ -463,6 +472,14 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		content := response.Content
 		toolCall := response.ToolCalls
 
+		if response.Error != "" {
+			h.logger.Error(fmt.Sprintf("LLM响应错误: %s", response.Error))
+			errorMsg := "抱歉，服务暂时不可用，请稍后再试"
+			h.tts_last_text_index = 1 // 重置文本索引
+			h.SpeakAndPlay(errorMsg, 1, round)
+			return fmt.Errorf("LLM响应错误: %s", response.Error)
+		}
+
 		if content != "" {
 			// 累加content_arguments
 			contentArguments += content
@@ -486,11 +503,23 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		}
 
 		if content != "" {
+			if strings.Contains(content, "服务响应异常") {
+				h.logger.Error(fmt.Sprintf("检测到LLM服务异常: %s", content))
+				errorMsg := "抱歉，服务暂时不可用，请稍后再试"
+				h.tts_last_text_index = 1 // 重置文本索引
+				h.SpeakAndPlay(errorMsg, 1, round)
+				return fmt.Errorf("LLM服务异常")
+			}
+
 			if !toolCallFlag {
 				responseMessage = append(responseMessage, content)
 			}
 			// 处理分段
 			fullText := utils.JoinStrings(responseMessage)
+			if len(fullText) <= processedChars {
+				h.logger.Warn(fmt.Sprintf("文本处理异常: fullText长度=%d, processedChars=%d", len(fullText), processedChars))
+				continue
+			}
 			currentText := fullText[processedChars:]
 
 			// 按标点符号分割
@@ -562,12 +591,17 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}
 
 	// 处理剩余文本
-	remainingText := utils.JoinStrings(responseMessage)[processedChars:]
-	if remainingText != "" {
-		textIndex++
-		h.logger.Info(fmt.Sprintf("LLM回复分段[剩余文本]: %s, index: %d, round:%d", remainingText, textIndex, round))
-		h.tts_last_text_index = textIndex
-		h.SpeakAndPlay(remainingText, textIndex, round)
+	fullResponse := utils.JoinStrings(responseMessage)
+	if len(fullResponse) > processedChars {
+		remainingText := fullResponse[processedChars:]
+		if remainingText != "" {
+			textIndex++
+			h.logger.Info(fmt.Sprintf("LLM回复分段[剩余文本]: %s, index: %d, round:%d", remainingText, textIndex, round))
+			h.tts_last_text_index = textIndex
+			h.SpeakAndPlay(remainingText, textIndex, round)
+		}
+	} else {
+		h.logger.Info(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
 	}
 
 	// 分析回复并发送相应的情绪

@@ -192,7 +192,6 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 						}
 					}
 					chunk.ToolCalls = toolCalls
-					fmt.Println("openai tool calls:", chunk.ToolCalls)
 				}
 
 				responseChan <- chunk

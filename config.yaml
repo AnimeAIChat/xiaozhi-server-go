@@ -54,7 +54,7 @@ use_private_config: false
 # 选择使用的模块
 selected_module:
   ASR: DoubaoASR
-  TTS: DoubaoTTS
+  TTS: EdgeTTS
   LLM: OllamaLLM
   VLLLM: ChatGLMVLLM
 

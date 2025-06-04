@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -474,20 +475,55 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 		p.isStreaming = true
 		// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					p.logger.Error(fmt.Sprintf("流式识别协程发生错误: %v", r))
+				}
+				p.connMutex.Lock()
+				p.isStreaming = false // 标记流式识别结束
+				if p.conn != nil {
+					p.closeConnection()
+				}
+				p.connMutex.Unlock()
+			}()
+
 			for {
-				_, response, err := p.conn.ReadMessage()
-				if err != nil {
-					p.connMutex.Lock()
-					p.err = fmt.Errorf("读取响应失败: %v", err)
+				// 检查连接状态，避免在连接关闭后继续读取
+				p.connMutex.Lock()
+				if !p.isStreaming || p.conn == nil {
 					p.connMutex.Unlock()
 					return
+				}
+				conn := p.conn
+				p.connMutex.Unlock()
+
+				conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+				_, response, err := conn.ReadMessage()
+				if err != nil {
+					var shouldStop bool
+					var logMsg string
+
+					if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+						logMsg = "WebSocket连接正常关闭"
+						shouldStop = false
+					} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+						logMsg = "WebSocket读取超时，可能连接空闲"
+						shouldStop = true
+					} else {
+						logMsg = fmt.Sprintf("读取响应失败: %v", err)
+						shouldStop = true
+					}
+
+					p.logger.Info(logMsg)
+					if shouldStop {
+						p.setErrorAndStop(fmt.Errorf("%s", logMsg))
+					}
 				}
 
 				result, err := p.parseResponse(response)
 				if err != nil {
-					p.connMutex.Lock()
-					p.err = fmt.Errorf("解析响应失败: %v", err)
-					p.connMutex.Unlock()
+					p.setErrorAndStop(fmt.Errorf("解析响应失败: %v", err))
 					return
 				}
 
@@ -495,16 +531,12 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 
 				payloadMsgData, err := json.Marshal(result["payload_msg"])
 				if err != nil {
-					p.connMutex.Lock()
-					p.err = fmt.Errorf("重新序列化响应payload_msg失败: %v", err)
-					p.connMutex.Unlock()
+					p.setErrorAndStop(fmt.Errorf("重新序列化响应payload_msg失败: %v", err))
 					return
 				}
 
 				if err := json.Unmarshal(payloadMsgData, &respPayload); err != nil {
-					p.connMutex.Lock()
-					p.err = fmt.Errorf("解析最终响应payload失败: %v. Raw: %s", err, string(payloadMsgData))
-					p.connMutex.Unlock()
+					p.setErrorAndStop(fmt.Errorf("解析最终响应payload失败: %v", err))
 					return
 				}
 
@@ -545,6 +577,13 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 	}
 
 	return nil
+}
+
+func (p *Provider) setErrorAndStop(err error) {
+	p.connMutex.Lock()
+	p.err = err
+	p.isStreaming = false
+	p.connMutex.Unlock()
 }
 
 func (p *Provider) closeConnection() {
