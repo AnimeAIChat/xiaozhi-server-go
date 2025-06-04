@@ -5,4 +5,4 @@ xiaozhi-server
 /.mcp_server_settings.json
 xiaozhi-server-go
 .mcp_server_settings copy.json
-src/.DS_Store
+.DS_Store

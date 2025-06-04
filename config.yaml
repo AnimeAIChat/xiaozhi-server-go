@@ -66,6 +66,11 @@ ASR:
     access_token: 你的access_token
     output_dir: tmp/
 
+  GoSherpaASR:
+    type: gosherpa
+    addr: "ws://127.0.0.1:8848/asr"
+
+
 # TTS配置
 TTS:
   # EdgeTTS 是微软的语音合成服务，免费使用，容易合成失败，并发未测试

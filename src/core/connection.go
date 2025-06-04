@@ -132,6 +132,8 @@ func NewConnectionHandler(
 		serverAudioFrameDuration: 60,
 	}
 
+	handler.sessionID = uuid.New().String() // 生成唯一会话ID
+
 	// 正确设置providers
 	if providerSet != nil {
 		handler.providers.asr = providerSet.ASR
@@ -170,7 +172,7 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	// 优化后的MCP管理器处理
 	if h.mcpManager == nil {
 		h.logger.Info("从资源池未获取到MCP管理器，创建新的MCP管理器")
-		h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn)
+		h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn, h.sessionID)
 		// 只有在创建新实例时才需要完整初始化
 		if err := h.mcpManager.InitializeServers(context.Background()); err != nil {
 			h.logger.Error(fmt.Sprintf("初始化MCP服务器失败: %v", err))
@@ -178,7 +180,7 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 	} else {
 		h.logger.Info("使用从资源池获取的MCP管理器，快速绑定连接")
 		// 池化的管理器已经预初始化，只需要绑定连接
-		if err := h.mcpManager.BindConnection(conn, h.functionRegister); err != nil {
+		if err := h.mcpManager.BindConnection(conn, h.functionRegister, h.sessionID); err != nil {
 			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
 			return
 		}

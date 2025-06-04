@@ -55,7 +55,7 @@ func extractToolNames(tools []go_openai.Tool) []string {
 }
 
 // NewManager 创建一个新的MCP管理器
-func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn) *Manager {
+func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn, seesionID string) *Manager {
 
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
@@ -74,7 +74,7 @@ func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn)
 		bRegisteredXiaoZhiMCP: false,
 	}
 	// 初始化小智MCP客户端
-	mgr.XiaoZhiMCPClient = NewXiaoZhiMCPClient(lg, conn)
+	mgr.XiaoZhiMCPClient = NewXiaoZhiMCPClient(lg, conn, seesionID)
 	mgr.clients["xiaozhi"] = mgr.XiaoZhiMCPClient
 
 	return mgr
@@ -146,7 +146,7 @@ func (m *Manager) preInitializeServers() error {
 }
 
 // BindConnection 绑定连接到MCP Manager
-func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface) error {
+func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, sessionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -155,7 +155,7 @@ func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface) 
 
 	// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
-		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn)
+		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
 		m.clients["xiaozhi"] = m.XiaoZhiMCPClient
 
 		if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
