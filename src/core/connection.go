@@ -202,6 +202,7 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 
 			if err := h.handleMessage(messageType, message); err != nil {
 				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
+			} else {
 				if h.closeAfterChat {
 					return
 				}
@@ -292,12 +293,36 @@ func (h *ConnectionHandler) clientAbortChat() error {
 	return nil
 }
 
+func (h *ConnectionHandler) QuitIntent(text string) bool {
+	//CMD_exit 读取配置中的退出命令
+	exitCommands := h.config.CMDExit
+	if exitCommands == nil {
+		return false
+	}
+	cleand_text := utils.RemoveAllPunctuation(text) // 移除标点符号，确保匹配准确
+	// 检查是否包含退出命令
+	for _, cmd := range exitCommands {
+		h.logger.Debug(fmt.Sprintf("检查退出命令: %s,%s", cmd, cleand_text))
+		//判断相等
+		if cleand_text == cmd {
+			h.logger.Info("收到客户端退出意图，准备结束对话")
+			h.Close() // 直接关闭连接
+			return true
+		}
+	}
+	return false
+}
+
 // handleChatMessage 处理聊天消息
 func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) error {
 	if text == "" {
 		h.logger.Warn("收到空聊天消息，忽略")
 		h.clientAbortChat()
-		return nil
+		return fmt.Errorf("聊天消息为空")
+	}
+
+	if h.QuitIntent(text) {
+		return fmt.Errorf("用户请求退出对话")
 	}
 
 	// 增加对话轮次
@@ -575,6 +600,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				result, err := h.mcpManager.ExecuteTool(ctx, functionName, arguments)
 				if err != nil {
 					h.logger.Error(fmt.Sprintf("MCP函数调用失败: %v", err))
+					if result == nil {
+						result = "MCP工具调用失败"
+					}
 				}
 				h.logger.Info(fmt.Sprintf("MCP函数调用结果: %v", result))
 				actionResult := types.ActionResponse{
@@ -853,8 +881,15 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 // Close 清理资源
 func (h *ConnectionHandler) Close() {
 	h.closeOnce.Do(func() {
-
 		close(h.stopChan)
+
+		h.closeOpusDecoder()
+
+		if h.providers.asr != nil {
+			if err := h.providers.asr.Reset(); err != nil {
+				h.logger.Error(fmt.Sprintf("重置ASR状态失败: %v", err))
+			}
+		}
 
 		// 清理待处理的音频文件
 		if h.config.DeleteAudio {
@@ -882,16 +917,10 @@ func (h *ConnectionHandler) Close() {
 						}
 					}
 				default:
-					goto closeChannels
+					return
 				}
 			}
 		}
-
-	closeChannels:
-		close(h.clientAudioQueue)
-		close(h.clientTextQueue)
-
-		h.closeOpusDecoder()
 	})
 }
 

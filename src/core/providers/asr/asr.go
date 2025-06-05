@@ -3,7 +3,6 @@ package asr
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"time"
 
 	"xiaozhi-server-go/src/core/providers"
@@ -122,43 +121,4 @@ func (p *BaseProvider) InitAudioProcessing() {
 	p.audioBuffer = new(bytes.Buffer)
 	p.silenceThreshold = 0.01 // 默认能量阈值
 	p.silenceDuration = 800   // 默认静音判断时长(ms)
-}
-
-// 计算音频能量
-func (p *BaseProvider) calculateEnergy(data []byte) float64 {
-	if len(data) < 2 {
-		return 0
-	}
-
-	var sum float64
-	samples := len(data) / 2 // 16位音频，每个样本2字节
-
-	for i := 0; i < len(data); i += 2 {
-		// 将两个字节转换为16位整数
-		sample := int16(data[i]) | int16(data[i+1])<<8
-		// 计算平方和
-		amplitude := float64(sample) / 32768.0 // 归一化到[-1,1]
-		sum += amplitude * amplitude
-	}
-
-	// 返回RMS能量
-	return math.Sqrt(sum / float64(samples))
-}
-
-// IsSilence 检测数据片段是否是静音
-func (p *BaseProvider) IsSilence(data []byte) bool {
-	energy := p.calculateEnergy(data)
-	return energy < p.silenceThreshold
-}
-
-// IsEndOfSpeech 检测说话是否结束
-func (p *BaseProvider) IsEndOfSpeech() bool {
-	if p.audioBuffer == nil || p.audioBuffer.Len() == 0 {
-		return false
-	}
-
-	if time.Since(p.lastChunkTime) > time.Duration(p.silenceDuration)*time.Millisecond {
-		return p.IsSilence(p.audioBuffer.Bytes())
-	}
-	return false
 }

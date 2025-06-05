@@ -475,6 +475,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 		p.isStreaming = true
 		// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 		go func() {
+			p.logger.Info("doubao流式识别协程已启动")
 			defer func() {
 				if r := recover(); r != nil {
 					p.logger.Error(fmt.Sprintf("流式识别协程发生错误: %v", r))
@@ -485,6 +486,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 					p.closeConnection()
 				}
 				p.connMutex.Unlock()
+				p.logger.Info("doubao流式识别协程已结束")
 			}()
 
 			for {
@@ -506,18 +508,19 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 
 					if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 						logMsg = "WebSocket连接正常关闭"
-						shouldStop = false
+						shouldStop = true
 					} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-						logMsg = "WebSocket读取超时，可能连接空闲"
+						logMsg = "doubao 流式识别读取超时"
 						shouldStop = true
 					} else {
-						logMsg = fmt.Sprintf("读取响应失败: %v", err)
+						logMsg = fmt.Sprintf("%v", err)
 						shouldStop = true
 					}
 
-					p.logger.Info(logMsg)
+					//p.logger.Info(logMsg)
 					if shouldStop {
 						p.setErrorAndStop(fmt.Errorf("%s", logMsg))
+						return
 					}
 				}
 
@@ -581,9 +584,13 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 
 func (p *Provider) setErrorAndStop(err error) {
 	p.connMutex.Lock()
+	defer p.connMutex.Unlock()
 	p.err = err
 	p.isStreaming = false
-	p.connMutex.Unlock()
+	p.logger.Error(fmt.Sprintf("流式识别发生错误: %v", err))
+	if p.conn != nil {
+		p.closeConnection()
+	}
 }
 
 func (p *Provider) closeConnection() {

@@ -25,17 +25,28 @@ func SplitAtLastPunctuation(text string) (string, int) {
 }
 
 func RemoveMarkdownSyntax(text string) string {
-	// 定义需要保留的标点（中文、英文常用标点）
-	//preservedPunct := `[.,!?;，。！？、；：]`
-
-	// 定义需要移除的Markdown语法符号
-	markdownChars := `[\*#\-+=>` + "`" + `~_\[\](){}|\\]`
+	// 定义需要移除的Markdown语法符号,包括空格
+	markdownChars := `[\*#\-+=>` + "`" + `~_\[\](){}|\\\ ]`
 
 	// 编译正则表达式
 	re := regexp.MustCompile(markdownChars)
 
 	// 替换Markdown符号为空格
-	cleaned := re.ReplaceAllString(text, " ")
+	cleaned := re.ReplaceAllString(text, "")
+
+	return cleaned
+}
+
+// RemoveAllPunctuation 移除所有标点符号
+func RemoveAllPunctuation(text string) string {
+	// 定义所有标点符号（中文、英文标点）- 修复转义问题
+	punctuation := `[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`
+
+	// 编译正则表达式
+	re := regexp.MustCompile(punctuation)
+
+	// 替换标点符号为空字符串
+	cleaned := re.ReplaceAllString(text, "")
 
 	return cleaned
 }
