@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -50,6 +51,10 @@ type ConnectionHandler struct {
 
 	// 会话相关
 	sessionID string
+	deviceID  string            // 设备ID
+	clientId  string            // 客户端ID
+	headers   map[string]string // HTTP头部信息
+
 	// 客户端音频相关
 	clientAudioFormat        string
 	clientAudioSampleRate    int
@@ -108,6 +113,7 @@ func NewConnectionHandler(
 	config *configs.Config,
 	providerSet *pool.ProviderSet,
 	logger *utils.Logger,
+	req *http.Request,
 ) *ConnectionHandler {
 	handler := &ConnectionHandler{
 		config:           config,
@@ -136,6 +142,21 @@ func NewConnectionHandler(
 		serverAudioSampleRate:    24000,
 		serverAudioChannels:      1,
 		serverAudioFrameDuration: 60,
+
+		headers: make(map[string]string),
+	}
+
+	for key, values := range req.Header {
+		if len(values) > 0 {
+			handler.headers[key] = values[0] // 取第一个值
+		}
+		if key == "Device-Id" {
+			handler.deviceID = values[0] // 设备ID
+		}
+		if key == "Client-Id" {
+			handler.clientId = values[0] // 客户端ID
+		}
+		logger.FormatInfo("HTTP头部信息: %s: %s", key, values[0])
 	}
 
 	handler.sessionID = uuid.New().String() // 生成唯一会话ID
@@ -186,16 +207,16 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 
 	// 优化后的MCP管理器处理
 	if h.mcpManager == nil {
-		h.logger.Info("从资源池未获取到MCP管理器，创建新的MCP管理器")
-		h.mcpManager = mcp.NewManager(h.logger, h.functionRegister, conn, h.sessionID)
-		// 只有在创建新实例时才需要完整初始化
-		if err := h.mcpManager.InitializeServers(context.Background()); err != nil {
-			h.logger.Error(fmt.Sprintf("初始化MCP服务器失败: %v", err))
-		}
+		h.logger.Error("没有可用的MCP管理器")
+		return
+
 	} else {
 		h.logger.Info("使用从资源池获取的MCP管理器，快速绑定连接")
 		// 池化的管理器已经预初始化，只需要绑定连接
-		if err := h.mcpManager.BindConnection(conn, h.functionRegister, h.sessionID); err != nil {
+		params := map[string]interface{}{
+			"session_id": h.sessionID,
+		}
+		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
 			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
 			return
 		}
@@ -217,7 +238,6 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 
 			if err := h.handleMessage(messageType, message); err != nil {
 				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
-			} else {
 				if h.closeAfterChat {
 					return
 				}
@@ -781,7 +801,7 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 func (h *ConnectionHandler) stopServerSpeak() {
 	h.logger.Info("服务端停止说话")
 	atomic.StoreInt32(&h.serverVoiceStop, 1)
-	h.cleanTTSAndAuduiQueue(false)
+	h.cleanTTSAndAudioQueue(false)
 }
 
 func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason string) {
@@ -912,7 +932,7 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 	}
 }
 
-func (h *ConnectionHandler) cleanTTSAndAuduiQueue(bClose bool) error {
+func (h *ConnectionHandler) cleanTTSAndAudioQueue(bClose bool) error {
 	msgPrefix := ""
 	if bClose {
 		msgPrefix = "关闭连接，"
@@ -957,7 +977,7 @@ func (h *ConnectionHandler) Close() {
 				h.logger.Error(fmt.Sprintf("重置ASR状态失败: %v", err))
 			}
 		}
-		h.cleanTTSAndAuduiQueue(true)
+		h.cleanTTSAndAudioQueue(true)
 	})
 }
 

@@ -154,11 +154,11 @@ func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, mess
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
-	p.logger.Info("开始调用多模态API", map[string]interface{}{
-		"type":        p.config.Type,
-		"model_name":  p.config.ModelName,
-		"text":        text,
-		"image_size":  len(base64Image),
+	p.logger.FormatInfo("开始调用多模态API %v", map[string]interface{}{
+		"type":       p.config.Type,
+		"model_name": p.config.ModelName,
+		"text":       text,
+		"image_size": len(base64Image),
 	})
 
 	// 根据类型调用对应的多模态API
@@ -222,7 +222,8 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 		)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【VLLLM服务响应异常: %v】", err)
-			p.logger.Error("OpenAI Vision API调用失败", err)
+			p.logger.FormatError("OpenAI Vision API调用失败 %v", err)
+		
 			return
 		}
 		defer stream.Close()

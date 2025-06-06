@@ -45,41 +45,6 @@ func (m *Manager) SetConnection(conn Conn) {
 	}
 }
 
-// extractToolNames 从工具列表中提取工具名称
-func extractToolNames(tools []go_openai.Tool) []string {
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		names = append(names, tool.Function.Name)
-	}
-	return names
-}
-
-// NewManager 创建一个新的MCP管理器
-func NewManager(lg *utils.Logger, fh types.FunctionRegistryInterface, conn Conn, seesionID string) *Manager {
-
-	projectDir := utils.GetProjectDir()
-	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		configPath = ""
-	}
-
-	mgr := &Manager{
-		logger:                lg,
-		funcHandler:           fh,
-		conn:                  conn,
-		configPath:            configPath,
-		clients:               make(map[string]MCPClient),
-		tools:                 make([]string, 0),
-		bRegisteredXiaoZhiMCP: false,
-	}
-	// 初始化小智MCP客户端
-	mgr.XiaoZhiMCPClient = NewXiaoZhiMCPClient(lg, conn, seesionID)
-	mgr.clients["xiaozhi"] = mgr.XiaoZhiMCPClient
-
-	return mgr
-}
-
 // NewManagerForPool 创建用于资源池的MCP管理器
 func NewManagerForPool(lg *utils.Logger) *Manager {
 	projectDir := utils.GetProjectDir()
@@ -151,12 +116,14 @@ func (m *Manager) preInitializeServers() error {
 }
 
 // BindConnection 绑定连接到MCP Manager
-func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, sessionID string) error {
+func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, params interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.conn = conn
 	m.funcHandler = fh
+	paramsMap := params.(map[string]interface{})
+	sessionID := paramsMap["session_id"].(string)
 
 	// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
