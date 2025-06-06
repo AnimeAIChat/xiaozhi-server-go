@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"sync/atomic"
 	"time"
 	"xiaozhi-server-go/src/core/utils"
@@ -86,13 +85,7 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 	bFinishSuccess := false
 	defer func() {
 		// 音频发送完成后，根据配置决定是否删除文件
-		if h.config.DeleteAudio && len(filepath) > 0 {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除TTS音频文件失败: %v", err))
-			} else {
-				h.logger.Debug(fmt.Sprintf("已删除TTS音频文件: %s", filepath))
-			}
-		}
+		h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
 
 		h.logger.Info(fmt.Sprintf("TTS音频发送任务结束(%t): %s, 索引: %d/%d", bFinishSuccess, text, textIndex, h.tts_last_text_index))
 		if textIndex == h.tts_last_text_index {
@@ -109,26 +102,14 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.logger.Info(fmt.Sprintf("sendAudioMessage: 跳过过期轮次的音频: 任务轮次=%d, 当前轮次=%d, 文本=%s",
 			round, h.talkRound, text))
 		// 即使跳过，也要根据配置删除音频文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除跳过的音频文件失败: %v", err))
-			} else {
-				h.logger.Info(fmt.Sprintf("已删除跳过的音频文件: %s", filepath))
-			}
-		}
+		h.deleteAudioFileIfNeeded(filepath, "跳过过期轮次")
 		return
 	}
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", text))
 		// 服务端语音停止时也要根据配置删除音频文件
-		if h.config.DeleteAudio {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除停止的音频文件失败: %v", err))
-			} else {
-				h.logger.Info(fmt.Sprintf("已删除停止的音频文件: %s", filepath))
-			}
-		}
+		h.deleteAudioFileIfNeeded(filepath, "服务端语音停止")
 		return
 	}
 

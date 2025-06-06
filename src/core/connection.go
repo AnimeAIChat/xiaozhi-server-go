@@ -19,6 +19,7 @@ import (
 	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
+	"xiaozhi-server-go/src/core/providers/tts"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
@@ -26,6 +27,10 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type configGetter interface {
+	Config() *tts.Config
+}
 
 // ConnectionHandler 连接处理器结构
 type ConnectionHandler struct {
@@ -70,6 +75,7 @@ type ConnectionHandler struct {
 	dialogueManager     *chat.DialogueManager
 	tts_last_text_index int
 	client_asr_text     string // 客户端ASR文本
+	quickReplyCache     *utils.QuickReplyCache
 
 	// 并发控制
 	stopChan         chan struct{}
@@ -142,6 +148,15 @@ func NewConnectionHandler(
 		handler.providers.vlllm = providerSet.VLLLM
 		handler.mcpManager = providerSet.MCP
 	}
+
+	ttsProvider := "default" // 默认TTS提供者名称
+	voiceName := "default"
+	if getter, ok := handler.providers.tts.(configGetter); ok {
+		ttsProvider = getter.Config().Type
+		voiceName = getter.Config().Voice
+	}
+	logger.Info(fmt.Sprintf("使用TTS提供者: %s, 语音名称: %s", ttsProvider, voiceName))
+	handler.quickReplyCache = utils.NewQuickReplyCache(ttsProvider, voiceName)
 
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
@@ -313,6 +328,23 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 	return false
 }
 
+func (h *ConnectionHandler) quickReplyWakeUpWords(text string) bool {
+	// 检查是否包含唤醒词
+	if !h.config.QuickReply || h.talkRound != 1 {
+		return false
+	}
+	if !utils.IsWakeUpWord(text) {
+		return false
+	}
+
+	repalyWords := h.config.QuickReplyWords
+	reply_text := utils.RandomSelectFromArray(repalyWords)
+	h.tts_last_text_index = 1 // 重置文本索引
+	h.SpeakAndPlay(reply_text, 1, h.talkRound)
+
+	return true
+}
+
 // handleChatMessage 处理聊天消息
 func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) error {
 	if text == "" {
@@ -436,6 +468,10 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	}
 
 	h.logger.Info("收到聊天消息: " + text)
+
+	if h.quickReplyWakeUpWords(text) {
+		return nil
+	}
 
 	// 添加用户消息到对话历史
 	h.dialogueManager.Put(chat.Message{
@@ -745,37 +781,25 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 func (h *ConnectionHandler) stopServerSpeak() {
 	h.logger.Info("服务端停止说话")
 	atomic.StoreInt32(&h.serverVoiceStop, 1)
-	// 终止tts任务，不再继续将文本加入到tts队列，清空ttsQueue队列
-	for {
-		select {
-		case task := <-h.ttsQueue:
-			h.logger.Info(fmt.Sprintf("丢弃一个TTS任务: %s", task.text))
-		default:
-			// 队列已清空，退出循环
-			h.logger.Info("ttsQueue队列已清空，停止处理TTS任务,准备清空音频队列")
-			goto clearAudioQueue
-		}
+	h.cleanTTSAndAuduiQueue(false)
+}
+
+func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason string) {
+	if !h.config.DeleteAudio || filepath == "" {
+		return
 	}
 
-clearAudioQueue:
-	// 终止audioMessagesQueue发送，清空队列里的音频数据
-	for {
-		select {
-		case task := <-h.audioMessagesQueue:
-			h.logger.Info(fmt.Sprintf("丢弃一个音频任务: %s", task.text))
-			// 根据配置删除被丢弃的音频文件
-			if h.config.DeleteAudio && task.filepath != "" {
-				if err := os.Remove(task.filepath); err != nil {
-					h.logger.Error(fmt.Sprintf("删除被丢弃的音频文件失败: %v", err))
-				} else {
-					h.logger.Info(fmt.Sprintf("已删除被丢弃的音频文件: %s", task.filepath))
-				}
-			}
-		default:
-			// 队列已清空，退出循环
-			h.logger.Info("audioMessagesQueue队列已清空，停止处理音频任务")
-			return
-		}
+	// 检查是否为快速回复缓存文件，如果是则不删除
+	if h.quickReplyCache != nil && h.quickReplyCache.IsCachedFile(filepath) {
+		h.logger.Info(fmt.Sprintf(reason+" 跳过删除缓存音频文件: %s", filepath))
+		return
+	}
+
+	// 删除非缓存音频文件
+	if err := os.Remove(filepath); err != nil {
+		h.logger.Error(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
+	} else {
+		h.logger.Info(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
 	}
 }
 
@@ -791,6 +815,14 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		}{filepath, text, round, textIndex}
 	}()
 
+	if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
+		// 尝试从缓存查找音频文件
+		if cachedFile := h.quickReplyCache.FindCachedAudio(text); cachedFile != "" {
+			h.logger.Info(fmt.Sprintf("使用缓存的快速回复音频: %s", cachedFile))
+			filepath = cachedFile
+			return
+		}
+	}
 	ttsStartTime := time.Now()
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
@@ -807,17 +839,19 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		return
 	} else {
 		h.logger.Info(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
+		// 如果是快速回复词，保存到缓存
+		if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
+			if err := h.quickReplyCache.SaveCachedAudio(text, filepath); err != nil {
+				h.logger.Error(fmt.Sprintf("保存快速回复音频失败: %v", err))
+			} else {
+				h.logger.Info(fmt.Sprintf("成功缓存快速回复音频: %s", text))
+			}
+		}
 	}
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.logger.Info(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", text))
 		// 服务端语音停止时，根据配置删除已生成的音频文件
-		if h.config.DeleteAudio && filepath != "" {
-			if err := os.Remove(filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("删除停止任务的音频文件失败: %v", err))
-			} else {
-				h.logger.Info(fmt.Sprintf("已删除停止任务的音频文件: %s", filepath))
-			}
-		}
+		h.deleteAudioFileIfNeeded(filepath, "服务端语音停止时")
 		return
 	}
 
@@ -878,6 +912,39 @@ func (h *ConnectionHandler) closeOpusDecoder() {
 	}
 }
 
+func (h *ConnectionHandler) cleanTTSAndAuduiQueue(bClose bool) error {
+	msgPrefix := ""
+	if bClose {
+		msgPrefix = "关闭连接，"
+	}
+	// 终止tts任务，不再继续将文本加入到tts队列，清空ttsQueue队列
+	for {
+		select {
+		case task := <-h.ttsQueue:
+			h.logger.Info(fmt.Sprintf(msgPrefix+"丢弃一个TTS任务: %s", task.text))
+		default:
+			// 队列已清空，退出循环
+			h.logger.Info(msgPrefix + "ttsQueue队列已清空，停止处理TTS任务,准备清空音频队列")
+			goto clearAudioQueue
+		}
+	}
+
+clearAudioQueue:
+	// 终止audioMessagesQueue发送，清空队列里的音频数据
+	for {
+		select {
+		case task := <-h.audioMessagesQueue:
+			h.logger.Info(fmt.Sprintf(msgPrefix+"丢弃一个音频任务: %s", task.text))
+			// 根据配置删除被丢弃的音频文件
+			h.deleteAudioFileIfNeeded(task.filepath, msgPrefix+"丢弃音频任务时")
+		default:
+			// 队列已清空，退出循环
+			h.logger.Info(msgPrefix + "audioMessagesQueue队列已清空，停止处理音频任务")
+			return nil
+		}
+	}
+}
+
 // Close 清理资源
 func (h *ConnectionHandler) Close() {
 	h.closeOnce.Do(func() {
@@ -890,37 +957,7 @@ func (h *ConnectionHandler) Close() {
 				h.logger.Error(fmt.Sprintf("重置ASR状态失败: %v", err))
 			}
 		}
-
-		// 清理待处理的音频文件
-		if h.config.DeleteAudio {
-			// 清理TTS队列中的任务（这些任务还没有生成音频文件，无需删除）
-			for {
-				select {
-				case task := <-h.ttsQueue:
-					h.logger.Info(fmt.Sprintf("连接关闭，丢弃TTS任务: %s", task.text))
-				default:
-					goto clearAudioQueue
-				}
-			}
-
-		clearAudioQueue:
-			// 清理音频消息队列中的文件
-			for {
-				select {
-				case task := <-h.audioMessagesQueue:
-					h.logger.Info(fmt.Sprintf("连接关闭，丢弃音频任务: %s", task.text))
-					if task.filepath != "" {
-						if err := os.Remove(task.filepath); err != nil {
-							h.logger.Error(fmt.Sprintf("连接关闭时删除音频文件失败: %v", err))
-						} else {
-							h.logger.Info(fmt.Sprintf("连接关闭时已删除音频文件: %s", task.filepath))
-						}
-					}
-				default:
-					return
-				}
-			}
-		}
+		h.cleanTTSAndAuduiQueue(true)
 	})
 }
 

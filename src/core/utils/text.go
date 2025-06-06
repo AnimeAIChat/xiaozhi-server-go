@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"math/rand"
 	"regexp"
 	"strings"
 )
@@ -72,4 +73,38 @@ func JoinStrings(strs []string) string {
 		result += s
 	}
 	return result
+}
+
+// IsWakeUpWord 判断是否是唤醒词，格式为"你好xx"
+func IsWakeUpWord(text string) bool {
+	// 定义唤醒词正则表达式：以你好开头 + 任意字符
+	pattern := `^你好.+`
+
+	// 编译正则表达式
+	re := regexp.MustCompile(pattern)
+
+	// 检测是否匹配
+	return re.MatchString(text)
+}
+
+// IsInArray 判断text是否在字符串数组中
+func IsInArray(text string, array []string) bool {
+	for _, item := range array {
+		if item == text {
+			return true
+		}
+	}
+	return false
+}
+
+// RandomSelectFromArray 从字符串数组中随机选择一个返回
+func RandomSelectFromArray(array []string) string {
+	if len(array) == 0 {
+		return ""
+	}
+
+	// 生成随机索引
+	index := rand.Intn(len(array))
+
+	return array[index]
 }

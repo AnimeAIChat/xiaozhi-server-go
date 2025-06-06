@@ -49,6 +49,13 @@ prompt: |
 
 # 音频处理相关设置
 delete_audio: true
+quick_reply: true
+quick_reply_words:
+  - "我在"
+  - "在呢"
+  - "来了"
+  - "啥事啊"
+  
 use_private_config: false
 
 # 选择使用的模块

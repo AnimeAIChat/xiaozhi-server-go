@@ -6,3 +6,4 @@ xiaozhi-server
 xiaozhi-server-go
 .mcp_server_settings copy.json
 .DS_Store
+wake_replay
