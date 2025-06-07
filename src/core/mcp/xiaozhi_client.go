@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"xiaozhi-server-go/src/core/Auth"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -37,7 +38,10 @@ type XiaoZhiMCPClient struct {
 	callResults     map[int]chan interface{}
 	callResultsLock sync.Mutex
 	nextID          int
-
+	visionURL       string // 视觉服务URL
+	deviceID        string // 设备ID，用于标识设备
+	clientID        string // 客户端ID，用于标识客户端
+	token           string // 访问令牌
 	// 工具名称映射：sanitized name -> original name
 	toolNameMap map[string]string
 }
@@ -63,14 +67,46 @@ func (c *XiaoZhiMCPClient) SetConnection(conn Conn) {
 	c.conn = conn
 }
 
+func (c *XiaoZhiMCPClient) SetID(deviceID string, clientID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deviceID = deviceID
+	c.clientID = clientID // 使用clientID作为会话ID
+}
+
+func (c *XiaoZhiMCPClient) SetToken(token string) {
+	auth := Auth.NewAuthToken(token)
+	visionToken, err := auth.GenerateToken(c.deviceID)
+
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("生成Vision Token失败: %v", err))
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token = visionToken
+}
+
+func (c *XiaoZhiMCPClient) SetVisionURL(visionURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.visionURL = visionURL
+}
+
 // ResetConnection 重置连接状态
 func (c *XiaoZhiMCPClient) ResetConnection() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// 重置连接状态但保留工具注册
 	c.conn = nil
 	c.ready = false
+	c.sessionID = "" // 清除会话ID
+	c.tools = make([]Tool, 0)
+	c.callResults = make(map[int]chan interface{})
+	c.clientID = "" // 清除客户端ID
+	c.deviceID = "" // 清除设备ID
+	c.token = ""    // 清除访问令牌
 
 	return nil
 }
@@ -200,7 +236,7 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 		return nil, fmt.Errorf("序列化MCP工具调用请求失败: %v", err)
 	}
 
-	c.logger.Info(fmt.Sprintf("发送客户端mcp工具调用请求: %s，参数: %v", name, args))
+	c.logger.Info(fmt.Sprintf("发送客户端mcp工具调用请求: %s，参数: %s", originalName, string(data)))
 	err = c.conn.WriteMessage(msgTypeText, data)
 	if err != nil {
 		// 清理资源
@@ -216,7 +252,7 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 		if err, ok := result.(error); ok {
 			return nil, err
 		}
-		c.logger.Info(fmt.Sprintf("客户端mcp工具调用 %s 成功，结果: %v", name, result))
+		c.logger.Info(fmt.Sprintf("客户端mcp工具调用 %s 成功，结果: %v", originalName, result))
 		//  map[content:[map[text:{"audio_speaker":{"volume":10},"screen":{},"network":{"type":"wifi","ssid":"zgcinnotown","signal":"weak"}} type:text]] isError:false]
 		// 将里面的text提取出来
 		if resultMap, ok := result.(map[string]interface{}); ok {
@@ -276,6 +312,10 @@ func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
 						"listChanged": true,
 					},
 					"sampling": map[string]interface{}{},
+					"vision": map[string]interface{}{
+						"url":   c.visionURL,
+						"token": c.token,
+					},
 				},
 				"clientInfo": map[string]interface{}{
 					"name":    "XiaozhiClient",
@@ -438,7 +478,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					// 建立名称映射关系
 					sanitizedName := sanitizeToolName(name)
 					c.toolNameMap[sanitizedName] = name
-					c.logger.Debug(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
+					c.logger.Info(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
 				}
 
 				// 检查是否需要继续获取下一页工具
@@ -477,30 +517,4 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 	}
 
 	return nil
-}
-
-// SendMCPToolCallRequest 发送MCP工具调用请求
-func (c *XiaoZhiMCPClient) SendMCPToolCallRequest(toolName string, arguments map[string]interface{}) error {
-	// 构造MCP工具调用请求
-	mcpMessage := map[string]interface{}{
-		"type":       "mcp",
-		"session_id": c.sessionID,
-		"payload": map[string]interface{}{
-			"jsonrpc": "2.0",
-			"id":      mcpToolCallID, // 使用新的ID，与前面的请求区分
-			"method":  "tools/call",
-			"params": map[string]interface{}{
-				"name":      toolName,
-				"arguments": arguments,
-			},
-		},
-	}
-
-	data, err := json.Marshal(mcpMessage)
-	if err != nil {
-		return fmt.Errorf("序列化MCP工具调用请求失败: %v", err)
-	}
-
-	c.logger.Info(fmt.Sprintf("发送工具调用请求: %s，参数: %v", toolName, arguments))
-	return c.conn.WriteMessage(msgTypeText, data)
 }

@@ -71,29 +71,29 @@ func (p *ImageProcessor) ProcessImage(ctx context.Context, imageData ImageData) 
 	if imageData.URL != "" {
 		// 处理URL类型图片
 		atomic.AddInt64(&p.metrics.URLDownloads, 1)
-		
+
 		base64Data, err := p.processURLImage(ctx, imageData.URL, imageData.Format)
 		if err != nil {
 			atomic.AddInt64(&p.metrics.FailedValidations, 1)
 			return "", fmt.Errorf("URL图片处理失败: %v", err)
 		}
-		
+
 		finalImageData = ImageData{
 			Data:   base64Data,
 			Format: imageData.Format,
 		}
-		
+
 		p.logger.Info("URL图片处理成功", map[string]interface{}{
 			"url":    imageData.URL,
 			"format": imageData.Format,
 		})
-		
+
 	} else if imageData.Data != "" {
 		// 直接处理base64数据
 		atomic.AddInt64(&p.metrics.Base64Direct, 1)
 		finalImageData = imageData
-		
-		p.logger.Info("Base64图片处理开始", map[string]interface{}{
+
+		p.logger.FormatDebug("Base64图片处理开始 %v", map[string]interface{}{
 			"format":      imageData.Format,
 			"data_length": len(imageData.Data),
 		})
@@ -116,7 +116,7 @@ func (p *ImageProcessor) ProcessImage(ctx context.Context, imageData ImageData) 
 		return "", fmt.Errorf("图片验证失败: %v", validationResult.Error)
 	}
 
-	p.logger.Info("图片处理完成", map[string]interface{}{
+	p.logger.FormatDebug("图片处理完成 %v", map[string]interface{}{
 		"format":    validationResult.Format,
 		"width":     validationResult.Width,
 		"height":    validationResult.Height,
@@ -200,7 +200,7 @@ func (p *ImageProcessor) downloadImage(ctx context.Context, url string, tempPath
 
 	// 检查Content-Length
 	if resp.ContentLength > p.config.Security.MaxFileSize {
-		return fmt.Errorf("文件过大: %d bytes，最大允许: %d bytes", 
+		return fmt.Errorf("文件过大: %d bytes，最大允许: %d bytes",
 			resp.ContentLength, p.config.Security.MaxFileSize)
 	}
 
@@ -304,4 +304,4 @@ func (p *ImageProcessor) Cleanup() error {
 	}
 
 	return nil
-} 
+}

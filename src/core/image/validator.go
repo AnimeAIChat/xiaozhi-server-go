@@ -10,10 +10,11 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 
-	_ "image/gif"                   // 注册GIF解码器
-	_ "image/jpeg"                  // 注册JPEG解码器
-	_ "image/png"                   // 注册PNG解码器
-	_ "golang.org/x/image/webp"     // 注册WEBP解码器
+	_ "image/gif"  // 注册GIF解码器
+	_ "image/jpeg" // 注册JPEG解码器
+	_ "image/png"  // 注册PNG解码器
+
+	_ "golang.org/x/image/webp" // 注册WEBP解码器
 )
 
 // ImageSecurityValidator 图片安全验证器
@@ -74,9 +75,9 @@ func (v *ImageSecurityValidator) deepValidateImage(data []byte, declaredFormat s
 		result.Error = fmt.Errorf("文件大小超限: %d bytes，最大允许: %d bytes", len(data), v.config.MaxFileSize)
 		result.SecurityRisk = "文件过大，可能是DoS攻击"
 		v.logger.Warn("检测到超大文件", map[string]interface{}{
-			"size":      len(data),
-			"max_size":  v.config.MaxFileSize,
-			"format":    declaredFormat,
+			"size":     len(data),
+			"max_size": v.config.MaxFileSize,
+			"format":   declaredFormat,
 		})
 		return result
 	}
@@ -161,7 +162,7 @@ func (v *ImageSecurityValidator) scanForMaliciousContent(data []byte) bool {
 	// 如果能够正常解码为图片，那么即使包含一些可疑字节序列，也很可能是安全的
 	reader := bytes.NewReader(data)
 	if _, _, err := image.DecodeConfig(reader); err == nil {
-		v.logger.Info("文件能够正常解码为图片，跳过大部分恶意内容检测")
+		v.logger.Debug("文件能够正常解码为图片，跳过大部分恶意内容检测")
 		// 对于能正常解码的图片，只进行最基本的检查
 		return v.basicSecurityCheck(data)
 	}
@@ -174,12 +175,12 @@ func (v *ImageSecurityValidator) scanForMaliciousContent(data []byte) bool {
 func (v *ImageSecurityValidator) basicSecurityCheck(data []byte) bool {
 	// 只检查最明显的威胁：文件开头的可执行文件签名
 	executableSignatures := [][]byte{
-		{0x4D, 0x5A},                   // PE文件头 (MZ) - 必须在文件开头
-		{0x7F, 0x45, 0x4C, 0x46},       // ELF文件头 - 必须在文件开头
+		{0x4D, 0x5A},             // PE文件头 (MZ) - 必须在文件开头
+		{0x7F, 0x45, 0x4C, 0x46}, // ELF文件头 - 必须在文件开头
 	}
-	
+
 	signatureNames := []string{"PE", "ELF"}
-	
+
 	for i, signature := range executableSignatures {
 		if bytes.HasPrefix(data, signature) {
 			v.logger.Warn("文件开头检测到可执行文件签名", map[string]interface{}{
@@ -189,14 +190,14 @@ func (v *ImageSecurityValidator) basicSecurityCheck(data []byte) bool {
 			return true
 		}
 	}
-	
+
 	// 检查SVG中的脚本内容
 	dataStr := string(data)
 	if strings.Contains(strings.ToLower(dataStr), "<svg") {
 		return v.checkSVGScripts(dataStr)
 	}
-	
-	v.logger.Info("基本安全检查通过")
+
+	v.logger.Debug("基本安全检查通过")
 	return false
 }
 
@@ -204,13 +205,13 @@ func (v *ImageSecurityValidator) basicSecurityCheck(data []byte) bool {
 func (v *ImageSecurityValidator) fullSecurityCheck(data []byte) bool {
 	// 检查可执行文件签名 - 只在文件开头检查
 	executableSignatures := [][]byte{
-		{0x4D, 0x5A},                   // PE文件头 (MZ)
-		{0x7F, 0x45, 0x4C, 0x46},       // ELF文件头
-		{0xCA, 0xFE, 0xBA, 0xBE},       // Mach-O文件头
+		{0x4D, 0x5A},             // PE文件头 (MZ)
+		{0x7F, 0x45, 0x4C, 0x46}, // ELF文件头
+		{0xCA, 0xFE, 0xBA, 0xBE}, // Mach-O文件头
 	}
-	
+
 	signatureNames := []string{"PE", "ELF", "Mach-O"}
-	
+
 	for i, signature := range executableSignatures {
 		if bytes.HasPrefix(data, signature) {
 			v.logger.Warn("文件开头检测到可执行文件签名", map[string]interface{}{
@@ -220,15 +221,15 @@ func (v *ImageSecurityValidator) fullSecurityCheck(data []byte) bool {
 			return true
 		}
 	}
-	
+
 	// 检查是否是压缩文件（ZIP/GZIP）- 也只在文件开头检查
 	compressionSignatures := [][]byte{
-		{0x50, 0x4B, 0x03, 0x04},       // ZIP文件头
-		{0x1F, 0x8B, 0x08},             // GZIP文件头
+		{0x50, 0x4B, 0x03, 0x04}, // ZIP文件头
+		{0x1F, 0x8B, 0x08},       // GZIP文件头
 	}
-	
+
 	compressionNames := []string{"ZIP", "GZIP"}
-	
+
 	for i, signature := range compressionSignatures {
 		if bytes.HasPrefix(data, signature) {
 			v.logger.Warn("文件开头检测到压缩文件签名", map[string]interface{}{
@@ -238,13 +239,13 @@ func (v *ImageSecurityValidator) fullSecurityCheck(data []byte) bool {
 			return true
 		}
 	}
-	
+
 	// 检查SVG中的脚本内容
 	dataStr := string(data)
 	if strings.Contains(strings.ToLower(dataStr), "<svg") {
 		return v.checkSVGScripts(dataStr)
 	}
-	
+
 	v.logger.Info("完整安全检查通过")
 	return false
 }
@@ -274,7 +275,7 @@ func (v *ImageSecurityValidator) checkSVGScripts(dataStr string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -318,7 +319,7 @@ func (v *ImageSecurityValidator) validateImageDecoding(data []byte, format strin
 	result.Height = config.Height
 	result.FileSize = int64(len(data))
 
-	v.logger.Info("图片验证成功", map[string]interface{}{
+	v.logger.FormatDebug("图片验证成功 %v", map[string]interface{}{
 		"format": result.Format,
 		"width":  result.Width,
 		"height": result.Height,
@@ -334,4 +335,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-} 
+}

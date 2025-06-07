@@ -14,6 +14,7 @@ import (
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/ota"
+	"xiaozhi-server-go/src/vision"
 
 	// 导入所有providers以确保init函数被调用
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
@@ -78,9 +79,21 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 
 	// API路由全部挂载到/api前缀下
 	apiGroup := router.Group("/api")
+	// 启动OTA服务
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
 	if err := otaService.Start(context.Background(), router, apiGroup); err != nil {
 		logger.Error("OTA 服务启动失败", err)
+		return nil, err
+	}
+
+	// 启动Vision服务
+	visionService, err := vision.NewDefaultVisionService(config, logger)
+	if err != nil {
+		logger.FormatError("Vision 服务初始化失败 %v", err)
+		return nil, err
+	}
+	if err := visionService.Start(context.Background(), router, apiGroup); err != nil {
+		logger.Error("Vision 服务启动失败", err)
 		return nil, err
 	}
 

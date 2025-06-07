@@ -14,9 +14,10 @@ type TokenConfig struct {
 // Config 主配置结构
 type Config struct {
 	Server struct {
-		IP   string `yaml:"ip"`
-		Port int    `yaml:"port"`
-		Auth struct {
+		IP    string `yaml:"ip"`
+		Port  int    `yaml:"port"`
+		Token string
+		Auth  struct {
 			Enabled        bool          `yaml:"enabled"`
 			AllowedDevices []string      `yaml:"allowed_devices"`
 			Tokens         []TokenConfig `yaml:"tokens"`
@@ -35,6 +36,7 @@ type Config struct {
 		Port      int    `yaml:"port"`
 		StaticDir string `yaml:"static_dir"`
 		Websocket string `yaml:"websocket"`
+		VisionURL string `yaml:"vision"` 
 	} `yaml:"web"`
 
 	DefaultPrompt    string   `yaml:"prompt"`
