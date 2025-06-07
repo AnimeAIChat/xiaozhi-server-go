@@ -37,9 +37,11 @@ type Config struct {
 		Websocket string `yaml:"websocket"`
 	} `yaml:"web"`
 
-	DefaultPrompt    string `yaml:"prompt"`
-	DeleteAudio      bool   `yaml:"delete_audio"`
-	UsePrivateConfig bool   `yaml:"use_private_config"`
+	DefaultPrompt    string   `yaml:"prompt"`
+	DeleteAudio      bool     `yaml:"delete_audio"`
+	QuickReply       bool     `yaml:"quick_reply"`
+	QuickReplyWords  []string `yaml:"quick_reply_words"`
+	UsePrivateConfig bool     `yaml:"use_private_config"`
 
 	SelectedModule map[string]string `yaml:"selected_module"`
 

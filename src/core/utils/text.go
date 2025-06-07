@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"math/rand"
 	"regexp"
 	"strings"
 )
@@ -25,17 +26,28 @@ func SplitAtLastPunctuation(text string) (string, int) {
 }
 
 func RemoveMarkdownSyntax(text string) string {
-	// 定义需要保留的标点（中文、英文常用标点）
-	//preservedPunct := `[.,!?;，。！？、；：]`
-
-	// 定义需要移除的Markdown语法符号
-	markdownChars := `[\*#\-+=>` + "`" + `~_\[\](){}|\\]`
+	// 定义需要移除的Markdown语法符号,包括空格
+	markdownChars := `[\*#\-+=>` + "`" + `~_\[\](){}|\\\ ]`
 
 	// 编译正则表达式
 	re := regexp.MustCompile(markdownChars)
 
 	// 替换Markdown符号为空格
-	cleaned := re.ReplaceAllString(text, " ")
+	cleaned := re.ReplaceAllString(text, "")
+
+	return cleaned
+}
+
+// RemoveAllPunctuation 移除所有标点符号
+func RemoveAllPunctuation(text string) string {
+	// 定义所有标点符号（中文、英文标点）- 修复转义问题
+	punctuation := `[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`
+
+	// 编译正则表达式
+	re := regexp.MustCompile(punctuation)
+
+	// 替换标点符号为空字符串
+	cleaned := re.ReplaceAllString(text, "")
 
 	return cleaned
 }
@@ -61,4 +73,38 @@ func JoinStrings(strs []string) string {
 		result += s
 	}
 	return result
+}
+
+// IsWakeUpWord 判断是否是唤醒词，格式为"你好xx"
+func IsWakeUpWord(text string) bool {
+	// 定义唤醒词正则表达式：以你好开头 + 任意字符
+	pattern := `^你好.+`
+
+	// 编译正则表达式
+	re := regexp.MustCompile(pattern)
+
+	// 检测是否匹配
+	return re.MatchString(text)
+}
+
+// IsInArray 判断text是否在字符串数组中
+func IsInArray(text string, array []string) bool {
+	for _, item := range array {
+		if item == text {
+			return true
+		}
+	}
+	return false
+}
+
+// RandomSelectFromArray 从字符串数组中随机选择一个返回
+func RandomSelectFromArray(array []string) string {
+	if len(array) == 0 {
+		return ""
+	}
+
+	// 生成随机索引
+	index := rand.Intn(len(array))
+
+	return array[index]
 }

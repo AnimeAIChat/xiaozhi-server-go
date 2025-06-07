@@ -240,7 +240,7 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 	}
 
 	// 创建新的连接处理器
-	handler := NewConnectionHandler(ws.config, providerSet, ws.logger)
+	handler := NewConnectionHandler(ws.config, providerSet, ws.logger, r)
 
 	handler.taskMgr = ws.taskMgr
 
