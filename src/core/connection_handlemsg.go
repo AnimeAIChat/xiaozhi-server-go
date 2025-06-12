@@ -10,7 +10,6 @@ import (
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/task"
 )
 
 // handleMessage 处理接收到的消息
@@ -102,17 +101,6 @@ func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) e
 	// 处理视觉消息
 	cmd := msgMap["cmd"].(string)
 	if cmd == "gen_pic" {
-		text := msgMap["text"].(string)
-		params := map[string]interface{}{
-			"prompt":    text,
-			"size":      "1024x1024",
-			"quality":   "standard",
-			"api_key":   h.config.LLM["ChatGLMLLM"].APIKey,
-			"client_id": h.sessionID,
-		}
-		task, id := task.NewTask(task.TaskTypeImageGen, params, task.NewMessageCallback(h.conn, "vision", cmd))
-		h.taskMgr.SubmitTask(h.sessionID, task)
-		h.logger.Info(fmt.Sprintf("生成图片任务提交成功: %s, %s", text, id))
 	} else if cmd == "gen_video" {
 	} else if cmd == "read_img" {
 	}

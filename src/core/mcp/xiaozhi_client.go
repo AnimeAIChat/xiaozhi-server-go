@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"xiaozhi-server-go/src/core/Auth"
+	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -75,7 +75,7 @@ func (c *XiaoZhiMCPClient) SetID(deviceID string, clientID string) {
 }
 
 func (c *XiaoZhiMCPClient) SetToken(token string) {
-	auth := Auth.NewAuthToken(token)
+	auth := auth.NewAuthToken(token)
 	visionToken, err := auth.GenerateToken(c.deviceID)
 
 	if err != nil {

@@ -11,16 +11,18 @@ type TaskManager struct {
 	workerPool     *WorkerPool
 	scheduledTasks *ScheduledTasks
 	clientManager  *ClientManager
-	mu             sync.RWMutex
 }
 
 // NewTaskManager creates a new TaskManager instance
 func NewTaskManager(config ResourceConfig) *TaskManager {
 	tm := &TaskManager{
-		scheduledTasks: NewScheduledTasks(),
-		clientManager:  NewClientManager(),
+		clientManager: NewClientManager(),
 	}
-	tm.workerPool = NewWorkerPool(config, tm.scheduledTasks)
+
+	tm.workerPool = NewWorkerPool(config, nil, tm.clientManager)
+	tm.scheduledTasks = NewScheduledTasks(tm.workerPool)
+	tm.workerPool.scheduler = tm.scheduledTasks
+
 	return tm
 }
 
@@ -38,6 +40,11 @@ func (tm *TaskManager) Stop() {
 
 // SubmitTask submits a task for execution
 func (tm *TaskManager) SubmitTask(clientID string, task *Task) error {
+	// 检查任务类型是否已注册
+	if _, exists := GetTaskExecutor(task.Type); !exists {
+		return fmt.Errorf("task type %v is not registered", task.Type)
+	}
+
 	if task.ScheduledTime != nil {
 		return tm.scheduleTask(clientID, task)
 	}
@@ -52,13 +59,21 @@ func (tm *TaskManager) submitImmediateTask(clientID string, task *Task) error {
 		return fmt.Errorf("failed to get client context: %v", err)
 	}
 
-	// Check resource quotas
-	if !ctx.ResourceQuota.CanAcceptTask(task.Type) {
-		return fmt.Errorf("resource quota exceeded for task type: %v", task.Type)
+	// 原子检查和增加配额
+	if err := ctx.ResourceQuota.TryIncrementQuota(); err != nil {
+		return err
 	}
 
-	// Submit to worker pool
-	return tm.workerPool.Submit(task)
+	task.ClinetID = clientID
+
+	// 提交到工作池，失败时回滚
+	if err := tm.workerPool.Submit(task); err != nil {
+		ctx.ResourceQuota.DecrementQuota(task.Type) // 减少总配额
+		ctx.ResourceQuota.CompleteTask(task.Type)   // 减少并发计数
+		return err
+	}
+
+	return nil
 }
 
 // scheduleTask schedules a task for future execution
@@ -72,8 +87,9 @@ func (tm *TaskManager) scheduleTask(clientID string, task *Task) error {
 		return fmt.Errorf("failed to get client context: %v", err)
 	}
 
-	if !ctx.ResourceQuota.CanAcceptTask(TaskTypeScheduled) {
-		return fmt.Errorf("scheduled task quota exceeded")
+	// 检查是否可以接受任务（使用总配额检查）
+	if err := ctx.ResourceQuota.TryIncrementQuota(); err != nil {
+		return err
 	}
 
 	tm.scheduledTasks.AddTask(task)
@@ -82,18 +98,20 @@ func (tm *TaskManager) scheduleTask(clientID string, task *Task) error {
 
 // ScheduledTasks manages scheduled tasks
 type ScheduledTasks struct {
-	tasks    map[string]*Task
-	ticker   *time.Ticker
-	stopChan chan struct{}
-	mu       sync.RWMutex
+	tasks      map[string]*Task
+	ticker     *time.Ticker
+	stopChan   chan struct{}
+	workerPool *WorkerPool
+	mu         sync.RWMutex
 }
 
 // NewScheduledTasks creates a new ScheduledTasks instance
-func NewScheduledTasks() *ScheduledTasks {
+func NewScheduledTasks(workerPool *WorkerPool) *ScheduledTasks {
 	return &ScheduledTasks{
-		tasks:    make(map[string]*Task),
-		ticker:   time.NewTicker(time.Second),
-		stopChan: make(chan struct{}),
+		tasks:      make(map[string]*Task),
+		ticker:     time.NewTicker(time.Second),
+		stopChan:   make(chan struct{}),
+		workerPool: workerPool,
 	}
 }
 
@@ -133,9 +151,25 @@ func (st *ScheduledTasks) processScheduledTasks() {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
+	// 每日重置检查（复用现有定时器）
+	if st.workerPool.clientManager != nil {
+		st.workerPool.clientManager.checkDailyReset()
+	}
+
 	for id, task := range st.tasks {
 		if task.ScheduledTime.Before(now) || task.ScheduledTime.Equal(now) {
-			go task.Execute()
+			// 使用工作者池执行，而非直接go
+			if err := st.workerPool.Submit(task); err != nil {
+				// 提交失败的降级处理
+				go func(t *Task) {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Printf("Scheduled task panic: %v\n", r)
+						}
+					}()
+					t.Execute()
+				}(task)
+			}
 			delete(st.tasks, id)
 		}
 	}
