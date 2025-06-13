@@ -144,6 +144,8 @@ func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, 
 	} else {
 		// 重新绑定连接而不是重新创建
 		m.XiaoZhiMCPClient.SetConnection(conn)
+		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
+		m.XiaoZhiMCPClient.SetToken(token)
 		if !m.XiaoZhiMCPClient.IsReady() {
 			if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
 				return fmt.Errorf("重启XiaoZhi MCP客户端失败: %v", err)
