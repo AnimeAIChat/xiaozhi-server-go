@@ -36,13 +36,14 @@ type configGetter interface {
 // ConnectionHandler 连接处理器结构
 type ConnectionHandler struct {
 	// 确保实现 AsrEventListener 接口
-	_         providers.AsrEventListener
-	config    *configs.Config
-	logger    *utils.Logger
-	conn      Conn
-	closeOnce sync.Once
-	taskMgr   *task.TaskManager
-	providers struct {
+	_                providers.AsrEventListener
+	config           *configs.Config
+	logger           *utils.Logger
+	conn             Conn
+	closeOnce        sync.Once
+	taskMgr          *task.TaskManager
+	safeCallbackFunc func(func(*ConnectionHandler)) func()
+	providers        struct {
 		asr   providers.ASRProvider
 		llm   providers.LLMProvider
 		tts   providers.TTSProvider
@@ -106,6 +107,8 @@ type ConnectionHandler struct {
 	// functions
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
+
+	ctx context.Context
 }
 
 // NewConnectionHandler 创建新的连接处理器
@@ -114,6 +117,7 @@ func NewConnectionHandler(
 	providerSet *pool.ProviderSet,
 	logger *utils.Logger,
 	req *http.Request,
+	ctx context.Context,
 ) *ConnectionHandler {
 	handler := &ConnectionHandler{
 		config:           config,
@@ -142,6 +146,8 @@ func NewConnectionHandler(
 		serverAudioSampleRate:    24000,
 		serverAudioChannels:      1,
 		serverAudioFrameDuration: 60,
+
+		ctx: ctx,
 
 		headers: make(map[string]string),
 	}
@@ -185,6 +191,37 @@ func NewConnectionHandler(
 	handler.functionRegister = function.NewFunctionRegistry()
 
 	return handler
+}
+
+func (h *ConnectionHandler) SetTaskCallback(callback func(func(*ConnectionHandler)) func()) {
+	h.safeCallbackFunc = callback
+}
+
+func (h *ConnectionHandler) SubmitTask(taskType string, params map[string]interface{}) {
+	_task, id := task.NewTask(h.ctx, "", params)
+	h.logger.Info(fmt.Sprintf("提交任务: %s, ID: %s, 参数: %v", _task.Type, id, params))
+	// 创建安全回调用于任务完成时调用
+	var taskCallback func(result interface{})
+	if h.safeCallbackFunc != nil {
+		taskCallback = func(result interface{}) {
+			fmt.Print("任务完成回调: ")
+			safeCallback := h.safeCallbackFunc(func(handler *ConnectionHandler) {
+				// 处理任务完成逻辑
+				handler.handleTaskComplete(_task, id, result)
+			})
+			// 执行安全回调
+			if safeCallback != nil {
+				safeCallback()
+			}
+		}
+	}
+	cb := task.NewCallBack(taskCallback)
+	_task.Callback = cb
+	h.taskMgr.SubmitTask(h.sessionID, _task)
+}
+
+func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, result interface{}) {
+	h.logger.Info(fmt.Sprintf("任务 %s 完成，ID: %s, %v", task.Type, id, result))
 }
 
 // Handle 处理WebSocket连接

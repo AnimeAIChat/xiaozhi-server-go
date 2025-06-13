@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -8,57 +9,49 @@ import (
 
 // WorkerPool manages a pool of workers for executing tasks
 type WorkerPool struct {
-	config      ResourceConfig
-	workers     []*Worker
-	taskQueue   chan *Task
-	scheduler   *ScheduledTasks
-	stopChan    chan struct{}
-	workerTypes map[TaskType][]*Worker
-	mu          sync.RWMutex
+	config        ResourceConfig
+	workers       []*Worker
+	taskQueue     chan *Task
+	scheduler     *ScheduledTasks
+	stopChan      chan struct{}
+	idleWorkers   chan *Worker
+	clientManager *ClientManager
+	mu            sync.RWMutex
 }
 
 // Worker represents a task execution worker
 type Worker struct {
 	id       string
-	taskType TaskType
 	status   WorkerStatus
 	taskChan chan *Task
 	stopChan chan struct{}
+	pool     *WorkerPool
 }
 
 // NewWorkerPool creates a new worker pool
-func NewWorkerPool(config ResourceConfig, scheduler *ScheduledTasks) *WorkerPool {
+func NewWorkerPool(config ResourceConfig, scheduler *ScheduledTasks, clientManager *ClientManager) *WorkerPool {
 	wp := &WorkerPool{
-		config:      config,
-		taskQueue:   make(chan *Task, config.MaxWorkers*2),
-		scheduler:   scheduler,
-		stopChan:    make(chan struct{}),
-		workerTypes: make(map[TaskType][]*Worker),
+		config:        config,
+		taskQueue:     make(chan *Task, config.MaxWorkers*2),
+		scheduler:     scheduler,
+		stopChan:      make(chan struct{}),
+		idleWorkers:   make(chan *Worker, config.MaxWorkers),
+		clientManager: clientManager,
 	}
 
 	// Initialize worker types
-	wp.initWorkerTypes()
+	wp.initWorkers()
 	return wp
 }
 
 // initWorkerTypes initializes worker pools for different task types
-func (wp *WorkerPool) initWorkerTypes() {
-	// Initialize image generation workers
-	wp.workerTypes[TaskTypeImageGen] = make([]*Worker, wp.config.MaxWorkers/3)
-	for i := range wp.workerTypes[TaskTypeImageGen] {
-		wp.workerTypes[TaskTypeImageGen][i] = newWorker(fmt.Sprintf("img-%d", i), TaskTypeImageGen)
-	}
-
-	// Initialize video generation workers
-	wp.workerTypes[TaskTypeVideoGen] = make([]*Worker, wp.config.MaxWorkers/3)
-	for i := range wp.workerTypes[TaskTypeVideoGen] {
-		wp.workerTypes[TaskTypeVideoGen][i] = newWorker(fmt.Sprintf("vid-%d", i), TaskTypeVideoGen)
-	}
-
-	// Initialize scheduled task workers
-	wp.workerTypes[TaskTypeScheduled] = make([]*Worker, wp.config.MaxWorkers/3)
-	for i := range wp.workerTypes[TaskTypeScheduled] {
-		wp.workerTypes[TaskTypeScheduled][i] = newWorker(fmt.Sprintf("sch-%d", i), TaskTypeScheduled)
+func (wp *WorkerPool) initWorkers() {
+	wp.workers = make([]*Worker, wp.config.MaxWorkers)
+	for i := 0; i < wp.config.MaxWorkers; i++ {
+		worker := newWorker(fmt.Sprintf("worker-%d", i), wp)
+		wp.workers[i] = worker
+		// 初始化时所有工作者都是空闲的
+		wp.idleWorkers <- worker
 	}
 }
 
@@ -68,10 +61,8 @@ func (wp *WorkerPool) Start() {
 	defer wp.mu.Unlock()
 
 	// Start all workers
-	for _, workers := range wp.workerTypes {
-		for _, worker := range workers {
-			go worker.start()
-		}
+	for _, worker := range wp.workers {
+		go worker.start()
 	}
 
 	// Start task distribution
@@ -84,10 +75,8 @@ func (wp *WorkerPool) Stop() {
 	defer wp.mu.Unlock()
 
 	close(wp.stopChan)
-	for _, workers := range wp.workerTypes {
-		for _, worker := range workers {
-			worker.stop()
-		}
+	for _, worker := range wp.workers {
+		worker.stop()
 	}
 }
 
@@ -130,44 +119,54 @@ func (wp *WorkerPool) requeueTask(task *Task) {
 
 // assignTask assigns a task to an available worker
 func (wp *WorkerPool) assignTask(task *Task) {
-	wp.mu.Lock()
-	defer wp.mu.Unlock()
-
-	workers := wp.workerTypes[task.Type]
-	if workers == nil || len(workers) == 0 {
-		task.Error = fmt.Errorf("no workers available for task type: %v", task.Type)
+	// 检查是否有注册的执行器
+	if _, exists := GetTaskExecutor(task.Type); !exists {
+		task.Error = fmt.Errorf("no executor registered for task type: %v", task.Type)
+		task.Status = TaskStatusFailed
 		if task.Callback != nil {
 			task.Callback.OnError(task.Error)
 		}
 		return
 	}
 
-	// 查找空闲工作者
-	for _, worker := range workers {
-		if worker.status == WorkerStatusIdle {
-			worker.assignTask(task)
-			return // 任务已分配
+	select {
+	case worker := <-wp.idleWorkers:
+		worker.assignTask(task)
+	case <-time.After(10 * time.Second): // 10秒超时
+		// 超时处理：直接失败，不重排队
+		task.Status = TaskStatusFailed
+		task.Error = fmt.Errorf("no available workers within timeout")
+		if task.ClinetID != "" && wp.clientManager != nil {
+			if ctx, err := wp.clientManager.GetClientContext(task.ClinetID); err == nil {
+				ctx.ResourceQuota.DecrementQuota(task.Type)
+				ctx.ResourceQuota.CompleteTask(task.Type)
+			}
+		}
+		if task.Callback != nil {
+			task.Callback.OnError(task.Error)
 		}
 	}
+}
 
-	// 没有空闲工作者，等待一会再重新入队
-	task.Status = TaskStatusPending
-
-	// 重要：在锁外执行重新排队操作，避免死锁
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		wp.requeueTask(task)
-	}()
+// workerFinished 当工作者完成任务时调用
+func (wp *WorkerPool) workerFinished(worker *Worker) {
+	select {
+	case wp.idleWorkers <- worker:
+		// 工作者重新加入空闲队列
+	default:
+		// 这种情况不应该发生，但为了安全起见
+		fmt.Printf("Warning: Failed to return worker %s to idle pool\n", worker.id)
+	}
 }
 
 // newWorker creates a new worker
-func newWorker(id string, taskType TaskType) *Worker {
+func newWorker(id string, pool *WorkerPool) *Worker {
 	return &Worker{
 		id:       id,
-		taskType: taskType,
 		status:   WorkerStatusIdle,
-		taskChan: make(chan *Task),
+		taskChan: make(chan *Task, 1),
 		stopChan: make(chan struct{}),
+		pool:     pool,
 	}
 }
 
@@ -178,9 +177,63 @@ func (w *Worker) start() {
 		case <-w.stopChan:
 			return
 		case task := <-w.taskChan:
-			w.status = WorkerStatusBusy
-			task.Execute()
-			w.status = WorkerStatusIdle
+			w.executeTask(task)
+		}
+	}
+}
+
+// executeTask executes a task
+func (w *Worker) executeTask(task *Task) {
+	w.status = WorkerStatusBusy
+
+	defer func() {
+		w.status = WorkerStatusIdle
+		w.pool.workerFinished(w)
+		// 任务完成，减少并发计数
+		if task.ClinetID != "" && w.pool.clientManager != nil {
+			if ctx, err := w.pool.clientManager.GetClientContext(task.ClinetID); err == nil {
+				ctx.ResourceQuota.CompleteTask(task.Type)
+			}
+		}
+	}()
+	// 创建带取消的context
+	ctx, cancel := context.WithTimeout(task.Context, 5*time.Minute)
+	defer cancel()
+
+	// 在新的context中执行任务
+	task.Context = ctx
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				task.Status = TaskStatusFailed
+				task.Error = fmt.Errorf("task panicked: %v", r)
+			}
+		}()
+
+		// 检查context是否已取消
+		select {
+		case <-ctx.Done():
+			task.Status = TaskStatusFailed
+			task.Error = ctx.Err()
+			return
+		default:
+		}
+
+		task.Execute()
+	}()
+
+	select {
+	case <-done:
+		// 任务正常完成
+	case <-ctx.Done():
+		// 超时或取消
+		task.Status = TaskStatusFailed
+		task.Error = ctx.Err()
+		if task.Callback != nil {
+			task.Callback.OnError(task.Error)
 		}
 	}
 }
@@ -193,5 +246,11 @@ func (w *Worker) stop() {
 
 // assignTask assigns a task to the worker
 func (w *Worker) assignTask(task *Task) {
-	w.taskChan <- task
+	select {
+	case w.taskChan <- task:
+		// 任务成功分配
+	default:
+		// 这种情况不应该发生，因为 taskChan 有缓冲
+		fmt.Printf("Warning: Failed to assign task to worker %s\n", w.id)
+	}
 }
