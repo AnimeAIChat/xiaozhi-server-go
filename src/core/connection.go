@@ -279,9 +279,6 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 
 			if err := h.handleMessage(messageType, message); err != nil {
 				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
-				if h.closeAfterChat {
-					return
-				}
 			}
 		}
 	}
@@ -330,6 +327,11 @@ func (h *ConnectionHandler) sendAudioMessageCoroutine() {
 // 返回true则停止语音识别，返回false会继续语音识别
 func (h *ConnectionHandler) OnAsrResult(result string) bool {
 	//h.logger.Info(fmt.Sprintf("[%s] ASR识别结果: %s", h.clientListenMode, result))
+	if h.providers.asr.GetSilenceCount() >= 2 {
+		h.logger.Info("检测到连续两次静音，结束对话")
+		h.closeAfterChat = true // 如果连续两次静音，则结束对话
+		result = "长时间未检测到用户说话，请礼貌的结束对话"
+	}
 	if h.clientListenMode == "auto" {
 		if result == "" {
 			return false
@@ -480,9 +482,10 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}()
 
 	llmStartTime := time.Now()
-	h.logger.FormatInfo("开始生成LLM回复, round:%d 打印message", round)
+	//h.logger.FormatInfo("开始生成LLM回复, round:%d ", round)
 	for _, msg := range messages {
-		msg.Print()
+		_ = msg
+		//msg.Print()
 	}
 	// 使用LLM生成回复
 	tools := h.functionRegister.GetAllFunctions()
@@ -642,7 +645,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}
 	} else {
-		h.logger.Info(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
+		h.logger.Debug(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
 	}
 
 	// 分析回复并发送相应的情绪
@@ -790,7 +793,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 	if err := os.Remove(filepath); err != nil {
 		h.logger.Error(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
 	} else {
-		h.logger.Info(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
+		h.logger.Debug(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
 	}
 }
 
@@ -829,7 +832,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		h.logger.Error(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
 		return
 	} else {
-		h.logger.Info(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
+		h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
 		// 如果是快速回复词，保存到缓存
 		if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 			if err := h.quickReplyCache.SaveCachedAudio(text, filepath); err != nil {
@@ -849,7 +852,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	if textIndex == 1 {
 		now := time.Now()
 		ttsSpentTime := now.Sub(ttsStartTime)
-		h.logger.Info(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
+		h.logger.Debug(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
 
 }

@@ -44,7 +44,7 @@ const (
 	customCompression = 0xF
 
 	// 超时设置
-	idleTimeout = 10 * time.Second // 10秒没有新数据就结束识别
+	idleTimeout = 30 * time.Second // 没有新数据就结束识别
 )
 
 // Ensure Provider implements asr.Provider interface
@@ -76,6 +76,8 @@ type Provider struct {
 	result      string
 	err         error
 	connMutex   sync.Mutex // 添加互斥锁保护连接状态
+
+	sendDataCnt int // 计数器，用于跟踪发送的音频数据包数量
 }
 
 // responsePayload 响应数据结构
@@ -256,11 +258,6 @@ func (p *Provider) GetAudioBuffer() *bytes.Buffer {
 	return p.BaseProvider.GetAudioBuffer()
 }
 
-// GetLastChunkTime 获取基类的lastChunkTime
-func (p *Provider) GetLastChunkTime() time.Time {
-	return p.BaseProvider.GetLastChunkTime()
-}
-
 // parseResponse 解析响应数据
 func (p *Provider) parseResponse(data []byte) (map[string]interface{}, error) {
 	if len(data) < 4 {
@@ -340,6 +337,7 @@ func (p *Provider) parseResponse(data []byte) (map[string]interface{}, error) {
 			if err := json.Unmarshal(payloadMsg, &jsonData); err != nil {
 				return nil, fmt.Errorf("解析JSON响应失败: %v", err)
 			}
+			p.logger.Debug(fmt.Sprintf("[DEBUG] parseResponse: JSON解析成功, 数据=%v", jsonData))
 			result["payload_msg"] = jsonData
 		} else if serializationMethod != noSerialization {
 			result["payload_msg"] = string(payloadMsg)
@@ -364,6 +362,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 
 	if !isStreaming {
 		p.logger.Info("----开始流式识别----")
+		p.BaseProvider.LastASRTime = time.Now()
 		// 加锁保护连接初始化
 		p.connMutex.Lock()
 		defer p.connMutex.Unlock()
@@ -457,6 +456,8 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 		_, response, err := p.conn.ReadMessage()
 		if err != nil {
 			return fmt.Errorf("读取响应失败: %v", err)
+		} else {
+			p.logger.Debug(fmt.Sprintf("[DEBUG] 流式识别: 收到WebSocket消息长度=%d", len(response)))
 		}
 
 		initialResult, err := p.parseResponse(response)
@@ -473,6 +474,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 		}
 
 		p.isStreaming = true
+		p.logger.Debug(fmt.Sprintf("[DEBUG] 流式识别初始化成功, connectID=%s, reqID=%s", p.connectID, p.reqID))
 		// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 		go func() {
 			p.logger.Info("doubao流式识别协程已启动")
@@ -494,6 +496,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 				p.connMutex.Lock()
 				if !p.isStreaming || p.conn == nil {
 					p.connMutex.Unlock()
+					p.logger.Info("流式识别已结束或连接已关闭，退出读取循环")
 					return
 				}
 				conn := p.conn
@@ -530,53 +533,67 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 					return
 				}
 
-				var respPayload responsePayload
-
-				payloadMsgData, err := json.Marshal(result["payload_msg"])
-				if err != nil {
-					p.setErrorAndStop(fmt.Errorf("重新序列化响应payload_msg失败: %v", err))
-					return
-				}
-
-				if err := json.Unmarshal(payloadMsgData, &respPayload); err != nil {
-					p.setErrorAndStop(fmt.Errorf("解析最终响应payload失败: %v", err))
-					return
-				}
-
-				if respPayload.Code == 20000000 || respPayload.Code == 0 {
-					p.connMutex.Lock()
-					p.result = respPayload.Result.Text
-					p.connMutex.Unlock()
-
-					if listener := p.BaseProvider.GetListener(); listener != nil {
-						if finished := listener.OnAsrResult(respPayload.Result.Text); finished {
-							return
-						}
+				if code, hasCode := result["code"]; hasCode {
+					//p.logger.Info(fmt.Sprintf("[DEBUG] 检测到code字段: value=%v, type=%T", code, code))
+					p.logger.Info(fmt.Sprintf("检测到code字段: 解析结果=%v", result))
+					codeValue := code.(uint32)
+					if codeValue != 0 {
+						p.setErrorAndStop(fmt.Errorf("ASR服务端错误: Code=%d", codeValue))
+						return
 					}
 				}
+
+				// 处理正常响应
+				if payloadMsg, ok := result["payload_msg"].(map[string]interface{}); ok {
+					// 检查是否有 result 字段（正常响应）
+					if resultData, hasResult := payloadMsg["result"].(map[string]interface{}); hasResult {
+						// 提取文本结果
+						text := ""
+						if textData, hasText := resultData["text"].(string); hasText {
+							text = textData
+						}
+
+						p.logger.Debug(fmt.Sprintf("[DEBUG] 流式识别: 识别成功, 文本='%s'", text))
+
+						p.connMutex.Lock()
+						p.result = text
+						p.connMutex.Unlock()
+
+						if listener := p.BaseProvider.GetListener(); listener != nil {
+
+							if text == "" && time.Since(p.BaseProvider.LastASRTime) > idleTimeout {
+								p.BaseProvider.SilenceCount += 1
+								text = "你没有听清我说话"
+							} else if text != "" {
+								p.BaseProvider.SilenceCount = 0 // 重置静音计数
+							}
+							if finished := listener.OnAsrResult(text); finished {
+								return
+							}
+						}
+					} else if errorData, hasError := payloadMsg["error"]; hasError {
+						// 处理错误响应中的 error 字段
+						p.setErrorAndStop(fmt.Errorf("ASR响应错误: %v", errorData))
+						return
+					}
+				}
+
 			}
+
 		}()
 	}
-
-	// 直接处理传入的音频数据，不使用缓冲区
-	now := time.Now()
-	p.BaseProvider.SetLastChunkTime(now)
 
 	// 检查是否有实际数据需要发送
 	if len(data) > 0 && p.isStreaming {
 		// 直接发送音频数据
 		if err := p.sendAudioData(data, false); err != nil {
 			return err
+		} else {
+			p.sendDataCnt += 1
+			if p.sendDataCnt%20 == 0 {
+				p.logger.Debug(fmt.Sprintf("发送音频数据成功, 长度: %d 字节", len(data)))
+			}
 		}
-	}
-
-	// 检查是否超时
-	if p.isStreaming && now.Sub(p.GetLastChunkTime()) > idleTimeout {
-		fmt.Println("超时, 发送最后的音频数据")
-		if err := p.sendAudioData(data, true); err != nil {
-			return fmt.Errorf("发送最后的音频数据失败: %v", err)
-		}
-		p.Reset()
 	}
 
 	return nil
@@ -587,7 +604,7 @@ func (p *Provider) setErrorAndStop(err error) {
 	defer p.connMutex.Unlock()
 	p.err = err
 	p.isStreaming = false
-	p.logger.Error(fmt.Sprintf("流式识别发生错误: %v", err))
+	p.logger.Error(fmt.Sprintf("setErrorAndStop: 错误=%v, sendDataCnt=%d", err, p.sendDataCnt))
 	if p.conn != nil {
 		p.closeConnection()
 	}
@@ -610,6 +627,7 @@ func (p *Provider) closeConnection() {
 
 // sendAudioData 直接发送音频数据，替代之前的sendCurrentBuffer
 func (p *Provider) sendAudioData(data []byte, isLast bool) error {
+	p.logger.Debug(fmt.Sprintf("[DEBUG] sendAudioData: 数据长度=%d, isLast=%t, sendDataCnt=%d", len(data), isLast, p.sendDataCnt))
 	// 如果没有数据且不是最后一帧，不发送
 	if len(data) == 0 && !isLast {
 		return nil

@@ -26,6 +26,9 @@ type ASRProvider interface {
 	SetListener(listener AsrEventListener)
 	// 复位ASR状态
 	Reset() error
+
+	// 获取当前静音计数
+	GetSilenceCount() int
 }
 
 // TTSProvider 语音合成提供者接口
