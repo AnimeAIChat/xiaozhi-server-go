@@ -63,7 +63,8 @@ func (p *Provider) ToTTS(text string) (string, error) {
 	}
 
 	ttsDuration := time.Since(edgeTTSStartTime)
-	fmt.Println(fmt.Sprintf("edge-tts-go 语音合成完成，耗时: %s", ttsDuration))
+	_ = ttsDuration
+	//fmt.Println(fmt.Sprintf("edge-tts-go 语音合成完成，耗时: %s", ttsDuration))
 
 	// 将音频数据写入临时文件
 	err = os.WriteFile(tempFile, audioData, 0644)

@@ -14,6 +14,7 @@ import (
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/ota"
+	"xiaozhi-server-go/src/vision"
 
 	// 导入所有providers以确保init函数被调用
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
@@ -47,7 +48,7 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	return config, logger, nil
 }
 
-func StartWSServer(config *configs.Config, logger *utils.Logger, g *errgroup.Group) (*core.WebSocketServer, error) {
+func StartWSServer(config *configs.Config, logger *utils.Logger, g *errgroup.Group, groupCtx context.Context) (*core.WebSocketServer, error) {
 	// 创建 WebSocket 服务
 	wsServer, err := core.NewWebSocketServer(config, logger)
 	if err != nil {
@@ -56,7 +57,21 @@ func StartWSServer(config *configs.Config, logger *utils.Logger, g *errgroup.Gro
 
 	// 启动 WebSocket 服务
 	g.Go(func() error {
-		if err := wsServer.Start(context.Background()); err != nil {
+		// 监听关闭信号
+		go func() {
+			<-groupCtx.Done()
+			logger.Info("收到关闭信号，开始关闭WebSocket服务...")
+			if err := wsServer.Stop(); err != nil {
+				logger.Error("WebSocket服务关闭失败", err)
+			} else {
+				logger.Info("WebSocket服务已优雅关闭")
+			}
+		}()
+
+		if err := wsServer.Start(groupCtx); err != nil {
+			if groupCtx.Err() != nil {
+				return nil // 正常关闭
+			}
 			logger.Error("WebSocket 服务运行失败", err)
 			return err
 		}
@@ -67,7 +82,7 @@ func StartWSServer(config *configs.Config, logger *utils.Logger, g *errgroup.Gro
 	return wsServer, nil
 }
 
-func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.Group) (*http.Server, error) {
+func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.Group, groupCtx context.Context) (*http.Server, error) {
 	// 初始化Gin引擎
 	if config.Log.LogLevel == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -79,9 +94,21 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 
 	// API路由全部挂载到/api前缀下
 	apiGroup := router.Group("/api")
+	// 启动OTA服务
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
-	if err := otaService.Start(context.Background(), router, apiGroup); err != nil {
+	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.Error("OTA 服务启动失败", err)
+		return nil, err
+	}
+
+	// 启动Vision服务
+	visionService, err := vision.NewDefaultVisionService(config, logger)
+	if err != nil {
+		logger.FormatError("Vision 服务初始化失败 %v", err)
+		return nil, err
+	}
+	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
+		logger.Error("Vision 服务启动失败", err)
 		return nil, err
 	}
 
@@ -93,6 +120,23 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 
 	g.Go(func() error {
 		logger.Info(fmt.Sprintf("Gin 服务已启动，访问地址: http://0.0.0.0:%d", config.Web.Port))
+
+		// 在单独的 goroutine 中监听关闭信号
+		go func() {
+			<-groupCtx.Done()
+			logger.Info("收到关闭信号，开始关闭HTTP服务...")
+
+			// 创建关闭超时上下文
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				logger.Error("HTTP服务关闭失败", err)
+			} else {
+				logger.Info("HTTP服务已优雅关闭")
+			}
+		}()
+
 		// ListenAndServe 返回 ErrServerClosed 时表示正常关闭
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP 服务启动失败", err)
@@ -104,42 +148,50 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	return httpServer, nil
 }
 
-// 优雅关机处理
-func ShutdownServer(httpServer *http.Server, wsServer *core.WebSocketServer, ctx context.Context, logger *utils.Logger, g *errgroup.Group) {
+func GracefulShutdown(cancel context.CancelFunc, logger *utils.Logger, g *errgroup.Group) {
 	// 监听系统信号
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// 等待信号
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("接收到系统信号: %v，开始优雅关闭服务", sig))
+
+	// 取消上下文，通知所有服务开始关闭
+	cancel()
+
+	// 等待所有服务关闭，设置超时保护
+	done := make(chan error, 1)
+	go func() {
+		done <- g.Wait()
+	}()
 
 	select {
-	case sig := <-sigChan:
-		logger.Info("接收到系统信号，准备关闭服务", sig)
-	case <-ctx.Done():
-		logger.Info("服务上下文已取消，准备关闭服务")
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 先关闭 HTTP 服务
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP 服务优雅关机失败", err)
-	} else {
-		logger.Info("HTTP 服务已优雅关闭")
-	}
-
-	// 再关闭 WebSocket 服务
-	if err := wsServer.Stop(); err != nil {
-		logger.Error("WebSocket 服务关闭失败", err)
-	} else {
-		logger.Info("WebSocket 服务已关闭")
-	}
-
-	// 等待 errgroup 中其他 goroutine 退出
-	if err := g.Wait(); err != nil {
-		logger.Error("服务退出时出现错误", err)
-		// logger.Close()
+	case err := <-done:
+		if err != nil {
+			logger.Error("服务关闭过程中出现错误", err)
+			os.Exit(1)
+		}
+		logger.Info("所有服务已优雅关闭")
+	case <-time.After(15 * time.Second):
+		logger.Error("服务关闭超时，强制退出")
 		os.Exit(1)
 	}
+}
+
+func startServices(config *configs.Config, logger *utils.Logger, g *errgroup.Group, groupCtx context.Context) error {
+	// 启动 WebSocket 服务
+	if _, err := StartWSServer(config, logger, g, groupCtx); err != nil {
+		return fmt.Errorf("启动 WebSocket 服务失败: %w", err)
+	}
+
+	// 启动 Http 服务
+	if _, err := StartHttpServer(config, logger, g, groupCtx); err != nil {
+		return fmt.Errorf("启动 Http 服务失败: %w", err)
+	}
+
+	return nil
 }
 
 func main() {
@@ -150,25 +202,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 创建可取消的上下文
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// 用 errgroup 管理两个服务
-	g, ctx := errgroup.WithContext(context.Background())
+	g, groupCtx := errgroup.WithContext(ctx)
 
-	// 启动 WebSocket 服务
-	wsServer, err := StartWSServer(config, logger, g)
-	if err != nil {
-		logger.Error("启动 WebSocket 服务失败:", err)
-		os.Exit(1)
-	}
-
-	// 启动 Http 服务
-	httpServer, err := StartHttpServer(config, logger, g)
-	if err != nil {
-		logger.Error("启动 Http 服务失败:", err)
+	// 启动所有服务
+	if err := startServices(config, logger, g, groupCtx); err != nil {
+		logger.Error("启动服务失败:", err)
+		cancel()
 		os.Exit(1)
 	}
 
 	// 启动优雅关机处理
-	ShutdownServer(httpServer, wsServer, ctx, logger, g)
+	GracefulShutdown(cancel, logger, g)
 
-	logger.Info("服务已成功关闭，程序退出")
+	logger.Info("程序已成功退出")
 }

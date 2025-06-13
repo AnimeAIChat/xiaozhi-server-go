@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ClientManager manages client contexts and resources
@@ -40,6 +41,15 @@ func (cm *ClientManager) GetClientContext(clientID string) (*ClientContext, erro
 	return ctx, nil
 }
 
+func (cm *ClientManager) checkDailyReset() {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for _, ctx := range cm.clients {
+		ctx.ResourceQuota.CheckAndResetDailyQuota()
+	}
+}
+
 // RemoveClient removes a client context
 func (cm *ClientManager) RemoveClient(clientID string) {
 	cm.mu.Lock()
@@ -56,19 +66,15 @@ func (cm *ClientManager) RemoveClient(clientID string) {
 //
 // TODO	不同级别的用户可以设置不同的配额
 func NewResourceQuota() *ResourceQuota {
+	now := time.Now()
 	quota := &ResourceQuota{
-		MaxImageTasks:     50,  // Default daily limit
-		MaxVideoTasks:     20,  // Default daily limit
-		MaxScheduledTasks: 100, // Default limit
-		UsedQuota:         make(map[TaskType]int),
-		MaxConcurrent:     make(map[TaskType]int),
-		CurrentRunning:    make(map[TaskType]int),
+		MaxTotalTasks:      100, // Default daily total limit
+		MaxConcurrentTasks: 10,  // Default concurrent limit
+		TotalUsedQuota:     0,
+		TotalRunningTasks:  0,
+		UserLevel:          UserLevelBasic,
+		LastResetDate:      time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()),
 	}
-
-	// 设置默认并发限制
-	quota.MaxConcurrent[TaskTypeImageGen] = 5
-	quota.MaxConcurrent[TaskTypeVideoGen] = 2
-	quota.MaxConcurrent[TaskTypeScheduled] = 10
 
 	return quota
 }
@@ -83,64 +89,46 @@ func (rq *ResourceQuota) SetUserLevel(level UserLevel) {
 	// 根据用户级别设置不同的配额
 	switch level {
 	case UserLevelBasic:
-		rq.MaxImageTasks = 50
-		rq.MaxVideoTasks = 20
-		rq.MaxScheduledTasks = 100
-		rq.MaxConcurrent[TaskTypeImageGen] = 5
-		rq.MaxConcurrent[TaskTypeVideoGen] = 2
-		rq.MaxConcurrent[TaskTypeScheduled] = 10
+		rq.MaxTotalTasks = 100
+		rq.MaxConcurrentTasks = 5
 	case UserLevelPremium:
-		rq.MaxImageTasks = 200
-		rq.MaxVideoTasks = 50
-		rq.MaxScheduledTasks = 300
-		rq.MaxConcurrent[TaskTypeImageGen] = 10
-		rq.MaxConcurrent[TaskTypeVideoGen] = 5
-		rq.MaxConcurrent[TaskTypeScheduled] = 20
+		rq.MaxTotalTasks = 500
+		rq.MaxConcurrentTasks = 15
 	case UserLevelBusiness:
-		rq.MaxImageTasks = 500
-		rq.MaxVideoTasks = 200
-		rq.MaxScheduledTasks = 1000
-		rq.MaxConcurrent[TaskTypeImageGen] = 30
-		rq.MaxConcurrent[TaskTypeVideoGen] = 15
-		rq.MaxConcurrent[TaskTypeScheduled] = 50
+		rq.MaxTotalTasks = 2000
+		rq.MaxConcurrentTasks = 50
 	}
 }
 
-// CanAcceptTask checks if a task can be accepted based on quotas
-func (rq *ResourceQuota) CanAcceptTask(taskType TaskType) bool {
+func (rq *ResourceQuota) CheckAndResetDailyQuota() {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 
-	// 检查总配额
-	var quotaAvailable bool
-	switch taskType {
-	case TaskTypeImageGen:
-		quotaAvailable = rq.UsedQuota[TaskTypeImageGen] < rq.MaxImageTasks
-	case TaskTypeVideoGen:
-		quotaAvailable = rq.UsedQuota[TaskTypeVideoGen] < rq.MaxVideoTasks
-	case TaskTypeScheduled:
-		quotaAvailable = rq.UsedQuota[TaskTypeScheduled] < rq.MaxScheduledTasks
-	default:
-		return false
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	// 如果距离上次重置已经过了一天
+	if rq.LastResetDate.Before(today) {
+		rq.TotalUsedQuota = 0
+		rq.LastResetDate = today
+		fmt.Printf("每日配额已重置，客户端时间: %s\n", today.Format("2006-01-02"))
 	}
-
-	// 检查并发限制
-	concurrencyAvailable := rq.CurrentRunning[taskType] < rq.MaxConcurrent[taskType]
-
-	return quotaAvailable && concurrencyAvailable
 }
 
-// StartTask marks a task as started and increments the running count
-func (rq *ResourceQuota) StartTask(taskType TaskType) error {
+func (rq *ResourceQuota) TryIncrementQuota() error {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 
-	// 检查是否超出并发限制
-	if rq.CurrentRunning[taskType] >= rq.MaxConcurrent[taskType] {
-		return fmt.Errorf("maximum concurrent %v tasks reached", taskType)
+	// 原子检查和增加
+	if rq.TotalUsedQuota >= rq.MaxTotalTasks {
+		return fmt.Errorf("daily task quota exceeded")
+	}
+	if rq.TotalRunningTasks >= rq.MaxConcurrentTasks {
+		return fmt.Errorf("concurrent task limit exceeded")
 	}
 
-	rq.CurrentRunning[taskType]++
+	rq.TotalUsedQuota++
+	rq.TotalRunningTasks++
 	return nil
 }
 
@@ -149,49 +137,8 @@ func (rq *ResourceQuota) CompleteTask(taskType TaskType) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 
-	if rq.CurrentRunning[taskType] > 0 {
-		rq.CurrentRunning[taskType]--
-	}
-}
+	rq.TotalRunningTasks--
 
-// ResetConcurrencyCounts resets all current running counts
-func (rq *ResourceQuota) ResetConcurrencyCounts() {
-	rq.mu.Lock()
-	defer rq.mu.Unlock()
-
-	for taskType := range rq.CurrentRunning {
-		rq.CurrentRunning[taskType] = 0
-	}
-}
-
-// IncrementQuota increments the used quota for a task type
-func (rq *ResourceQuota) IncrementQuota(taskType TaskType) error {
-	rq.mu.Lock()
-	defer rq.mu.Unlock()
-
-	var maxQuota int
-	var quotaExceededMsg string
-
-	switch taskType {
-	case TaskTypeImageGen:
-		maxQuota = rq.MaxImageTasks
-		quotaExceededMsg = "image generation quota exceeded"
-	case TaskTypeVideoGen:
-		maxQuota = rq.MaxVideoTasks
-		quotaExceededMsg = "video generation quota exceeded"
-	case TaskTypeScheduled:
-		maxQuota = rq.MaxScheduledTasks
-		quotaExceededMsg = "scheduled task quota exceeded"
-	default:
-		return fmt.Errorf("unknown task type: %v", taskType)
-	}
-
-	if rq.UsedQuota[taskType] >= maxQuota {
-		return fmt.Errorf("%s", quotaExceededMsg)
-	}
-
-	rq.UsedQuota[taskType]++
-	return nil
 }
 
 // DecrementQuota decrements the used quota for a task type
@@ -199,8 +146,8 @@ func (rq *ResourceQuota) DecrementQuota(taskType TaskType) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 
-	if rq.UsedQuota[taskType] > 0 {
-		rq.UsedQuota[taskType]--
+	if rq.TotalUsedQuota > 0 {
+		rq.TotalUsedQuota--
 	}
 }
 
@@ -208,16 +155,6 @@ func (rq *ResourceQuota) DecrementQuota(taskType TaskType) {
 func (rq *ResourceQuota) ResetQuota(taskType TaskType) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
+	rq.TotalUsedQuota = 0
 
-	rq.UsedQuota[taskType] = 0
-}
-
-// ResetAllQuotas resets all quotas
-func (rq *ResourceQuota) ResetAllQuotas() {
-	rq.mu.Lock()
-	defer rq.mu.Unlock()
-
-	for taskType := range rq.UsedQuota {
-		rq.UsedQuota[taskType] = 0
-	}
 }

@@ -33,13 +33,13 @@ type Config struct {
 
 // Provider VLLLM提供者，直接处理多模态API
 type Provider struct {
-	config          *Config
-	imageProcessor  *image.ImageProcessor
-	logger          *utils.Logger
-	
+	config         *Config
+	imageProcessor *image.ImageProcessor
+	logger         *utils.Logger
+
 	// 直接的API客户端
-	openaiClient    *openai.Client  // 用于OpenAI类型
-	httpClient      *http.Client    // 用于Ollama类型
+	openaiClient *openai.Client // 用于OpenAI类型
+	httpClient   *http.Client   // 用于Ollama类型
 }
 
 // OllamaRequest Ollama API请求结构
@@ -106,13 +106,13 @@ func (p *Provider) Initialize() error {
 		if p.config.APIKey == "" {
 			return fmt.Errorf("OpenAI API key is required")
 		}
-		
+
 		clientConfig := openai.DefaultConfig(p.config.APIKey)
 		if p.config.BaseURL != "" {
 			clientConfig.BaseURL = p.config.BaseURL
 		}
 		p.openaiClient = openai.NewClientWithConfig(clientConfig)
-		
+
 	case "ollama":
 		// Ollama不需要API key，只需要确保有BaseURL
 		if p.config.BaseURL == "" {
@@ -122,7 +122,7 @@ func (p *Provider) Initialize() error {
 			"base_url": p.config.BaseURL,
 			"model":    p.config.ModelName,
 		})
-		
+
 	default:
 		return fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
 	}
@@ -154,7 +154,7 @@ func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, mess
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
-	p.logger.FormatInfo("开始调用多模态API %v", map[string]interface{}{
+	p.logger.FormatDebug("开始调用多模态API %v", map[string]interface{}{
 		"type":       p.config.Type,
 		"model_name": p.config.ModelName,
 		"text":       text,
@@ -181,7 +181,7 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 
 		// 构建OpenAI多模态消息
 		chatMessages := make([]openai.ChatCompletionMessage, 0, len(messages)+1)
-		
+
 		// 添加历史消息
 		for _, msg := range messages {
 			chatMessages = append(chatMessages, openai.ChatCompletionMessage{
@@ -189,7 +189,7 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 				Content: msg.Content,
 			})
 		}
-		
+
 		// 构建包含图片的多模态消息
 		visionMessage := openai.ChatCompletionMessage{
 			Role: openai.ChatMessageRoleUser,
@@ -206,6 +206,8 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 				},
 			},
 		}
+		// 打印visionMessage的内容
+		p.logger.FormatDebug("构建的OpenAI Vision消息: %v", visionMessage)
 		chatMessages = append(chatMessages, visionMessage)
 
 		// 调用OpenAI Vision API
@@ -215,7 +217,6 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 				Model:       p.config.ModelName,
 				Messages:    chatMessages,
 				Stream:      true,
-				MaxTokens:   p.config.MaxTokens,
 				Temperature: float32(p.config.Temperature),
 				TopP:        float32(p.config.TopP),
 			},
@@ -223,13 +224,14 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 		if err != nil {
 			responseChan <- fmt.Sprintf("【VLLLM服务响应异常: %v】", err)
 			p.logger.FormatError("OpenAI Vision API调用失败 %v", err)
-		
+			p.logger.FormatInfo("OpenAI Vision API调用失败，%s, maxTokens:%dm, Temperature:%f, top:%f", p.config.ModelName, p.config.MaxTokens, float32(p.config.Temperature), float32(p.config.TopP))
+
 			return
 		}
 		defer stream.Close()
 
 		p.logger.Info("OpenAI Vision API调用成功，开始接收流式回复")
-		
+
 		isActive := true
 		for {
 			response, err := stream.Recv()
@@ -247,7 +249,7 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 				}
 			}
 		}
-		
+
 		p.logger.Info("OpenAI Vision API流式回复完成")
 	}()
 
@@ -263,7 +265,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 
 		// 构建Ollama请求
 		ollamaMessages := make([]OllamaMessage, 0, len(messages)+1)
-		
+
 		// 添加历史消息
 		for _, msg := range messages {
 			ollamaMessages = append(ollamaMessages, OllamaMessage{
@@ -271,7 +273,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 				Content: msg.Content,
 			})
 		}
-		
+
 		// 添加包含图片的用户消息
 		visionMessage := OllamaMessage{
 			Role:    "user",
@@ -309,7 +311,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		p.logger.Info("向Ollama发送多模态请求", map[string]interface{}{
 			"url":   url,
 			"model": p.config.ModelName,
@@ -338,7 +340,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		// 处理流式响应
 		decoder := json.NewDecoder(resp.Body)
 		isActive := true
-		
+
 		for {
 			var response OllamaResponse
 			if err := decoder.Decode(&response); err != nil {
@@ -360,7 +362,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 				break
 			}
 		}
-		
+
 		p.logger.Info("Ollama Vision API流式回复完成")
 	}()
 
@@ -403,13 +405,13 @@ func (p *Provider) detectMultimodalMessage(content string) (text string, imageUR
 	// 正则匹配之前的多模态消息格式
 	multimodalPattern := regexp.MustCompile(`\[MULTIMODAL_MESSAGE\](.*?)\[/MULTIMODAL_MESSAGE\]`)
 	matches := multimodalPattern.FindStringSubmatch(content)
-	
+
 	if len(matches) > 0 {
 		// 这是旧格式的多模态消息，需要解析
 		// 这里可以添加解析逻辑，但新版本应该直接使用 ResponseWithImage
 		return "", "", true
 	}
-	
+
 	return content, "", false
 }
 
@@ -421,4 +423,4 @@ func (p *Provider) GetImageMetrics() image.ImageMetrics {
 // GetConfig 获取配置信息
 func (p *Provider) GetConfig() *Config {
 	return p.config
-} 
+}

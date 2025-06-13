@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/pool"
@@ -13,46 +14,6 @@ import (
 
 	"github.com/gorilla/websocket"
 )
-
-// ConnectionContext 连接上下文，用于跟踪资源分配
-type ConnectionContext struct {
-	handler     *ConnectionHandler
-	providerSet *pool.ProviderSet
-	poolManager *pool.PoolManager
-	clientID    string
-	logger      *utils.Logger
-	conn        Conn
-}
-
-// Close 关闭连接并归还资源
-func (ctx *ConnectionContext) Close() error {
-	var errs []error
-
-	// 先关闭连接处理器
-	if ctx.handler != nil {
-		ctx.handler.Close()
-	}
-
-	// 关闭WebSocket连接
-	if ctx.conn != nil {
-		ctx.conn.Close()
-	}
-
-	// 归还资源到池中
-	if ctx.providerSet != nil && ctx.poolManager != nil {
-		if err := ctx.poolManager.ReturnProviderSet(ctx.providerSet); err != nil {
-			errs = append(errs, fmt.Errorf("归还资源失败: %v", err))
-			ctx.logger.Error(fmt.Sprintf("客户端 %s 归还资源失败: %v", ctx.clientID, err))
-		} else {
-			ctx.logger.Info(fmt.Sprintf("客户端 %s 资源已成功归还到池中", ctx.clientID))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("关闭连接时发生错误: %v", errs)
-	}
-	return nil
-}
 
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
@@ -75,6 +36,9 @@ type Conn interface {
 	ReadMessage() (messageType int, p []byte, err error)
 	WriteMessage(messageType int, data []byte) error
 	Close() error
+	IsClosed() bool
+	GetLastActiveTime() time.Time
+	IsStale(timeout time.Duration) bool
 }
 
 // NewWebSocketServer 创建新的WebSocket服务器
@@ -85,11 +49,8 @@ func NewWebSocketServer(config *configs.Config, logger *utils.Logger) (*WebSocke
 		upgrader: NewDefaultUpgrader(),
 		taskMgr: func() *task.TaskManager {
 			tm := task.NewTaskManager(task.ResourceConfig{
-				MaxWorkers:          12,
-				MaxTasksPerClient:   20,
-				MaxImageTasksPerDay: 50,
-				MaxVideoTasksPerDay: 20,
-				MaxScheduledTasks:   100,
+				MaxWorkers:        12,
+				MaxTasksPerClient: 20,
 			})
 			tm.Start()
 			return tm
@@ -125,15 +86,6 @@ func (ws *WebSocketServer) Start(ctx context.Context) error {
 
 	ws.logger.Info(fmt.Sprintf("启动WebSocket服务器 ws://%s...", addr))
 
-	// 启动服务器关闭监控
-	go func() {
-		<-ctx.Done()
-		ws.logger.Info("收到关闭信号，准备关闭服务器...")
-		if err := ws.Stop(); err != nil {
-			ws.logger.Error(fmt.Sprintf("服务器关闭时出错: %v", err))
-		}
-	}()
-
 	// 启动服务器
 	if err := ws.server.ListenAndServe(); err != nil {
 		if err == http.ErrServerClosed {
@@ -163,30 +115,21 @@ func NewDefaultUpgrader() *defaultUpgrader {
 	}
 }
 
-// websocketConn 封装gorilla/websocket的连接实现
-type websocketConn struct {
-	conn *websocket.Conn
-}
-
-func (w *websocketConn) ReadMessage() (messageType int, p []byte, err error) {
-	return w.conn.ReadMessage()
-}
-
-func (w *websocketConn) WriteMessage(messageType int, data []byte) error {
-	return w.conn.WriteMessage(messageType, data)
-}
-
-func (w *websocketConn) Close() error {
-	return w.conn.Close()
-}
-
 // Upgrade 实现Upgrader接口
 func (u *defaultUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (Conn, error) {
 	conn, err := u.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &websocketConn{conn: conn}, nil
+
+	now := time.Now().Unix()
+	wsConn := &websocketConn{
+		conn:       conn,
+		closed:     0,
+		lastActive: now,
+	}
+
+	return wsConn, nil
 }
 
 // Stop 停止WebSocket服务器
@@ -239,23 +182,18 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	connCtx, connCancel := context.WithCancel(context.Background())
 	// 创建新的连接处理器
-	handler := NewConnectionHandler(ws.config, providerSet, ws.logger, r)
+	handler := NewConnectionHandler(ws.config, providerSet, ws.logger, r, connCtx)
 
+	connContext := NewConnectionContext(handler, providerSet, ws.poolManager, clientID, ws.logger, conn, connCtx, connCancel)
+
+	// 设置TaskManager的回调（使用安全回调）
 	handler.taskMgr = ws.taskMgr
-
-	// 创建连接上下文
-	connCtx := &ConnectionContext{
-		handler:     handler,
-		providerSet: providerSet,
-		poolManager: ws.poolManager,
-		clientID:    clientID,
-		logger:      ws.logger,
-		conn:        conn,
-	}
+	handler.SetTaskCallback(connContext.CreateSafeCallback())
 
 	// 存储连接上下文
-	ws.activeConnections.Store(clientID, connCtx)
+	ws.activeConnections.Store(clientID, connContext)
 
 	ws.logger.Info(fmt.Sprintf("客户端 %s 连接已建立，资源已分配", clientID))
 
@@ -264,7 +202,7 @@ func (ws *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Reques
 		defer func() {
 			// 连接结束时清理
 			ws.activeConnections.Delete(clientID)
-			if err := connCtx.Close(); err != nil {
+			if err := connContext.Close(); err != nil {
 				ws.logger.Error(fmt.Sprintf("清理连接上下文失败: %v", err))
 			}
 		}()

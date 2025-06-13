@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +24,7 @@ import (
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
+	"xiaozhi-server-go/src/vision"
 
 	"github.com/google/uuid"
 )
@@ -36,13 +36,14 @@ type configGetter interface {
 // ConnectionHandler 连接处理器结构
 type ConnectionHandler struct {
 	// 确保实现 AsrEventListener 接口
-	_         providers.AsrEventListener
-	config    *configs.Config
-	logger    *utils.Logger
-	conn      Conn
-	closeOnce sync.Once
-	taskMgr   *task.TaskManager
-	providers struct {
+	_                providers.AsrEventListener
+	config           *configs.Config
+	logger           *utils.Logger
+	conn             Conn
+	closeOnce        sync.Once
+	taskMgr          *task.TaskManager
+	safeCallbackFunc func(func(*ConnectionHandler)) func()
+	providers        struct {
 		asr   providers.ASRProvider
 		llm   providers.LLMProvider
 		tts   providers.TTSProvider
@@ -106,6 +107,8 @@ type ConnectionHandler struct {
 	// functions
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
+
+	ctx context.Context
 }
 
 // NewConnectionHandler 创建新的连接处理器
@@ -114,6 +117,7 @@ func NewConnectionHandler(
 	providerSet *pool.ProviderSet,
 	logger *utils.Logger,
 	req *http.Request,
+	ctx context.Context,
 ) *ConnectionHandler {
 	handler := &ConnectionHandler{
 		config:           config,
@@ -142,6 +146,8 @@ func NewConnectionHandler(
 		serverAudioSampleRate:    24000,
 		serverAudioChannels:      1,
 		serverAudioFrameDuration: 60,
+
+		ctx: ctx,
 
 		headers: make(map[string]string),
 	}
@@ -187,6 +193,37 @@ func NewConnectionHandler(
 	return handler
 }
 
+func (h *ConnectionHandler) SetTaskCallback(callback func(func(*ConnectionHandler)) func()) {
+	h.safeCallbackFunc = callback
+}
+
+func (h *ConnectionHandler) SubmitTask(taskType string, params map[string]interface{}) {
+	_task, id := task.NewTask(h.ctx, "", params)
+	h.logger.Info(fmt.Sprintf("提交任务: %s, ID: %s, 参数: %v", _task.Type, id, params))
+	// 创建安全回调用于任务完成时调用
+	var taskCallback func(result interface{})
+	if h.safeCallbackFunc != nil {
+		taskCallback = func(result interface{}) {
+			fmt.Print("任务完成回调: ")
+			safeCallback := h.safeCallbackFunc(func(handler *ConnectionHandler) {
+				// 处理任务完成逻辑
+				handler.handleTaskComplete(_task, id, result)
+			})
+			// 执行安全回调
+			if safeCallback != nil {
+				safeCallback()
+			}
+		}
+	}
+	cb := task.NewCallBack(taskCallback)
+	_task.Callback = cb
+	h.taskMgr.SubmitTask(h.sessionID, _task)
+}
+
+func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, result interface{}) {
+	h.logger.Info(fmt.Sprintf("任务 %s 完成，ID: %s, %v", task.Type, id, result))
+}
+
 // Handle 处理WebSocket连接
 func (h *ConnectionHandler) Handle(conn Conn) {
 	defer conn.Close()
@@ -215,6 +252,10 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 		// 池化的管理器已经预初始化，只需要绑定连接
 		params := map[string]interface{}{
 			"session_id": h.sessionID,
+			"vision_url": h.config.Web.VisionURL,
+			"device_id":  h.deviceID,
+			"client_id":  h.clientId,
+			"token":      h.config.Server.Token,
 		}
 		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
 			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
@@ -238,9 +279,6 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 
 			if err := h.handleMessage(messageType, message); err != nil {
 				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
-				if h.closeAfterChat {
-					return
-				}
 			}
 		}
 	}
@@ -289,6 +327,11 @@ func (h *ConnectionHandler) sendAudioMessageCoroutine() {
 // 返回true则停止语音识别，返回false会继续语音识别
 func (h *ConnectionHandler) OnAsrResult(result string) bool {
 	//h.logger.Info(fmt.Sprintf("[%s] ASR识别结果: %s", h.clientListenMode, result))
+	if h.providers.asr.GetSilenceCount() >= 2 {
+		h.logger.Info("检测到连续两次静音，结束对话")
+		h.closeAfterChat = true // 如果连续两次静音，则结束对话
+		result = "长时间未检测到用户说话，请礼貌的结束对话"
+	}
 	if h.clientListenMode == "auto" {
 		if result == "" {
 			return false
@@ -393,80 +436,6 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		return nil
 	}
 
-	// 智能检测图片URL并自动转换为图片消息
-	if imageURL, remainingText, detected := h.detectImageURL(text); detected && h.providers.vlllm != nil {
-		h.logger.Info("检测到图片URL，自动转换为图片消息", map[string]interface{}{
-			"url":  imageURL,
-			"text": remainingText,
-		})
-
-		// 构造图片消息数据
-		imageData := image.ImageData{
-			URL:    imageURL,
-			Format: h.extractImageFormat(imageURL),
-		}
-
-		// 立即发送STT消息
-		sttText := remainingText
-		if sttText == "" {
-			sttText = "用户发送了一张图片"
-		}
-		err := h.sendSTTMessage(sttText)
-		if err != nil {
-			h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
-			return fmt.Errorf("发送STT消息失败: %v", err)
-		}
-
-		// 发送TTS开始状态
-		if err := h.sendTTSMessage("start", "", 0); err != nil {
-			h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
-			return fmt.Errorf("发送TTS开始状态失败: %v", err)
-		}
-
-		// 立即给用户语音反馈，提升用户体验
-		immediateResponse := "检测到图片链接，正在下载并识别图片，这就为你分析"
-		h.logger.Info("立即播放图片URL识别提示音", map[string]interface{}{
-			"response": immediateResponse,
-			"url":      imageURL,
-		})
-
-		// 重置语音状态，确保能够播放提示音
-		atomic.StoreInt32(&h.serverVoiceStop, 0)
-
-		// 立即合成并播放提示音（使用索引0确保优先播放）
-		if err := h.SpeakAndPlay(immediateResponse, 0, currentRound); err != nil {
-			h.logger.Error(fmt.Sprintf("播放图片URL识别提示音失败: %v", err))
-		}
-
-		// 发送思考状态的情绪
-		if err := h.sendEmotionMessage("thinking"); err != nil {
-			h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
-			return fmt.Errorf("发送情绪消息失败: %v", err)
-		}
-
-		// 添加用户消息到对话历史（包含图片信息的描述）
-		userMessage := fmt.Sprintf("%s [用户发送了一张图片: %s]", remainingText, imageURL)
-		h.dialogueManager.Put(chat.Message{
-			Role:    "user",
-			Content: userMessage,
-		})
-
-		// 获取对话历史（排除当前图片消息）
-		messages := make([]providers.Message, 0)
-		for _, msg := range h.dialogueManager.GetLLMDialogue() {
-			if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张图片:") {
-				continue
-			}
-			messages = append(messages, providers.Message{
-				Role:    msg.Role,
-				Content: msg.Content,
-			})
-		}
-
-		// 使用VLLLM处理图片消息
-		return h.genResponseByVLLM(ctx, messages, imageData, remainingText, currentRound)
-	}
-
 	// 普通文本消息处理流程
 	// 立即发送 stt 消息
 	err := h.sendSTTMessage(text)
@@ -499,18 +468,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		Content: text,
 	})
 
-	// 转换消息格式并使用LLM生成回复
-	messages := make([]providers.Message, 0)
-	for _, msg := range h.dialogueManager.GetLLMDialogue() {
-		messages = append(messages, providers.Message{
-			Role:       msg.Role,
-			Content:    msg.Content,
-			ToolCalls:  msg.ToolCalls,
-			ToolCallID: msg.ToolCallID,
-		})
-	}
-
-	return h.genResponseByLLM(ctx, messages, currentRound)
+	return h.genResponseByLLM(ctx, h.dialogueManager.GetLLMDialogue(), currentRound)
 }
 
 func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message, round int) error {
@@ -524,9 +482,10 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}()
 
 	llmStartTime := time.Now()
-	h.logger.FormatInfo("开始生成LLM回复, round:%d 打印message", round)
+	//h.logger.FormatInfo("开始生成LLM回复, round:%d ", round)
 	for _, msg := range messages {
-		msg.Print()
+		_ = msg
+		//msg.Print()
 	}
 	// 使用LLM生成回复
 	tools := h.functionRegister.GetAllFunctions()
@@ -660,6 +619,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 						result = "MCP工具调用失败"
 					}
 				}
+
 				h.logger.Info(fmt.Sprintf("MCP函数调用结果: %v", result))
 				actionResult := types.ActionResponse{
 					Action: types.ActionTypeReqLLM, // 动作类型
@@ -685,7 +645,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}
 	} else {
-		h.logger.Info(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
+		h.logger.Debug(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
 	}
 
 	// 分析回复并发送相应的情绪
@@ -749,18 +709,12 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 				ToolCallID: toolCallID,
 				Content:    text,
 			})
-
-			messages := make([]providers.Message, 0)
-			for _, msg := range h.dialogueManager.GetLLMDialogue() {
-				messages = append(messages, providers.Message{
-					Role:       msg.Role,
-					Content:    msg.Content,
-					ToolCalls:  msg.ToolCalls,
-					ToolCallID: msg.ToolCallID,
-				})
+			if functionName == "self_camera_take_photo" {
+				h.handleTakePhotoMCP(result, functionArguments, textIndex)
+			} else {
+				h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
 			}
-			// 递归调用 chat_with_function_calling 逻辑
-			h.genResponseByLLM(context.Background(), messages, h.talkRound)
+
 		} else {
 			h.logger.Error(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
 			// 发送错误消息
@@ -768,6 +722,26 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 			h.SpeakAndPlay(errorMessage, textIndex, h.talkRound)
 		}
 	}
+}
+
+func (h *ConnectionHandler) handleTakePhotoMCP(result types.ActionResponse, text string, textIndex int) error {
+	// 特殊处理拍照函数，解析为VisionResponse
+	resultStr, _ := result.Result.(string)
+	var visionResponse vision.VisionResponse
+	if err := json.Unmarshal([]byte(resultStr), &visionResponse); err != nil {
+		h.logger.Error(fmt.Sprintf("解析VisionResponse失败: %v", err))
+		return fmt.Errorf("解析VisionResponse失败: %v", err)
+	}
+
+	if !visionResponse.Success {
+		h.logger.Error(fmt.Sprintf("拍照失败: %s", visionResponse.Message))
+		h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
+		return nil
+	}
+
+	h.tts_last_text_index = 1
+	h.SpeakAndPlay(visionResponse.Result, 1, h.talkRound)
+	return nil
 }
 
 // isNeedAuth 判断是否需要验证
@@ -819,7 +793,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 	if err := os.Remove(filepath); err != nil {
 		h.logger.Error(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
 	} else {
-		h.logger.Info(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
+		h.logger.Debug(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
 	}
 }
 
@@ -858,7 +832,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		h.logger.Error(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
 		return
 	} else {
-		h.logger.Info(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
+		h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
 		// 如果是快速回复词，保存到缓存
 		if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 			if err := h.quickReplyCache.SaveCachedAudio(text, filepath); err != nil {
@@ -878,7 +852,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	if textIndex == 1 {
 		now := time.Now()
 		ttsSpentTime := now.Sub(ttsStartTime)
-		h.logger.Info(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
+		h.logger.Debug(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
 
 }
@@ -909,9 +883,8 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 	}
 
 	if len(text) > 255 {
-		h.logger.Warn(fmt.Sprintf("文本过长，超过255字符限制，无法合成语音: %s", text))
-		text = ""
-		return errors.New("文本过长，超过255字符限制，无法合成语音")
+		h.logger.Warn(fmt.Sprintf("文本过长，超过255字符限制，截断合成语音: %s", text))
+		text = text[:255] // 截断文本
 	}
 
 	return nil
@@ -981,58 +954,9 @@ func (h *ConnectionHandler) Close() {
 	})
 }
 
-// detectImageURL 检测文本中的图片URL
-func (h *ConnectionHandler) detectImageURL(text string) (imageURL string, remainingText string, detected bool) {
-	// 定义图片URL的正则表达式
-	imageURLPattern := regexp.MustCompile(`(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp))`)
-
-	// 查找图片URL
-	matches := imageURLPattern.FindStringSubmatch(text)
-
-	if len(matches) > 0 {
-		imageURL = matches[1]
-		// 移除URL，保留剩余文本
-		remainingText = strings.TrimSpace(strings.Replace(text, imageURL, "", 1))
-		if remainingText == "" {
-			remainingText = "请描述这张图片"
-		}
-		h.logger.Info("检测到图片URL", map[string]interface{}{
-			"url":            imageURL,
-			"remaining_text": remainingText,
-		})
-		return imageURL, remainingText, true
-	}
-
-	return "", text, false
-}
-
-// extractImageFormat 从URL中提取图片格式
-func (h *ConnectionHandler) extractImageFormat(url string) string {
-	// 从URL中提取文件扩展名
-	if strings.Contains(url, ".") {
-		parts := strings.Split(url, ".")
-		if len(parts) > 0 {
-			ext := strings.ToLower(parts[len(parts)-1])
-			// 处理URL参数的情况
-			if strings.Contains(ext, "?") {
-				ext = strings.Split(ext, "?")[0]
-			}
-			// 验证是否是支持的图片格式
-			supportedFormats := []string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}
-			for _, format := range supportedFormats {
-				if ext == format {
-					return ext
-				}
-			}
-		}
-	}
-	// 默认返回jpg
-	return "jpg"
-}
-
 // genResponseByVLLM 使用VLLLM处理包含图片的消息
 func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string, round int) error {
-	h.logger.Info("开始生成VLLLM回复", map[string]interface{}{
+	h.logger.FormatInfo("开始生成VLLLM回复 %v", map[string]interface{}{
 		"text":          text,
 		"has_url":       imageData.URL != "",
 		"has_data":      imageData.Data != "",

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -11,14 +12,11 @@ import (
 // TaskType represents different types of async tasks
 type TaskType string
 
-const (
-	TaskTypeImageGen  TaskType = "image_gen"
-	TaskTypeVideoGen  TaskType = "video_gen"
-	TaskTypeScheduled TaskType = "scheduled"
-)
-
 // TaskStatus represents the current status of a task
 type TaskStatus string
+
+// TaskExecutor defines the function signature for task execution
+type TaskExecutor func(t *Task) error
 
 const (
 	TaskStatusPending  TaskStatus = "pending"
@@ -26,6 +24,44 @@ const (
 	TaskStatusComplete TaskStatus = "complete"
 	TaskStatusFailed   TaskStatus = "failed"
 )
+
+// TaskRegistry manages task type to executor mappings
+type TaskRegistry struct {
+	executors map[TaskType]TaskExecutor
+	mu        sync.RWMutex
+}
+
+// Global task registry instance
+var taskRegistry = &TaskRegistry{
+	executors: make(map[TaskType]TaskExecutor),
+}
+
+// RegisterTaskExecutor registers a task executor for a specific task type
+func RegisterTaskExecutor(taskType TaskType, executor TaskExecutor) {
+	taskRegistry.mu.Lock()
+	defer taskRegistry.mu.Unlock()
+	taskRegistry.executors[taskType] = executor
+	fmt.Printf("注册任务类型: %s\n", taskType)
+}
+
+// GetTaskExecutor retrieves the executor for a specific task type
+func GetTaskExecutor(taskType TaskType) (TaskExecutor, bool) {
+	taskRegistry.mu.RLock()
+	defer taskRegistry.mu.RUnlock()
+	executor, exists := taskRegistry.executors[taskType]
+	return executor, exists
+}
+
+// GetRegisteredTaskTypes returns all registered task types
+func GetRegisteredTaskTypes() []TaskType {
+	taskRegistry.mu.RLock()
+	defer taskRegistry.mu.RUnlock()
+	types := make([]TaskType, 0, len(taskRegistry.executors))
+	for taskType := range taskRegistry.executors {
+		types = append(types, taskType)
+	}
+	return types
+}
 
 // Task represents an async task with its properties and callback
 type Task struct {
@@ -39,17 +75,19 @@ type Task struct {
 	Callback      TaskCallback
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	ClinetID      string
+	Context       context.Context
 }
 
-func NewTask(taskType TaskType, params interface{}, callback TaskCallback) (task *Task, id string) {
+func NewTask(ctx context.Context, taskType TaskType, params interface{}) (task *Task, id string) {
 	id = uuid.New().String()
 	return &Task{
 		ID:        id,
 		Type:      taskType,
 		Status:    TaskStatusPending,
 		Params:    params,
-		Callback:  callback,
 		CreatedAt: time.Now(),
+		Context:   ctx,
 	}, id
 }
 
@@ -65,20 +103,23 @@ func (t *Task) Execute() {
 		}
 	}()
 
+	select {
+	case <-t.Context.Done():
+		fmt.Printf("任务 %s 因连接断开而取消\n", t.ID)
+		return
+	default:
+	}
+
 	t.Status = TaskStatusRunning
 	t.UpdatedAt = time.Now()
 
-	// Execute task based on type
-	switch t.Type {
-	case TaskTypeImageGen:
-		t.executeImageGen()
-	case TaskTypeVideoGen:
-		t.executeVideoGen()
-	case TaskTypeScheduled:
-		t.executeScheduled()
-	default:
-		t.Error = fmt.Errorf("unknown task type: %v", t.Type)
+	executor, exists := GetTaskExecutor(t.Type)
+	if !exists {
+		t.Error = fmt.Errorf("no executor registered for task type: %v", t.Type)
 		t.Status = TaskStatusFailed
+	} else {
+		// Execute the task using the registered executor
+		t.Error = executor(t)
 	}
 
 	// Call appropriate callback
@@ -91,30 +132,6 @@ func (t *Task) Execute() {
 		t.Status = TaskStatusComplete
 		if t.Callback != nil {
 			t.Callback.OnComplete(t.Result)
-		}
-	}
-}
-
-func (t *Task) executeImageGen() {
-	t.Result = "image_url_here" // Placeholder for image generation logic
-}
-
-func (t *Task) executeVideoGen() {
-	// TODO: Implement video generation logic
-	t.Result = "video_url_here"
-}
-
-func (t *Task) executeScheduled() {
-	// Execute scheduled task based on params
-	if params, ok := t.Params.(map[string]interface{}); ok {
-		if action, ok := params["action"].(string); ok {
-			switch action {
-			case "play_music":
-				// Handle music playback
-				t.Result = "Music played successfully"
-			default:
-				t.Error = fmt.Errorf("unknown scheduled action: %v", action)
-			}
 		}
 	}
 }
@@ -135,14 +152,13 @@ const (
 
 // ResourceQuota manages resource limits for tasks
 type ResourceQuota struct {
-	MaxImageTasks     int
-	MaxVideoTasks     int
-	MaxScheduledTasks int
-	UsedQuota         map[TaskType]int
-	MaxConcurrent     map[TaskType]int // 每种任务类型的最大并发数
-	CurrentRunning    map[TaskType]int // 每种任务类型当前正在运行的数量
-	UserLevel         UserLevel        // 新增用户级别字段
-	mu                sync.RWMutex
+	MaxTotalTasks      int       // 总任务配额限制
+	MaxConcurrentTasks int       // 总并发任务限制
+	TotalUsedQuota     int       // 总已使用配额
+	TotalRunningTasks  int       // 总运行中任务数
+	UserLevel          UserLevel // 新增用户级别字段
+	LastResetDate      time.Time
+	mu                 sync.RWMutex
 }
 
 // ClientContext holds client-specific settings and state
@@ -152,7 +168,6 @@ type ClientContext struct {
 	TaskQueue          chan *Task
 	ActiveTasks        map[string]*Task
 	ResourceQuota      *ResourceQuota
-	mu                 sync.RWMutex
 }
 
 // WorkerStatus represents the current status of a worker
@@ -166,9 +181,6 @@ const (
 
 // ResourceConfig defines resource limits for task execution
 type ResourceConfig struct {
-	MaxWorkers          int
-	MaxTasksPerClient   int
-	MaxImageTasksPerDay int
-	MaxVideoTasksPerDay int
-	MaxScheduledTasks   int
+	MaxWorkers        int
+	MaxTasksPerClient int
 }

@@ -124,11 +124,19 @@ func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, 
 	m.funcHandler = fh
 	paramsMap := params.(map[string]interface{})
 	sessionID := paramsMap["session_id"].(string)
+	visionURL := paramsMap["vision_url"].(string)
+	deviceID := paramsMap["device_id"].(string)
+	clientID := paramsMap["client_id"].(string)
+	token := paramsMap["token"].(string)
+	m.logger.Debug(fmt.Sprintf("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL))
 
 	// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
 		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
 		m.clients["xiaozhi"] = m.XiaoZhiMCPClient
+		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
+		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
+		m.XiaoZhiMCPClient.SetToken(token)
 
 		if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
 			return fmt.Errorf("启动XiaoZhi MCP客户端失败: %v", err)
@@ -136,6 +144,8 @@ func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, 
 	} else {
 		// 重新绑定连接而不是重新创建
 		m.XiaoZhiMCPClient.SetConnection(conn)
+		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
+		m.XiaoZhiMCPClient.SetToken(token)
 		if !m.XiaoZhiMCPClient.IsReady() {
 			if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
 				return fmt.Errorf("重启XiaoZhi MCP客户端失败: %v", err)
