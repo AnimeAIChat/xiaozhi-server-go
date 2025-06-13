@@ -23,6 +23,7 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/llm/openai"
 	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
 	_ "xiaozhi-server-go/src/core/providers/tts/edge"
+	_ "xiaozhi-server-go/src/core/providers/tts/gosherpa"
 	_ "xiaozhi-server-go/src/core/providers/vlllm/ollama"
 	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
 
