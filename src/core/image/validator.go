@@ -319,7 +319,7 @@ func (v *ImageSecurityValidator) validateImageDecoding(data []byte, format strin
 	result.Height = config.Height
 	result.FileSize = int64(len(data))
 
-	v.logger.FormatDebug("图片验证成功 %v", map[string]interface{}{
+	v.logger.Debug("图片验证成功 %v", map[string]interface{}{
 		"format": result.Format,
 		"width":  result.Width,
 		"height": result.Height,

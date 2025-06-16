@@ -19,7 +19,7 @@ func NewProvider(config *vlllm.Config, logger *utils.Logger) (*vlllm.Provider, e
 		return nil, err
 	}
 
-	logger.FormatDebug("OpenAI VLLLM Provider创建成功 %v", map[string]interface{}{
+	logger.Debug("OpenAI VLLLM Provider创建成功 %v", map[string]interface{}{
 		"model_name": config.ModelName,
 		"base_url":   config.BaseURL,
 	})
@@ -30,4 +30,4 @@ func NewProvider(config *vlllm.Config, logger *utils.Logger) (*vlllm.Provider, e
 // init 注册OpenAI VLLLM提供者
 func init() {
 	vlllm.Register("openai", NewProvider)
-} 
+}
