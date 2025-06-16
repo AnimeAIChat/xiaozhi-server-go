@@ -8,3 +8,5 @@ xiaozhi-server-go
 .DS_Store
 wake_replay
 /uploads
+.env
+config.db
