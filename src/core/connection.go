@@ -296,7 +296,7 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 			"token":      h.config.Server.Token,
 		}
 		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
-			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
+			h.LogError(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
 			return
 		}
 		// 不需要重新初始化服务器，只需要确保连接相关的服务正常
@@ -311,12 +311,12 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 		default:
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				h.logger.Error(fmt.Sprintf("读取消息失败: %v", err))
+				h.LogError(fmt.Sprintf("读取消息失败: %v", err))
 				return
 			}
 
 			if err := h.handleMessage(messageType, message); err != nil {
-				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
+				h.LogError(fmt.Sprintf("处理消息失败: %v", err))
 			}
 		}
 	}

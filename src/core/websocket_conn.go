@@ -27,7 +27,7 @@ func (w *websocketConn) ReadMessage() (messageType int, p []byte, err error) {
 	}
 
 	// 设置读取超时
-	w.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	w.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 
 	messageType, p, err = w.conn.ReadMessage()
 	if err != nil {

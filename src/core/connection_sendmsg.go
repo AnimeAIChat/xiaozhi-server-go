@@ -190,6 +190,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 	if len(audioData) < preBufferFrames {
 		preBufferFrames = len(audioData)
 	}
+	preBufferTime := time.Duration(h.serverAudioFrameDuration*preBufferFrames) * time.Millisecond // 预缓冲时间（毫秒）
 
 	// 发送预缓冲帧
 	for i := 0; i < preBufferFrames; i++ {
@@ -222,7 +223,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 		}
 
 		// 计算预期发送时间
-		expectedTime := startTime.Add(time.Duration(playPosition) * time.Millisecond)
+		expectedTime := startTime.Add(time.Duration(playPosition)*time.Millisecond - preBufferTime)
 		currentTime := time.Now()
 		delay := expectedTime.Sub(currentTime)
 
@@ -254,7 +255,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 
 		playPosition += h.serverAudioFrameDuration
 	}
-
+	time.Sleep(preBufferTime) // 确保预缓冲时间已过
 	spentTime := time.Since(startTime).Milliseconds()
 	h.LogInfo(fmt.Sprintf("音频帧发送完成: 总帧数=%d, 总时长=%dms, 总耗时:%dms 文本=%s", len(audioData), playPosition, spentTime, text))
 	return nil
