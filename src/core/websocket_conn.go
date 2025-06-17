@@ -27,7 +27,7 @@ func (w *websocketConn) ReadMessage() (messageType int, p []byte, err error) {
 	}
 
 	// 设置读取超时
-	w.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	w.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 
 	messageType, p, err = w.conn.ReadMessage()
 	if err != nil {
@@ -107,4 +107,12 @@ func (w *websocketConn) IsStale(timeout time.Duration) bool {
 		return true
 	}
 	return time.Since(w.GetLastActiveTime()) > timeout
+}
+
+func (w *websocketConn) GetID() string {
+	return w.conn.RemoteAddr().String() // 使用远程地址作为示例ID
+}
+
+func (w *websocketConn) GetType() string {
+	return "websocket"
 }

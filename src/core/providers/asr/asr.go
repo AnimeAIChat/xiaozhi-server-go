@@ -33,10 +33,21 @@ type BaseProvider struct {
 	silenceThreshold float64 // 能量阈值
 	silenceDuration  int     // 静音持续时间(ms)
 
-	LastASRTime  time.Time // 最后一次ASR处理时间
-	SilenceCount int       // 连续静音计数
+	StartListenTime time.Time // 最后一次ASR处理时间
+	SilenceCount    int       // 连续静音计数
 
 	listener providers.AsrEventListener
+}
+
+func (p *BaseProvider) ResetStartListenTime() {
+	p.StartListenTime = time.Now()
+}
+
+func (p *BaseProvider) SilenceTime() time.Duration {
+	if p.StartListenTime.IsZero() {
+		return 0
+	}
+	return time.Since(p.StartListenTime)
 }
 
 func (p *BaseProvider) GetSilenceCount() int {

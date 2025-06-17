@@ -29,6 +29,26 @@ import (
 	"github.com/google/uuid"
 )
 
+// Connection 统一连接接口
+type Connection interface {
+	// 发送消息
+	WriteMessage(messageType int, data []byte) error
+	// 读取消息
+	ReadMessage() (messageType int, data []byte, err error)
+	// 关闭连接
+	Close() error
+	// 获取连接ID
+	GetID() string
+	// 获取连接类型
+	GetType() string
+	// 检查连接状态
+	IsClosed() bool
+	// 获取最后活跃时间
+	GetLastActiveTime() time.Time
+	// 检查是否过期
+	IsStale(timeout time.Duration) bool
+}
+
 type configGetter interface {
 	Config() *tts.Config
 }
@@ -39,7 +59,7 @@ type ConnectionHandler struct {
 	_                providers.AsrEventListener
 	config           *configs.Config
 	logger           *utils.Logger
-	conn             Conn
+	conn             Connection
 	closeOnce        sync.Once
 	taskMgr          *task.TaskManager
 	safeCallbackFunc func(func(*ConnectionHandler)) func()
@@ -162,10 +182,19 @@ func NewConnectionHandler(
 		if key == "Client-Id" {
 			handler.clientId = values[0] // 客户端ID
 		}
+		if key == "Session-Id" {
+			handler.sessionID = values[0] // 会话ID
+		}
 		logger.Info("HTTP头部信息: %s: %s", key, values[0])
 	}
 
-	handler.sessionID = uuid.New().String() // 生成唯一会话ID
+	if handler.sessionID == "" {
+		if handler.deviceID == "" {
+			handler.sessionID = uuid.New().String() // 如果没有设备ID，则生成新的会话ID
+		} else {
+			handler.sessionID = "device-" + strings.Replace(handler.deviceID, ":", "_", -1)
+		}
+	}
 
 	// 正确设置providers
 	if providerSet != nil {
@@ -231,18 +260,19 @@ func (h *ConnectionHandler) LogInfo(msg string) {
 		})
 	}
 }
+func (h *ConnectionHandler) LogError(msg string) {
+	if h.logger != nil {
+		h.logger.Error(msg, map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
 
 // Handle 处理WebSocket连接
-func (h *ConnectionHandler) Handle(conn Conn) {
+func (h *ConnectionHandler) Handle(conn Connection) {
 	defer conn.Close()
 
 	h.conn = conn
-
-	// 发送欢迎消息
-	if err := h.sendHelloMessage(); err != nil {
-		h.logger.Error(fmt.Sprintf("发送欢迎消息失败: %v", err))
-		return
-	}
 
 	// 启动消息处理协程
 	go h.processClientAudioMessagesCoroutine() // 添加客户端音频消息处理协程
@@ -266,7 +296,7 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 			"token":      h.config.Server.Token,
 		}
 		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
-			h.logger.Error(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
+			h.LogError(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
 			return
 		}
 		// 不需要重新初始化服务器，只需要确保连接相关的服务正常
@@ -281,12 +311,12 @@ func (h *ConnectionHandler) Handle(conn Conn) {
 		default:
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				h.logger.Error(fmt.Sprintf("读取消息失败: %v", err))
+				h.LogError(fmt.Sprintf("读取消息失败: %v", err))
 				return
 			}
 
 			if err := h.handleMessage(messageType, message); err != nil {
-				h.logger.Error(fmt.Sprintf("处理消息失败: %v", err))
+				h.LogError(fmt.Sprintf("处理消息失败: %v", err))
 			}
 		}
 	}

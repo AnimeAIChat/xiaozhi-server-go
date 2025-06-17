@@ -15,7 +15,7 @@ type ConnectionContext struct {
 	poolManager *pool.PoolManager
 	clientID    string
 	logger      *utils.Logger
-	conn        Conn
+	conn        Connection
 	ctx         context.Context
 	cancel      context.CancelFunc
 	closed      int32 // 原子操作标志，0=活跃，1=已关闭
@@ -23,7 +23,7 @@ type ConnectionContext struct {
 
 // NewConnectionContext 创建新的连接上下文
 func NewConnectionContext(handler *ConnectionHandler, providerSet *pool.ProviderSet,
-	poolManager *pool.PoolManager, clientID string, logger *utils.Logger, conn Conn,
+	poolManager *pool.PoolManager, clientID string, logger *utils.Logger, conn Connection,
 	ctx context.Context, cancel context.CancelFunc) *ConnectionContext {
 
 	return &ConnectionContext{
