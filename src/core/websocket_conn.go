@@ -108,3 +108,11 @@ func (w *websocketConn) IsStale(timeout time.Duration) bool {
 	}
 	return time.Since(w.GetLastActiveTime()) > timeout
 }
+
+func (w *websocketConn) GetID() string {
+	return w.conn.RemoteAddr().String() // 使用远程地址作为示例ID
+}
+
+func (w *websocketConn) GetType() string {
+	return "websocket"
+}

@@ -119,7 +119,6 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 			if format == "pcm" {
 				// 客户端使用PCM格式，服务端也使用PCM格式
 				h.serverAudioFormat = "pcm"
-				h.sendHelloMessage()
 			}
 		}
 		if sampleRate, ok := audioParams["sample_rate"].(float64); ok {
@@ -135,7 +134,7 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 			h.clientAudioFrameDuration = int(frameDuration)
 		}
 	}
-
+	h.sendHelloMessage()
 	h.closeOpusDecoder()
 	// 初始化opus解码器
 	opusDecoder, err := utils.NewOpusDecoder(&utils.OpusDecoderConfig{

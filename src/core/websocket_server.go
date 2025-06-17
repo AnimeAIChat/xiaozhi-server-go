@@ -28,17 +28,7 @@ type WebSocketServer struct {
 
 // Upgrader WebSocket升级器接口
 type Upgrader interface {
-	Upgrade(w http.ResponseWriter, r *http.Request) (Conn, error)
-}
-
-// Conn WebSocket连接接口
-type Conn interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	Close() error
-	IsClosed() bool
-	GetLastActiveTime() time.Time
-	IsStale(timeout time.Duration) bool
+	Upgrade(w http.ResponseWriter, r *http.Request) (Connection, error)
 }
 
 // NewWebSocketServer 创建新的WebSocket服务器
@@ -116,7 +106,7 @@ func NewDefaultUpgrader() *defaultUpgrader {
 }
 
 // Upgrade 实现Upgrader接口
-func (u *defaultUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (Conn, error) {
+func (u *defaultUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (Connection, error) {
 	conn, err := u.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return nil, err
@@ -143,7 +133,7 @@ func (ws *WebSocketServer) Stop() error {
 				if err := ctx.Close(); err != nil {
 					ws.logger.Error(fmt.Sprintf("关闭连接上下文失败: %v", err))
 				}
-			} else if conn, ok := value.(Conn); ok {
+			} else if conn, ok := value.(Connection); ok {
 				// 向后兼容：直接关闭连接（如果存储的是旧格式）
 				conn.Close()
 			}
