@@ -93,7 +93,7 @@ func (p *ImageProcessor) ProcessImage(ctx context.Context, imageData ImageData) 
 		atomic.AddInt64(&p.metrics.Base64Direct, 1)
 		finalImageData = imageData
 
-		p.logger.FormatDebug("Base64图片处理开始 %v", map[string]interface{}{
+		p.logger.Debug("Base64图片处理开始 %v", map[string]interface{}{
 			"format":      imageData.Format,
 			"data_length": len(imageData.Data),
 		})
@@ -116,7 +116,7 @@ func (p *ImageProcessor) ProcessImage(ctx context.Context, imageData ImageData) 
 		return "", fmt.Errorf("图片验证失败: %v", validationResult.Error)
 	}
 
-	p.logger.FormatDebug("图片处理完成 %v", map[string]interface{}{
+	p.logger.Debug("图片处理完成 %v", map[string]interface{}{
 		"format":    validationResult.Format,
 		"width":     validationResult.Width,
 		"height":    validationResult.Height,

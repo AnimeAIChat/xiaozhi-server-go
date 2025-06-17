@@ -110,11 +110,11 @@ func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) e
 // handleHelloMessage 处理欢迎消息
 // 客户端会上传语音格式和采样率等信息
 func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) error {
-	h.logger.Info("收到客户端欢迎消息: " + fmt.Sprintf("%v", msgMap))
+	h.LogInfo("收到客户端欢迎消息: " + fmt.Sprintf("%v", msgMap))
 	// 获取客户端编码格式
 	if audioParams, ok := msgMap["audio_params"].(map[string]interface{}); ok {
 		if format, ok := audioParams["format"].(string); ok {
-			h.logger.Info("客户端音频格式: " + format)
+			h.LogInfo("客户端音频格式: " + format)
 			h.clientAudioFormat = format
 			if format == "pcm" {
 				// 客户端使用PCM格式，服务端也使用PCM格式
@@ -123,15 +123,15 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 			}
 		}
 		if sampleRate, ok := audioParams["sample_rate"].(float64); ok {
-			h.logger.Info("客户端采样率: " + fmt.Sprintf("%d", int(sampleRate)))
+			h.LogInfo("客户端采样率: " + fmt.Sprintf("%d", int(sampleRate)))
 			h.clientAudioSampleRate = int(sampleRate)
 		}
 		if channels, ok := audioParams["channels"].(float64); ok {
-			h.logger.Info("客户端声道数: " + fmt.Sprintf("%d", int(channels)))
+			h.LogInfo("客户端声道数: " + fmt.Sprintf("%d", int(channels)))
 			h.clientAudioChannels = int(channels)
 		}
 		if frameDuration, ok := audioParams["frame_duration"].(float64); ok {
-			h.logger.Info("客户端帧时长: " + fmt.Sprintf("%d", int(frameDuration)))
+			h.LogInfo("客户端帧时长: " + fmt.Sprintf("%d", int(frameDuration)))
 			h.clientAudioFrameDuration = int(frameDuration)
 		}
 	}
@@ -146,7 +146,7 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 		h.logger.Error(fmt.Sprintf("初始化Opus解码器失败: %v", err))
 	} else {
 		h.opusDecoder = opusDecoder
-		h.logger.Info("Opus解码器初始化成功")
+		h.LogInfo("Opus解码器初始化成功")
 	}
 
 	return nil
@@ -164,7 +164,7 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 	// 处理mode参数
 	if mode, ok := msgMap["mode"].(string); ok {
 		h.clientListenMode = mode
-		h.logger.Info(fmt.Sprintf("客户端拾音模式：%s， %s", h.clientListenMode, state))
+		h.LogInfo(fmt.Sprintf("客户端拾音模式：%s， %s", h.clientListenMode, state))
 		h.providers.asr.SetListener(h)
 	}
 
@@ -177,7 +177,7 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 		h.client_asr_text = ""
 	case "stop":
 		h.clientVoiceStop = true
-		h.logger.Info("客户端停止语音识别")
+		h.LogInfo("客户端停止语音识别")
 	case "detect":
 		// 检查是否包含图片数据
 		imageBase64, hasImage := msgMap["image"].(string)
@@ -185,11 +185,11 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 
 		if hasImage && imageBase64 != "" {
 			// 包含图片数据，使用VLLLM处理
-			h.logger.Info("检测到客户端发送的图片数据，使用VLLLM处理", map[string]interface{}{
+			h.LogInfo(fmt.Sprintf("检测到客户端发送的图片数据，使用VLLLM处理 %v", map[string]interface{}{
 				"has_text":     hasText,
 				"text_length":  len(text),
 				"image_length": len(imageBase64),
-			})
+			}))
 
 			// 如果没有文本，提供默认提示
 			if !hasText || text == "" {
@@ -207,9 +207,9 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 
 		} else if hasText && text != "" {
 			// 只有文本，使用普通LLM处理
-			h.logger.Info("检测到纯文本消息，使用LLM处理", map[string]interface{}{
+			h.LogInfo(fmt.Sprintf("检测到纯文本消息，使用LLM处理 %v", map[string]interface{}{
 				"text": text,
-			})
+			}))
 			return h.handleChatMessage(context.Background(), text)
 		} else {
 			// 既没有图片也没有文本
@@ -225,7 +225,7 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 	// 增加对话轮次
 	h.talkRound++
 	currentRound := h.talkRound
-	h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
+	h.LogInfo(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
 
 	// 判断是否需要验证
 	if h.isNeedAuth() {
@@ -233,7 +233,7 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
 			return err
 		}
-		h.logger.Info("设备未认证，等待管理员认证")
+		h.LogInfo("设备未认证，等待管理员认证")
 		return nil
 	}
 
@@ -243,11 +243,11 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 		return h.handleChatMessage(ctx, text+" (注：无法处理图片，仅处理文本)")
 	}
 
-	h.logger.Info("开始处理图片+文本消息", map[string]interface{}{
+	h.LogInfo(fmt.Sprint("开始处理图片+文本消息 %v", map[string]interface{}{
 		"text":        text,
 		"has_data":    imageData.Data != "",
 		"data_length": len(imageData.Data),
-	})
+	}))
 
 	// 立即发送STT消息
 	err := h.sendSTTMessage(text)
@@ -264,9 +264,9 @@ func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData i
 
 	// 立即给用户语音反馈，提升用户体验
 	immediateResponse := "正在识别图片请稍等，这就为你分析"
-	h.logger.Info("立即播放图片识别提示音", map[string]interface{}{
+	h.LogInfo(fmt.Sprintf("立即播放图片识别提示音", map[string]interface{}{
 		"response": immediateResponse,
-	})
+	}))
 
 	// 重置语音状态，确保能够播放提示音
 	atomic.StoreInt32(&h.serverVoiceStop, 0)
@@ -310,12 +310,12 @@ func (h *ConnectionHandler) handleIotMessage(msgMap map[string]interface{}) erro
 	if descriptors, ok := msgMap["descriptors"].([]interface{}); ok {
 		// 处理设备描述符
 		// 这里需要实现具体的IOT设备描述符处理逻辑
-		h.logger.Info(fmt.Sprintf("收到IOT设备描述符：%v", descriptors))
+		h.LogInfo(fmt.Sprintf("收到IOT设备描述符：%v", descriptors))
 	}
 	if states, ok := msgMap["states"].([]interface{}); ok {
 		// 处理设备状态
 		// 这里需要实现具体的IOT设备状态处理逻辑
-		h.logger.Info(fmt.Sprintf("收到IOT设备状态：%v", states))
+		h.LogInfo(fmt.Sprintf("收到IOT设备状态：%v", states))
 	}
 	return nil
 }
@@ -325,7 +325,7 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 	// 增加对话轮次
 	h.talkRound++
 	currentRound := h.talkRound
-	h.logger.Info(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
+	h.LogInfo(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
 
 	// 判断是否需要验证
 	if h.isNeedAuth() {
@@ -333,7 +333,7 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
 			return err
 		}
-		h.logger.Info("设备未认证，等待管理员认证")
+		h.LogInfo("设备未认证，等待管理员认证")
 		return nil
 	}
 
@@ -371,13 +371,13 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 		return fmt.Errorf("图片数据为空")
 	}
 
-	h.logger.Info("收到图片消息", map[string]interface{}{
+	h.LogInfo(fmt.Sprintf("收到图片消息 %v", map[string]interface{}{
 		"text":        text,
 		"has_url":     imageData.URL != "",
 		"has_data":    imageData.Data != "",
 		"format":      imageData.Format,
 		"data_length": len(imageData.Data),
-	})
+	}))
 
 	// 立即发送STT消息
 	err := h.sendSTTMessage(text)

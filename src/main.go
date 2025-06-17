@@ -104,7 +104,7 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	// 启动Vision服务
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
-		logger.FormatError("Vision 服务初始化失败 %v", err)
+		logger.Error("Vision 服务初始化失败 %v", err)
 		return nil, err
 	}
 	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {

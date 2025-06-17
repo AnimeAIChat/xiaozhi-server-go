@@ -183,7 +183,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 				if !m.isToolRegistered(toolName) {
 					m.funcHandler.RegisterFunction(toolName, tool)
 					m.tools = append(m.tools, toolName)
-					//m.logger.FormatInfo("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
+					//m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
 				}
 			}
 		}
@@ -410,7 +410,7 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 				m.logger.Error(fmt.Sprintf("注册工具失败: %s, 错误: %v", toolName, err))
 				continue
 			}
-			m.logger.FormatInfo("Registered tool: [%s] %s", toolName, tool.Function.Description)
+			m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}
 }

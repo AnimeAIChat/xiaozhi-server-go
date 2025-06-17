@@ -118,7 +118,7 @@ func (p *Provider) Initialize() error {
 		if p.config.BaseURL == "" {
 			p.config.BaseURL = "http://localhost:11434" // 默认Ollama地址
 		}
-		p.logger.FormatDebug("Ollama VLLLM初始化成功 %v", map[string]interface{}{
+		p.logger.Debug("Ollama VLLLM初始化成功 %v", map[string]interface{}{
 			"base_url": p.config.BaseURL,
 			"model":    p.config.ModelName,
 		})
@@ -127,7 +127,7 @@ func (p *Provider) Initialize() error {
 		return fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
 	}
 
-	p.logger.FormatDebug("VLLLM Provider初始化成功 %v", map[string]interface{}{
+	p.logger.Debug("VLLLM Provider初始化成功 %v", map[string]interface{}{
 		"type":       p.config.Type,
 		"model_name": p.config.ModelName,
 	})
@@ -154,7 +154,7 @@ func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, mess
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
-	p.logger.FormatDebug("开始调用多模态API %v", map[string]interface{}{
+	p.logger.Debug("开始调用多模态API %v", map[string]interface{}{
 		"type":       p.config.Type,
 		"model_name": p.config.ModelName,
 		"text":       text,
@@ -207,7 +207,7 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 			},
 		}
 		// 打印visionMessage的内容
-		p.logger.FormatDebug("构建的OpenAI Vision消息: %v", visionMessage)
+		p.logger.Debug("构建的OpenAI Vision消息: %v", visionMessage)
 		chatMessages = append(chatMessages, visionMessage)
 
 		// 调用OpenAI Vision API
@@ -223,8 +223,8 @@ func (p *Provider) responseWithOpenAIVision(ctx context.Context, messages []prov
 		)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【VLLLM服务响应异常: %v】", err)
-			p.logger.FormatError("OpenAI Vision API调用失败 %v", err)
-			p.logger.FormatInfo("OpenAI Vision API调用失败，%s, maxTokens:%dm, Temperature:%f, top:%f", p.config.ModelName, p.config.MaxTokens, float32(p.config.Temperature), float32(p.config.TopP))
+			p.logger.Error("OpenAI Vision API调用失败 %v", err)
+			p.logger.Info("OpenAI Vision API调用失败，%s, maxTokens:%dm, Temperature:%f, top:%f", p.config.ModelName, p.config.MaxTokens, float32(p.config.Temperature), float32(p.config.TopP))
 
 			return
 		}

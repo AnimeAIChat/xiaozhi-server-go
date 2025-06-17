@@ -141,7 +141,7 @@ func (s *DefaultVisionService) handlePost(c *gin.Context) {
 	authResult, err := s.verifyAuth(c)
 	if err != nil {
 		s.respondError(c, http.StatusUnauthorized, err.Error())
-		s.logger.FormatWarn("vision 认证失败 %v", err)
+		s.logger.Warn("vision 认证失败 %v", err)
 		return
 	}
 
@@ -159,7 +159,7 @@ func (s *DefaultVisionService) handlePost(c *gin.Context) {
 		return
 	}
 
-	s.logger.FormatDebug("收到Vision分析请求 %v", map[string]interface{}{
+	s.logger.Debug("收到Vision分析请求 %v", map[string]interface{}{
 		"device_id":  req.DeviceID,
 		"client_id":  req.ClientID,
 		"question":   req.Question,
@@ -185,7 +185,7 @@ func (s *DefaultVisionService) handlePost(c *gin.Context) {
 		response.Result = "" // 清空结果
 	}
 
-	s.logger.FormatInfo("Vision分析结果%t: %s", response.Success, response.Result)
+	s.logger.Info("Vision分析结果%t: %s", response.Success, response.Result)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -330,7 +330,7 @@ func (s *DefaultVisionService) processVisionRequest(req *VisionRequest) (string,
 		Data:   imageBase64,
 		Format: s.detectImageFormat(req.Image),
 	}
-	s.logger.FormatDebug("处理图片数据: %s, 格式: %s", req.ClientID, imageData.Format)
+	s.logger.Debug("处理图片数据: %s, 格式: %s", req.ClientID, imageData.Format)
 	// 调用VLLLM provider
 	messages := []providers.Message{} // 空的历史消息
 	responseChan, err := provider.ResponseWithImage(context.Background(), "", messages, imageData, req.Question)
