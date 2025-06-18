@@ -715,7 +715,7 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 		h.LogInfo(fmt.Sprintf("函数调用无操作: %v", result.Result))
 	case types.ActionTypeResponse:
 		h.LogInfo(fmt.Sprintf("函数调用直接回复: %v", result.Response))
-		h.SpeakAndPlay(result.Response.(string), textIndex, h.talkRound)
+		h.SystemSpeak(result.Response.(string))
 	case types.ActionTypeCallHandler:
 		h.handleMCPResultCall(result)
 	case types.ActionTypeReqLLM:
@@ -760,7 +760,7 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 			h.LogError(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
 			// 发送错误消息
 			errorMessage := fmt.Sprintf("函数调用结果解析失败 %v", result.Result)
-			h.SpeakAndPlay(errorMessage, textIndex, h.talkRound)
+			h.SystemSpeak(errorMessage)
 		}
 	}
 }
