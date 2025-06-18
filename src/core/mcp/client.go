@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
@@ -253,7 +254,11 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 			if textContent, ok := result.Content[0].(mcp.TextContent); ok {
 				return textContent.Text, nil
 			}
-			return result.Content[0], nil
+			ret := types.ActionResponse{
+				Action: types.ActionTypeReqLLM,
+				Result: result.Content[0],
+			}
+			return ret, nil
 		}
 
 		// 处理多个内容项的情况
@@ -265,7 +270,11 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 				processedContent = append(processedContent, content)
 			}
 		}
-		return processedContent, nil
+		ret := types.ActionResponse{
+			Action: types.ActionTypeReqLLM,
+			Result: processedContent,
+		}
+		return ret, nil
 	}
 
 	// 原始网络客户端不支持直接调用工具

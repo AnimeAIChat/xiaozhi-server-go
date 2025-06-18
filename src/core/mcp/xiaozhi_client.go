@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/core/auth"
+	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -267,7 +268,22 @@ func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[s
 			if content, ok := resultMap["content"].([]interface{}); ok && len(content) > 0 {
 				if textMap, ok := content[0].(map[string]interface{}); ok {
 					if text, ok := textMap["text"].(string); ok {
-						return text, nil
+						if strings.Contains(originalName, "self.camera.take_photo") {
+							ret := types.ActionResponse{
+								Action: types.ActionTypeCallHandler,
+								Result: types.ActionResponseCall{
+									FuncName: "mcp_handler_take_photo",
+									Args:     text,
+								},
+							}
+							return ret, nil
+						}
+						c.logger.Info(fmt.Sprintf("工具调用返回文本: %s", text))
+						ret := types.ActionResponse{
+							Action: types.ActionTypeReqLLM,
+							Result: text,
+						}
+						return ret, nil
 					}
 				}
 			}

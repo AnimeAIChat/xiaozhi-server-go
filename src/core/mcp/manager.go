@@ -26,23 +26,12 @@ type Manager struct {
 	funcHandler           types.FunctionRegistryInterface
 	configPath            string
 	clients               map[string]MCPClient
+	localClient           *LocalClient // 本地MCP客户端
 	tools                 []string
 	XiaoZhiMCPClient      *XiaoZhiMCPClient // XiaoZhiMCPClient用于处理小智MCP相关逻辑
 	bRegisteredXiaoZhiMCP bool              // 是否已注册小智MCP工具
 	isInitialized         bool              // 添加初始化状态标记
 	mu                    sync.RWMutex
-}
-
-// SetConnection 设置连接（向后兼容方法）
-func (m *Manager) SetConnection(conn Conn) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.conn = conn
-
-	// 如果XiaoZhiMCPClient已存在，重新设置连接
-	if m.XiaoZhiMCPClient != nil {
-		m.XiaoZhiMCPClient.SetConnection(conn)
-	}
 }
 
 // NewManagerForPool 创建用于资源池的MCP管理器
@@ -65,7 +54,7 @@ func NewManagerForPool(lg *utils.Logger) *Manager {
 	}
 	// 预先初始化非连接相关的MCP服务器
 	if err := mgr.preInitializeServers(); err != nil {
-		lg.Error(fmt.Sprintf("预初始化MCP服务器失败: %v", err))
+		lg.Error("预初始化MCP服务器失败: %v", err)
 	}
 
 	return mgr
@@ -80,36 +69,36 @@ func (m *Manager) preInitializeServers() error {
 
 	for name, srvConfig := range config {
 		// 只初始化不需要连接的外部MCP服务器
-		if name == "xiaozhi" {
-			continue // 跳过需要连接的XiaoZhi客户端
-		}
-
 		srvConfigMap, ok := srvConfig.(map[string]interface{})
 
 		if !ok {
-			m.logger.Warn(fmt.Sprintf("Invalid configuration format for server %s", name))
+			m.logger.Warn("Invalid configuration format for server %s", name)
 			continue
 		}
 
 		// 创建并启动外部MCP客户端
 		clientConfig, err := convertConfig(srvConfigMap)
 		if err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to convert config for server %s: %v", name, err))
+			m.logger.Error("Failed to convert config for server %s: %v", name, err)
 			continue
 		}
 
 		client, err := NewClient(clientConfig, m.logger)
 		if err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to create MCP client for server %s: %v", name, err))
+			m.logger.Error("Failed to create MCP client for server %s: %v", name, err)
 			continue
 		}
 
 		if err := client.Start(context.Background()); err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to start MCP client %s: %v", name, err))
+			m.logger.Error("Failed to start MCP client %s: %v", name, err)
 			continue
 		}
 		m.clients[name] = client
 	}
+
+	m.localClient, _ = NewLocalClient(m.logger)
+	m.localClient.Start(context.Background())
+	m.clients["local"] = m.localClient
 
 	m.isInitialized = true
 	return nil
@@ -128,7 +117,7 @@ func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, 
 	deviceID := paramsMap["device_id"].(string)
 	clientID := paramsMap["client_id"].(string)
 	token := paramsMap["token"].(string)
-	m.logger.Debug(fmt.Sprintf("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL))
+	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
 
 	// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
@@ -258,64 +247,6 @@ func (m *Manager) LoadConfig() map[string]interface{} {
 	}
 
 	return config.MCPServers
-}
-
-// InitializeServers 初始化所有MCP服务
-func (m *Manager) InitializeServers(ctx context.Context) error {
-	config := m.LoadConfig()
-	if config == nil {
-		return fmt.Errorf("no valid MCP server configuration found")
-	}
-
-	for name, srvConfig := range config {
-		srvConfigMap, ok := srvConfig.(map[string]interface{})
-		if !ok {
-			m.logger.Warn(fmt.Sprintf("Invalid configuration format for server %s", name))
-			continue
-		}
-
-		if _, hasCmd := srvConfigMap["command"]; !hasCmd {
-			if _, hasURL := srvConfigMap["url"]; !hasURL {
-				m.logger.Warn(fmt.Sprintf("Skipping server %s: neither command nor url specified", name))
-				continue
-			}
-		}
-
-		// 转换配置格式为Config结构
-		clientConfig, err := convertConfig(srvConfigMap)
-		if err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to convert config for server %s: %v", name, err))
-			continue
-		}
-
-		// 创建客户端
-		client, err := NewClient(clientConfig, m.logger)
-		if err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to create MCP client for server %s: %v", name, err))
-			continue
-		}
-
-		// 启动客户端
-		if err := client.Start(ctx); err != nil {
-			m.logger.Error(fmt.Sprintf("Failed to start MCP client %s: %v", name, err))
-			continue
-		}
-
-		// 注册客户端
-		m.mu.Lock()
-		m.clients[name] = client
-		m.mu.Unlock()
-
-		//m.logger.Info(fmt.Sprintf("Initialized MCP client: %s", name))
-
-		// 获取并注册工具
-		clientTools := client.GetAvailableTools()
-		m.registerTools(clientTools)
-	}
-
-	m.XiaoZhiMCPClient.Start(ctx)
-
-	return nil
 }
 
 func (m *Manager) HandleXiaoZhiMCPMessage(msgMap map[string]interface{}) error {

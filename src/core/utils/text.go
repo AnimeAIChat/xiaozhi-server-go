@@ -7,6 +7,15 @@ import (
 	"strings"
 )
 
+var (
+	// 预编译正则表达式
+	reSplitString          = regexp.MustCompile(`[.,!?;。！？；：]+`)
+	reMarkdownChars        = regexp.MustCompile(`[\*#\-+=>` + "`" + `~_\[\](){}|\\\ ]`)
+	reRemoveAllPunctuation = regexp.MustCompile(`[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`)
+	reExtractJson          = regexp.MustCompile(`(\{.*\})`)
+	reWakeUpWord           = regexp.MustCompile(`^你好.+`)
+)
+
 // splitAtLastPunctuation 在最后一个标点符号处分割文本
 func SplitAtLastPunctuation(text string) (string, int) {
 	punctuations := []string{"。", "？", "！", "；", "："}
@@ -25,38 +34,39 @@ func SplitAtLastPunctuation(text string) (string, int) {
 	return text[:lastIndex+len("。")], lastIndex + len("。")
 }
 
+func SplitByPunctuation(text string) []string {
+	// 使用正则表达式分割文本
+	parts := reSplitString.Split(text, -1)
+
+	// 过滤掉空字符串
+	var result []string
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			result = append(result, part)
+		}
+	}
+
+	return result
+}
+
 func RemoveMarkdownSyntax(text string) string {
-	// 定义需要移除的Markdown语法符号,包括空格
-	markdownChars := `[\*#\-+=>` + "`" + `~_\[\](){}|\\\ ]`
-
-	// 编译正则表达式
-	re := regexp.MustCompile(markdownChars)
-
 	// 替换Markdown符号为空格
-	cleaned := re.ReplaceAllString(text, "")
+	cleaned := reMarkdownChars.ReplaceAllString(text, "")
 
 	return cleaned
 }
 
 // RemoveAllPunctuation 移除所有标点符号
 func RemoveAllPunctuation(text string) string {
-	// 定义所有标点符号（中文、英文标点）- 修复转义问题
-	punctuation := `[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`
-
-	// 编译正则表达式
-	re := regexp.MustCompile(punctuation)
-
 	// 替换标点符号为空字符串
-	cleaned := re.ReplaceAllString(text, "")
-
+	cleaned := reRemoveAllPunctuation.ReplaceAllString(text, "")
 	return cleaned
 }
 
 // extract_json_from_string 提取字符串中的 JSON 部分
 func Extract_json_from_string(input string) map[string]interface{} {
-	pattern := `(\{.*\})`
-	re := regexp.MustCompile(pattern)
-	matches := re.FindStringSubmatch(input)
+
+	matches := reExtractJson.FindStringSubmatch(input)
 	if len(matches) > 1 {
 		var result map[string]interface{}
 		if err := json.Unmarshal([]byte(matches[1]), &result); err == nil {
@@ -77,14 +87,8 @@ func JoinStrings(strs []string) string {
 
 // IsWakeUpWord 判断是否是唤醒词，格式为"你好xx"
 func IsWakeUpWord(text string) bool {
-	// 定义唤醒词正则表达式：以你好开头 + 任意字符
-	pattern := `^你好.+`
-
-	// 编译正则表达式
-	re := regexp.MustCompile(pattern)
-
 	// 检测是否匹配
-	return re.MatchString(text)
+	return reWakeUpWord.MatchString(text)
 }
 
 // IsInArray 判断text是否在字符串数组中
