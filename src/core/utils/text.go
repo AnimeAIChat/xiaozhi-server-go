@@ -10,7 +10,7 @@ import (
 var (
 	// 预编译正则表达式
 	reSplitString          = regexp.MustCompile(`[.,!?;。！？；：]+`)
-	reMarkdownChars        = regexp.MustCompile(`[\*#\-+=>` + "`" + `~_\[\](){}|\\\ ]`)
+	reMarkdownChars        = regexp.MustCompile(`[\*#\-+=>` + "`" + `~_\[\](){}|\\]`)
 	reRemoveAllPunctuation = regexp.MustCompile(`[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`)
 	reExtractJson          = regexp.MustCompile(`(\{.*\})`)
 	reWakeUpWord           = regexp.MustCompile(`^你好.+`)
@@ -18,12 +18,14 @@ var (
 
 // splitAtLastPunctuation 在最后一个标点符号处分割文本
 func SplitAtLastPunctuation(text string) (string, int) {
-	punctuations := []string{"。", "？", "！", "；", "："}
+	punctuations := []string{"。", "？", "！", "；", "：", ".", "?", "!", ";", ":"}
 	lastIndex := -1
+	foundPunctuation := ""
 
 	for _, punct := range punctuations {
 		if idx := strings.LastIndex(text, punct); idx > lastIndex {
 			lastIndex = idx
+			foundPunctuation = punct
 		}
 	}
 
@@ -31,7 +33,8 @@ func SplitAtLastPunctuation(text string) (string, int) {
 		return "", 0
 	}
 
-	return text[:lastIndex+len("。")], lastIndex + len("。")
+	endPos := lastIndex + len(foundPunctuation)
+	return text[:endPos], endPos
 }
 
 func SplitByPunctuation(text string) []string {
