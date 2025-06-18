@@ -24,7 +24,6 @@ import (
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/task"
-	"xiaozhi-server-go/src/vision"
 
 	"github.com/google/uuid"
 )
@@ -128,7 +127,8 @@ type ConnectionHandler struct {
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
 
-	ctx context.Context
+	mcpResultHandlers map[string]func(interface{}) // MCP处理器映射
+	ctx               context.Context
 }
 
 // NewConnectionHandler 创建新的连接处理器
@@ -218,6 +218,7 @@ func NewConnectionHandler(
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
 	handler.dialogueManager.SetSystemMessage(config.DefaultPrompt)
 	handler.functionRegister = function.NewFunctionRegistry()
+	handler.initMCPResultHandlers()
 
 	return handler
 }
@@ -657,13 +658,17 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 						result = "MCP工具调用失败"
 					}
 				}
-
-				h.LogInfo(fmt.Sprintf("MCP函数调用结果: %v", result))
-				actionResult := types.ActionResponse{
-					Action: types.ActionTypeReqLLM, // 动作类型
-					Result: result,                 // 动作产生的结果
+				// 判断result 是否是types.ActionResponse类型
+				if actionResult, ok := result.(types.ActionResponse); ok {
+					h.handleFunctionResult(actionResult, functionCallData, textIndex)
+				} else {
+					h.LogInfo(fmt.Sprintf("MCP函数调用结果: %v", result))
+					actionResult := types.ActionResponse{
+						Action: types.ActionTypeReqLLM, // 动作类型
+						Result: result,                 // 动作产生的结果
+					}
+					h.handleFunctionResult(actionResult, functionCallData, textIndex)
 				}
-				h.handleFunctionResult(actionResult, functionCallData, textIndex)
 
 			} else {
 				// 处理普通函数调用
@@ -711,6 +716,8 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 	case types.ActionTypeResponse:
 		h.LogInfo(fmt.Sprintf("函数调用直接回复: %v", result.Response))
 		h.SpeakAndPlay(result.Response.(string), textIndex, h.talkRound)
+	case types.ActionTypeCallHandler:
+		h.handleMCPResultCall(result)
 	case types.ActionTypeReqLLM:
 		h.LogInfo(fmt.Sprintf("函数调用后请求LLM: %v", result.Result))
 		text, ok := result.Result.(string)
@@ -747,14 +754,10 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 				ToolCallID: toolCallID,
 				Content:    text,
 			})
-			if functionName == "self_camera_take_photo" {
-				h.handleTakePhotoMCP(result, functionArguments, textIndex)
-			} else {
-				h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
-			}
+			h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
 
 		} else {
-			h.logger.Error(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
+			h.LogError(fmt.Sprintf("函数调用结果解析失败: %v", result.Result))
 			// 发送错误消息
 			errorMessage := fmt.Sprintf("函数调用结果解析失败 %v", result.Result)
 			h.SpeakAndPlay(errorMessage, textIndex, h.talkRound)
@@ -762,23 +765,18 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 	}
 }
 
-func (h *ConnectionHandler) handleTakePhotoMCP(result types.ActionResponse, text string, textIndex int) error {
-	// 特殊处理拍照函数，解析为VisionResponse
-	resultStr, _ := result.Result.(string)
-	var visionResponse vision.VisionResponse
-	if err := json.Unmarshal([]byte(resultStr), &visionResponse); err != nil {
-		h.logger.Error(fmt.Sprintf("解析VisionResponse失败: %v", err))
-		return fmt.Errorf("解析VisionResponse失败: %v", err)
+func (h *ConnectionHandler) SystemSpeak(text string) error {
+	if text == "" {
+		h.logger.Warn("SystemSpeak 收到空文本，无法合成语音")
+		return errors.New("收到空文本，无法合成语音")
 	}
-
-	if !visionResponse.Success {
-		h.logger.Error(fmt.Sprintf("拍照失败: %s", visionResponse.Message))
-		h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
-		return nil
+	texts := utils.SplitByPunctuation(text)
+	index := 0
+	for _, item := range texts {
+		index++
+		h.tts_last_text_index = index // 重置文本索引
+		h.SpeakAndPlay(item, index, h.talkRound)
 	}
-
-	h.tts_last_text_index = 1
-	h.SpeakAndPlay(visionResponse.Result, 1, h.talkRound)
 	return nil
 }
 

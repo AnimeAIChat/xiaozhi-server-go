@@ -33,11 +33,12 @@ var ToolTypeMessages = map[ToolType]string{
 type Action int
 
 const (
-	ActionTypeError    Action = -1
-	ActionTypeNotFound Action = 0
-	ActionTypeNone     Action = 1
-	ActionTypeResponse Action = 2
-	ActionTypeReqLLM   Action = 3
+	ActionTypeError       Action = -1
+	ActionTypeNotFound    Action = 0
+	ActionTypeNone        Action = 1
+	ActionTypeResponse    Action = 2
+	ActionTypeReqLLM      Action = 3
+	ActionTypeCallHandler Action = 4
 )
 
 var ActionDesc = map[Action]string{
@@ -53,6 +54,11 @@ type ActionResponse struct {
 	Action   Action      // 动作类型
 	Result   interface{} // 动作产生的结果
 	Response interface{} // 直接回复的内容
+}
+
+type ActionResponseCall struct {
+	FuncName string      // 函数名
+	Args     interface{} // 函数参数
 }
 
 // Message 对话消息结构
