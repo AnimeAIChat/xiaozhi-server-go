@@ -139,7 +139,8 @@ go build -o xiaozhi-server.exe src/main.go
 # 贡献指南
 欢迎任何形式的贡献！如果您有好的想法或发现问题，请通过以下方式联系我们：
 
-<img src="https://github.com/user-attachments/assets/1fac0c06-5db5-4156-bc98-f17b7b46bea6" width="450" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/5469a068-31da-4489-b9c3-1fdac8496cfe" width="450" alt="微信群二维码">
+
 
 
 ## 定制开发
