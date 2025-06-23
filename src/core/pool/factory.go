@@ -65,9 +65,9 @@ func (f *ProviderFactory) createProvider() (interface{}, error) {
 		cfg := f.config.(*configs.VLLMConfig)
 		return vlllm.Create(cfg.Type, cfg, f.logger)
 	case "mcp":
-		_ = f.config.(*configs.Config)
+		cfg := f.config.(*configs.Config)
 		logger := f.logger
-		return mcp.NewManagerForPool(logger), nil
+		return mcp.NewManagerForPool(logger, cfg), nil
 	default:
 		return nil, fmt.Errorf("未知的提供者类型: %s", f.providerType)
 	}
@@ -117,13 +117,14 @@ func NewTTSFactory(ttsType string, config *configs.Config, logger *utils.Logger)
 		return &ProviderFactory{
 			providerType: "tts",
 			config: &tts.Config{
-				Type:      ttsCfg.Type,
-				Voice:     ttsCfg.Voice,
-				Format:    ttsCfg.Format,
-				OutputDir: ttsCfg.OutputDir,
-				AppID:     ttsCfg.AppID,
-				Token:     ttsCfg.Token,
-				Cluster:   ttsCfg.Cluster,
+				Type:            ttsCfg.Type,
+				Voice:           ttsCfg.Voice,
+				Format:          ttsCfg.Format,
+				OutputDir:       ttsCfg.OutputDir,
+				AppID:           ttsCfg.AppID,
+				Token:           ttsCfg.Token,
+				Cluster:         ttsCfg.Cluster,
+				SurportedVoices: ttsCfg.SurportedVoices,
 			},
 			logger: logger,
 			params: map[string]interface{}{

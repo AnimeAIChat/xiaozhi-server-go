@@ -36,14 +36,16 @@ type Config struct {
 		Port      int    `yaml:"port"`
 		StaticDir string `yaml:"static_dir"`
 		Websocket string `yaml:"websocket"`
-		VisionURL string `yaml:"vision"` 
+		VisionURL string `yaml:"vision"`
 	} `yaml:"web"`
 
 	DefaultPrompt    string   `yaml:"prompt"`
+	Roles            []string `yaml:"roles"` // 角色列表
 	DeleteAudio      bool     `yaml:"delete_audio"`
 	QuickReply       bool     `yaml:"quick_reply"`
 	QuickReplyWords  []string `yaml:"quick_reply_words"`
 	UsePrivateConfig bool     `yaml:"use_private_config"`
+	LocalMCPFun      []string `yaml:"local_mcp_fun"` // 本地MCP函数映射
 
 	SelectedModule map[string]string `yaml:"selected_module"`
 
@@ -73,13 +75,14 @@ type ASRConfig map[string]interface{}
 
 // TTSConfig TTS配置结构
 type TTSConfig struct {
-	Type      string `yaml:"type"`
-	Voice     string `yaml:"voice"`
-	Format    string `yaml:"format"`
-	OutputDir string `yaml:"output_dir"`
-	AppID     string `yaml:"appid"`
-	Token     string `yaml:"token"`
-	Cluster   string `yaml:"cluster"`
+	Type            string   `yaml:"type"`
+	Voice           string   `yaml:"voice"`
+	Format          string   `yaml:"format"`
+	OutputDir       string   `yaml:"output_dir"`
+	AppID           string   `yaml:"appid"`
+	Token           string   `yaml:"token"`
+	Cluster         string   `yaml:"cluster"`
+	SurportedVoices []string `yaml:"surported_voices"` // 支持的语音列表
 }
 
 // LLMConfig LLM配置结构

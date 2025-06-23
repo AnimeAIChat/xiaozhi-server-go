@@ -328,12 +328,9 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 	}
 
 	mp3SampleRate := decoder.SampleRate()
-
-	// 检查采样率是否支持
-	supportedRates := map[int]bool{8000: true, 12000: true, 16000: true, 24000: true, 48000: true}
-	if !supportedRates[mp3SampleRate] {
-		return nil, 0, fmt.Errorf("MP3采样率 %dHz 不被Opus直接支持，需要重采样", mp3SampleRate)
-	}
+	//fmt.Println("AudioToPCMData 原始MP3采样率:", mp3SampleRate)
+	// 目标采样率设为24kHz
+	targetSampleRate := 24000
 
 	// decoder.Length() 返回解码后的PCM数据总字节数 (16-bit little-endian stereo)
 	pcmBytes := make([]byte, decoder.Length())
@@ -368,15 +365,28 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 		pcmMonoInt16[i] = int16((int32(leftSample) + int32(rightSample)) / 2)
 	}
 
+	// 重采样到目标采样率（如果需要）
+	var resampledPcmInt16 []int16
+	var finalSampleRate int
+
+	if mp3SampleRate != targetSampleRate {
+		fmt.Printf("重采样从 %dHz 到 %dHz\n", mp3SampleRate, targetSampleRate)
+		resampledPcmInt16 = resamplePCM(pcmMonoInt16, mp3SampleRate, targetSampleRate)
+		finalSampleRate = targetSampleRate
+	} else {
+		resampledPcmInt16 = pcmMonoInt16
+		finalSampleRate = mp3SampleRate
+	}
+
 	// 将 []int16 类型的单声道PCM数据转换为 []byte (仍然是16位小端序)
-	monoPcmDataBytes := make([]byte, numMonoSamples*2) // 每个int16样本占用2字节
-	for i, sample := range pcmMonoInt16 {
+	monoPcmDataBytes := make([]byte, len(resampledPcmInt16)*2) // 每个int16样本占用2字节
+	for i, sample := range resampledPcmInt16 {
 		monoPcmDataBytes[i*2] = byte(sample)        // 低字节 (LSB)
 		monoPcmDataBytes[i*2+1] = byte(sample >> 8) // 高字节 (MSB)
 	}
 
-	//音频播放时长
-	duration := float64(numMonoSamples) / float64(mp3SampleRate) // 单声道PCM数据的时长 (秒)
+	//音频播放时长（基于重采样后的数据）
+	duration := float64(len(resampledPcmInt16)) / float64(finalSampleRate) // 单声道PCM数据的时长 (秒)
 
 	// 函数签名要求返回 [][]byte.
 	// 将整个单声道PCM数据作为外部切片中的单个段/切片返回.
@@ -406,21 +416,9 @@ func AudioToOpusData(audioFile string) ([][]byte, float64, error) {
 			return nil, 0, fmt.Errorf("PCM转换结果为空")
 		}
 
-		// 打开MP3文件获取采样率
-		file, err := os.Open(audioFile)
-		if err != nil {
-			return nil, 0, fmt.Errorf("打开音频文件失败: %v", err)
-		}
-		defer file.Close()
-
-		// 检查MP3文件格式是否有效
-		_, err = mp3.NewDecoder(file)
-		if err != nil {
-			return nil, 0, fmt.Errorf("创建MP3解码器失败: %v", err)
-		}
 	} else {
 		var singlePcmData []byte
-		singlePcmData, err = ReadPCMDataFromWavFile(audioFile)
+		singlePcmData, _ = ReadPCMDataFromWavFile(audioFile)
 		pcmData = [][]byte{singlePcmData}
 	}
 
@@ -552,7 +550,7 @@ func PCMToOpusFile(pcmData []byte, filename string, sampleRate int, channels int
 }
 
 // MP3ToOpusData 将MP3文件转换为Opus格式
-func MP3ToOpusData(audioFile string, bitrate int) ([]byte, error) {
+func MP3ToOpusData(audioFile string) ([]byte, error) {
 	// 先将MP3转为PCM
 	pcmDataSlices, err := MP3ToPCMData(audioFile)
 	if err != nil {
@@ -577,6 +575,7 @@ func MP3ToOpusData(audioFile string, bitrate int) ([]byte, error) {
 
 	// 获取采样率
 	sampleRate := decoder.SampleRate()
+	fmt.Println("MP3采样率:", sampleRate)
 
 	// 确保PCM数据长度是偶数
 	pcmData := pcmDataSlices[0]
@@ -639,7 +638,7 @@ func MP3ToOpusData(audioFile string, bitrate int) ([]byte, error) {
 
 // MP3ToOpusFile 将MP3文件转换为Opus并保存到文件
 func MP3ToOpusFile(inputFile, outputFile string, bitrate int) error {
-	opusData, err := MP3ToOpusData(inputFile, bitrate)
+	opusData, err := MP3ToOpusData(inputFile)
 	if err != nil {
 		return err
 	}
@@ -743,4 +742,48 @@ func PCMSlicesToOpusData(pcmSlices [][]byte, sampleRate int, channels int, bitra
 	}
 
 	return allOpusPackets, nil
+}
+
+// resamplePCM 使用线性插值对PCM数据进行重采样
+func resamplePCM(input []int16, inputSampleRate, outputSampleRate int) []int16 {
+	if inputSampleRate == outputSampleRate {
+		return input
+	}
+
+	inputLength := len(input)
+	if inputLength == 0 {
+		return []int16{}
+	}
+
+	// 计算重采样比率
+	ratio := float64(inputSampleRate) / float64(outputSampleRate)
+	outputLength := int(float64(inputLength) / ratio)
+
+	if outputLength == 0 {
+		return []int16{}
+	}
+
+	output := make([]int16, outputLength)
+
+	for i := 0; i < outputLength; i++ {
+		// 计算在输入数组中的位置
+		srcIndex := float64(i) * ratio
+
+		// 获取整数和小数部分
+		index := int(srcIndex)
+		fraction := srcIndex - float64(index)
+
+		if index >= inputLength-1 {
+			// 如果超出边界，使用最后一个样本
+			output[i] = input[inputLength-1]
+		} else {
+			// 线性插值
+			sample1 := float64(input[index])
+			sample2 := float64(input[index+1])
+			interpolated := sample1 + fraction*(sample2-sample1)
+			output[i] = int16(interpolated)
+		}
+	}
+
+	return output
 }

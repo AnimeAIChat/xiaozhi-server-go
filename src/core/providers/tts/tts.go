@@ -4,20 +4,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"xiaozhi-server-go/src/core/providers"
+	"xiaozhi-server-go/src/core/utils"
 )
 
 // Config TTS配置结构
 type Config struct {
-	Type       string `yaml:"type"`
-	OutputDir  string `yaml:"output_dir"`
-	Voice      string `yaml:"voice,omitempty"`
-	Format     string `yaml:"format,omitempty"`
-	SampleRate int    `yaml:"sample_rate,omitempty"`
-	AppID      string `yaml:"appid"`
-	Token      string `yaml:"token"`
-	Cluster    string `yaml:"cluster"`
+	Type            string   `yaml:"type"`
+	OutputDir       string   `yaml:"output_dir"`
+	Voice           string   `yaml:"voice,omitempty"`
+	Format          string   `yaml:"format,omitempty"`
+	SampleRate      int      `yaml:"sample_rate,omitempty"`
+	AppID           string   `yaml:"appid"`
+	Token           string   `yaml:"token"`
+	Cluster         string   `yaml:"cluster"`
+	SurportedVoices []string `yaml:"surported_voices"` // 支持的语音列表
 }
 
 // Provider TTS提供者接口
@@ -54,6 +57,37 @@ func (p *BaseProvider) Initialize() error {
 	if err := os.MkdirAll(p.config.OutputDir, 0755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %v", err)
 	}
+	return nil
+}
+
+func (p *BaseProvider) SetVoice(voice string) error {
+	// 设置声音配置
+	if voice == "" {
+		return fmt.Errorf("声音不能为空")
+	}
+	cnNames := map[string]string{}
+	enNames := []string{}
+	for _, v := range p.config.SurportedVoices {
+		// "zh-CN-XiaoxiaoNeural|晓晓|女|商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读"
+		parts := strings.Split(v, "|")
+		if len(parts) >= 2 {
+			cnNames[parts[1]] = parts[0] // 中文名
+			enNames = append(enNames, parts[0])
+		}
+	}
+
+	// 如果是中文名，则转换为英文名
+	if enVoice, ok := cnNames[voice]; ok {
+		voice = enVoice
+	}
+
+	// 检查声音是否在支持的列表中
+	if !utils.IsInArray(voice, enNames) {
+		return fmt.Errorf("不支持的声音: %s, 可用声音: %v", voice, enNames)
+	}
+
+	p.Config().Voice = voice
+	fmt.Printf("已设置声音为: %s\n", voice)
 	return nil
 }
 

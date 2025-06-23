@@ -42,6 +42,23 @@ func (dm *DialogueManager) SetSystemMessage(systemMessage string) {
 	}, dm.dialogue...)
 }
 
+// 保留最近的几条对话消息
+func (dm *DialogueManager) KeepRecentMessages(maxMessages int) {
+	if maxMessages <= 0 || len(dm.dialogue) <= maxMessages {
+		return
+	}
+	// 保留system消息和最近的 maxMessages 条消息
+	if len(dm.dialogue) > 0 && dm.dialogue[0].Role == "system" {
+		// 保留system消息
+		dm.dialogue = append(dm.dialogue[:1], dm.dialogue[len(dm.dialogue)-maxMessages:]...)
+		return
+	}
+	// 如果没有system消息，直接保留最近的 maxMessages 条消息
+	if len(dm.dialogue) > maxMessages {
+		dm.dialogue = dm.dialogue[len(dm.dialogue)-maxMessages:]
+	}
+}
+
 // Put 添加新消息到对话
 func (dm *DialogueManager) Put(message Message) {
 	dm.dialogue = append(dm.dialogue, message)

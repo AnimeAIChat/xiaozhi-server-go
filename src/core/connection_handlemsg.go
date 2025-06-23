@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
@@ -93,6 +92,10 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 	case "mcp":
 		return h.mcpManager.HandleXiaoZhiMCPMessage(msgMap)
 	default:
+		h.logger.Warn("=== 未知消息类型 ===", map[string]interface{}{
+			"unknown_type": msgType,
+			"full_message": msgMap,
+		})
 		return fmt.Errorf("未知的消息类型: %s", msgType)
 	}
 }
@@ -178,33 +181,9 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 		h.clientVoiceStop = true
 		h.LogInfo("客户端停止语音识别")
 	case "detect":
-		// 检查是否包含图片数据
-		imageBase64, hasImage := msgMap["image"].(string)
 		text, hasText := msgMap["text"].(string)
 
-		if hasImage && imageBase64 != "" {
-			// 包含图片数据，使用VLLLM处理
-			h.LogInfo(fmt.Sprintf("检测到客户端发送的图片数据，使用VLLLM处理 %v", map[string]interface{}{
-				"has_text":     hasText,
-				"text_length":  len(text),
-				"image_length": len(imageBase64),
-			}))
-
-			// 如果没有文本，提供默认提示
-			if !hasText || text == "" {
-				text = "请描述这张图片"
-			}
-
-			// 构造图片数据结构
-			imageData := image.ImageData{
-				Data:   imageBase64,
-				Format: "jpg", // 默认格式，实际格式会在验证时自动检测
-			}
-
-			// 调用图片处理逻辑
-			return h.handleImageWithText(context.Background(), imageData, text)
-
-		} else if hasText && text != "" {
+		if hasText && text != "" {
 			// 只有文本，使用普通LLM处理
 			h.LogInfo(fmt.Sprintf("检测到纯文本消息，使用LLM处理 %v", map[string]interface{}{
 				"text": text,
@@ -217,91 +196,6 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 		}
 	}
 	return nil
-}
-
-// handleImageWithText 处理包含图片和文本的消息
-func (h *ConnectionHandler) handleImageWithText(ctx context.Context, imageData image.ImageData, text string) error {
-	// 增加对话轮次
-	h.talkRound++
-	currentRound := h.talkRound
-	h.LogInfo(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
-
-	// 判断是否需要验证
-	if h.isNeedAuth() {
-		if err := h.checkAndBroadcastAuthCode(); err != nil {
-			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
-			return err
-		}
-		h.LogInfo("设备未认证，等待管理员认证")
-		return nil
-	}
-
-	// 检查是否有VLLLM Provider
-	if h.providers.vlllm == nil {
-		h.logger.Warn("未配置VLLLM服务，图片消息将降级为文本处理")
-		return h.handleChatMessage(ctx, text+" (注：无法处理图片，仅处理文本)")
-	}
-
-	h.LogInfo(fmt.Sprint("开始处理图片+文本消息 %v", map[string]interface{}{
-		"text":        text,
-		"has_data":    imageData.Data != "",
-		"data_length": len(imageData.Data),
-	}))
-
-	// 立即发送STT消息
-	err := h.sendSTTMessage(text)
-	if err != nil {
-		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
-		return fmt.Errorf("发送STT消息失败: %v", err)
-	}
-
-	// 发送TTS开始状态
-	if err := h.sendTTSMessage("start", "", 0); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
-		return fmt.Errorf("发送TTS开始状态失败: %v", err)
-	}
-
-	// 立即给用户语音反馈，提升用户体验
-	immediateResponse := "正在识别图片请稍等，这就为你分析"
-	h.LogInfo(fmt.Sprintf("立即播放图片识别提示音", map[string]interface{}{
-		"response": immediateResponse,
-	}))
-
-	// 重置语音状态，确保能够播放提示音
-	atomic.StoreInt32(&h.serverVoiceStop, 0)
-
-	// 立即合成并播放提示音（使用索引0确保优先播放）
-	if err := h.SpeakAndPlay(immediateResponse, 0, currentRound); err != nil {
-		h.logger.Error(fmt.Sprintf("播放图片识别提示音失败: %v", err))
-	}
-
-	// 发送思考状态的情绪
-	if err := h.sendEmotionMessage("thinking"); err != nil {
-		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
-		return fmt.Errorf("发送情绪消息失败: %v", err)
-	}
-
-	// 添加用户消息到对话历史（包含图片信息的描述）
-	userMessage := fmt.Sprintf("%s [用户发送了一张图片]", text)
-	h.dialogueManager.Put(chat.Message{
-		Role:    "user",
-		Content: userMessage,
-	})
-
-	// 获取对话历史（排除当前图片消息）
-	messages := make([]providers.Message, 0)
-	for _, msg := range h.dialogueManager.GetLLMDialogue() {
-		if msg.Role == "user" && strings.Contains(msg.Content, "[用户发送了一张图片]") {
-			continue
-		}
-		messages = append(messages, providers.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	// 使用VLLLM处理图片消息
-	return h.genResponseByVLLM(ctx, messages, imageData, text, currentRound)
 }
 
 // handleIotMessage 处理IOT设备消息
