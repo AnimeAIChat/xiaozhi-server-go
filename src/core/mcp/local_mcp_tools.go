@@ -51,7 +51,7 @@ func (c *LocalClient) AddToolTime() error {
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			now := time.Now()
-			time := now.Format("2006-01-02 15:04:05")
+			time := now.Format("2006-01-02 15点04分05秒")
 			week := now.Weekday().String()
 			str := "当前时间是 " + time + "，今天是" + week + "。"
 			res := types.ActionResponse{
