@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -31,11 +32,12 @@ type Manager struct {
 	XiaoZhiMCPClient      *XiaoZhiMCPClient // XiaoZhiMCPClient用于处理小智MCP相关逻辑
 	bRegisteredXiaoZhiMCP bool              // 是否已注册小智MCP工具
 	isInitialized         bool              // 添加初始化状态标记
+	systemCfg             *configs.Config
 	mu                    sync.RWMutex
 }
 
 // NewManagerForPool 创建用于资源池的MCP管理器
-func NewManagerForPool(lg *utils.Logger) *Manager {
+func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
@@ -51,6 +53,7 @@ func NewManagerForPool(lg *utils.Logger) *Manager {
 		clients:               make(map[string]MCPClient),
 		tools:                 make([]string, 0),
 		bRegisteredXiaoZhiMCP: false,
+		systemCfg:             cfg,
 	}
 	// 预先初始化非连接相关的MCP服务器
 	if err := mgr.preInitializeServers(); err != nil {
@@ -62,6 +65,11 @@ func NewManagerForPool(lg *utils.Logger) *Manager {
 
 // preInitializeServers 预初始化不依赖连接的MCP服务器
 func (m *Manager) preInitializeServers() error {
+
+	m.localClient, _ = NewLocalClient(m.logger, m.systemCfg)
+	m.localClient.Start(context.Background())
+	m.clients["local"] = m.localClient
+
 	config := m.LoadConfig()
 	if config == nil {
 		return fmt.Errorf("no valid MCP server configuration found")
@@ -95,10 +103,6 @@ func (m *Manager) preInitializeServers() error {
 		}
 		m.clients[name] = client
 	}
-
-	m.localClient, _ = NewLocalClient(m.logger)
-	m.localClient.Start(context.Background())
-	m.clients["local"] = m.localClient
 
 	m.isInitialized = true
 	return nil
@@ -341,7 +345,7 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 				m.logger.Error(fmt.Sprintf("注册工具失败: %s, 错误: %v", toolName, err))
 				continue
 			}
-			m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
+			//m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}
 }

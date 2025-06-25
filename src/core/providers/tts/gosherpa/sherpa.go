@@ -3,11 +3,12 @@ package gosherpa
 import (
 	"context"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"os"
 	"path/filepath"
 	"time"
 	"xiaozhi-server-go/src/core/providers/tts"
+
+	"github.com/gorilla/websocket"
 )
 
 // Provider Sherpa TTS提供者实现

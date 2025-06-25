@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -17,16 +18,57 @@ type LocalClient struct {
 	ctx     context.Context
 	logger  *utils.Logger
 	handler map[string]HandlerFunc
+	cfg     *configs.Config
 }
 
-func NewLocalClient(logger *utils.Logger) (*LocalClient, error) {
+func NewLocalClient(logger *utils.Logger, cfg *configs.Config) (*LocalClient, error) {
 	c := &LocalClient{
 		tools:   make([]Tool, 0),
 		handler: make(map[string]HandlerFunc),
 		mu:      sync.RWMutex{},
 		logger:  logger,
+		cfg:     cfg,
 	}
 	return c, nil
+}
+
+func (c *LocalClient) RegisterTools() {
+	if c.cfg == nil {
+		c.logger.Error("RegisterTools: config is nil")
+		return
+	}
+
+	if c.cfg.LocalMCPFun == nil {
+		c.logger.Warn("RegisterTools: LocalMCPFun is nil")
+		return
+	}
+
+	funcs := c.cfg.LocalMCPFun
+	if len(funcs) == 0 {
+		c.logger.Info("RegisterTools: LocalMCPFun is empty")
+		return
+	}
+
+	for _, funcName := range funcs {
+		if funcName == "exit" {
+			c.AddToolExit()
+			c.logger.Info("RegisterTools: exit tool registered")
+		} else if funcName == "time" {
+			c.AddToolTime()
+			c.logger.Info("RegisterTools: time tool registered")
+		} else if funcName == "change_voice" {
+			c.AddToolChangeVoice()
+			c.logger.Info("RegisterTools: change_voice tool registered")
+		} else if funcName == "change_role" {
+			c.AddToolChangeRole()
+			c.logger.Info("RegisterTools: change_role tool registered")
+		} else if funcName == "play_music" {
+			c.AddToolPlayMusic()
+			c.logger.Info("RegisterTools: play_music tool registered")
+		} else {
+			c.logger.Warn("RegisterTools: unknown function name %s", funcName)
+		}
+	}
 }
 
 // Start 启动本地MCP客户端

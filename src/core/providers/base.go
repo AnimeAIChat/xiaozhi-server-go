@@ -39,6 +39,8 @@ type TTSProvider interface {
 
 	// 合成音频并返回文件路径
 	ToTTS(text string) (string, error)
+
+	SetVoice(voice string) error
 }
 
 // LLMProvider 大语言模型提供者接口

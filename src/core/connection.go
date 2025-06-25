@@ -69,6 +69,8 @@ type ConnectionHandler struct {
 		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
 
+	initailVoice string // 初始语音名称
+
 	// 会话相关
 	sessionID string
 	deviceID  string            // 设备ID
@@ -210,6 +212,7 @@ func NewConnectionHandler(
 	if getter, ok := handler.providers.tts.(configGetter); ok {
 		ttsProvider = getter.Config().Type
 		voiceName = getter.Config().Voice
+		handler.initailVoice = voiceName // 保存初始语音名称
 	}
 	logger.Info("使用TTS提供者: %s, 语音名称: %s", ttsProvider, voiceName)
 	handler.quickReplyCache = utils.NewQuickReplyCache(ttsProvider, voiceName)
@@ -825,6 +828,12 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 		return
 	}
 
+	// 检查是否是音乐文件，如果是则不删除
+	if utils.IsMusicFile(filepath) {
+		h.LogInfo(fmt.Sprintf(reason+" 跳过删除音乐文件: %s", filepath))
+		return
+	}
+
 	// 删除非缓存音频文件
 	if err := os.Remove(filepath); err != nil {
 		h.logger.Error(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
@@ -980,7 +989,9 @@ func (h *ConnectionHandler) Close() {
 		close(h.stopChan)
 
 		h.closeOpusDecoder()
-
+		if h.providers.tts != nil {
+			h.providers.tts.SetVoice(h.initailVoice) // 恢复初始语音
+		}
 		if h.providers.asr != nil {
 			if err := h.providers.asr.Reset(); err != nil {
 				h.logger.Error(fmt.Sprintf("重置ASR状态失败: %v", err))

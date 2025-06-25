@@ -26,9 +26,6 @@ func (w *websocketConn) ReadMessage() (messageType int, p []byte, err error) {
 		return 0, nil, ErrConnectionClosed
 	}
 
-	// 设置读取超时
-	w.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-
 	messageType, p, err = w.conn.ReadMessage()
 	if err != nil {
 		// 如果读取出错，标记连接为已关闭
