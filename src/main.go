@@ -235,6 +235,8 @@ func main() {
 		logger.Info("数据库连接成功，未识别的数据库类型")
 	}
 
+	_ = database.InsertDefaultConfigIfNeeded(db)
+
 	// 创建可取消的上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
