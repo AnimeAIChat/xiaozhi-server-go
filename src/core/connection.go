@@ -334,7 +334,7 @@ func (h *ConnectionHandler) processClientTextMessagesCoroutine() {
 			return
 		case text := <-h.clientTextQueue:
 			if err := h.processClientTextMessage(context.Background(), text); err != nil {
-				h.logger.Error(fmt.Sprintf("处理文本数据失败: %v", err))
+				h.LogError(fmt.Sprintf("处理文本数据失败: %v", err))
 			}
 		}
 	}
@@ -347,8 +347,11 @@ func (h *ConnectionHandler) processClientAudioMessagesCoroutine() {
 		case <-h.stopChan:
 			return
 		case audioData := <-h.clientAudioQueue:
+			if h.closeAfterChat {
+				continue
+			}
 			if err := h.providers.asr.AddAudio(audioData); err != nil {
-				h.logger.Error(fmt.Sprintf("处理音频数据失败: %v", err))
+				h.LogError(fmt.Sprintf("处理音频数据失败: %v", err))
 			}
 		}
 	}
