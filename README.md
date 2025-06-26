@@ -1,9 +1,17 @@
+小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
+![image](https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3)
+
+小智项目最初是基于[虾哥开源的ESP32项目](https://github.com/78/xiaozhi-esp32?tab=readme-ov-file)，目前已经形成一个很好的开源生态，很多客户端都支持该协议，如ESP32客户端，Android客户端，python客户端等等。
+
+本项目旨在为这些客户端提供一个协议兼容的后端服务，并且更容易的应用在符合商务需求的生产环境中。
+
 # 小智服务商业版
 
 本项目目标为 **小智AI提供商业版后端解决方案**，提供 **高并发，低成本，功能全面，开箱即用的高性能服务**，助力企业快速搭建小智后端服务。
 
 项目大模型调用全部采用api方式调用，不在本地部署模型，以保证服务的精简和便捷部署。
-如需要本地部署模型，可单独部署并开放api供本项目调用即可。
+
+**如有本地部署模型需求，可联系开发团队，我们已经整理了一套最优的本地部署方案**。
 
 **核心优势**
 
@@ -19,14 +27,16 @@
 
 * [x] 支持PCM格式的语音对话
 * [x] 支持Opus格式的语音对话
-* [x] 支持的模型 ASR(豆包流式）LLM（OpenAi API）TTS（EdgeTTS，豆包TTS）
+* [x] 支持的模型 ASR(豆包流式）LLM（OpenAi API，ollama）TTS（EdgeTTS，豆包TTS）
 * [x] 识图解说（智谱)
 * [x] OTA功能
 * [x] 支持服务端mcp
 * [x] 支持小智客户端mcp调用
+* [x] 支持服务端本地mcp调用
+* [x] 支持mqtt连接【仅在商务版本实现】
 * [ ] 管理后台
-* [ ] 支持mqtt连接
-* [ ] IOT功能
+
+
 
 # 安装和使用
 
@@ -136,12 +146,15 @@ go build -o xiaozhi-server.exe src/main.go
 
 - [Centos 8 安装指南](Centos_Guide.md)
 
-# 贡献指南
-欢迎任何形式的贡献！如果您有好的想法或发现问题，请通过以下方式联系我们：
+# 社区与支持
+欢迎任何形式的贡献，以帮助我们改善Xiaozhi-server！包括：提交代码、问题、新想法，欢迎交流，可以通过以下方式联系我们：
 
-<img src="https://github.com/user-attachments/assets/5469a068-31da-4489-b9c3-1fdac8496cfe" width="450" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/1eb5ba07-bf78-4368-8667-50601816dac2" width="450" alt="微信群二维码">
 
 
 
 ## 定制开发
 我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。
+
+# 执照
+本仓库遵循Xiaozhi-server-go Open Source License 协议开源，该许可证本质上是Apache 2.0，但有一些额外的限制。
