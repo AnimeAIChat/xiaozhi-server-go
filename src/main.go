@@ -12,6 +12,7 @@ import (
 
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
+	cfg "xiaozhi-server-go/src/configs/server"
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/ota"
@@ -111,6 +112,16 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	}
 	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.Error("Vision 服务启动失败", err)
+		return nil, err
+	}
+
+	cfgServer, err := cfg.NewDefaultCfgService(config, logger)
+	if err != nil {
+		logger.Error("配置服务初始化失败 %v", err)
+		return nil, err
+	}
+	if err := cfgServer.Start(groupCtx, router, apiGroup); err != nil {
+		logger.Error("配置服务启动失败", err)
 		return nil, err
 	}
 
