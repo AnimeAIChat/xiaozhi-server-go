@@ -117,7 +117,6 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 	// 获取客户端编码格式
 	if audioParams, ok := msgMap["audio_params"].(map[string]interface{}); ok {
 		if format, ok := audioParams["format"].(string); ok {
-			h.LogInfo("客户端音频格式: " + format)
 			h.clientAudioFormat = format
 			if format == "pcm" {
 				// 客户端使用PCM格式，服务端也使用PCM格式
@@ -125,17 +124,16 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 			}
 		}
 		if sampleRate, ok := audioParams["sample_rate"].(float64); ok {
-			h.LogInfo("客户端采样率: " + fmt.Sprintf("%d", int(sampleRate)))
 			h.clientAudioSampleRate = int(sampleRate)
 		}
 		if channels, ok := audioParams["channels"].(float64); ok {
-			h.LogInfo("客户端声道数: " + fmt.Sprintf("%d", int(channels)))
 			h.clientAudioChannels = int(channels)
 		}
 		if frameDuration, ok := audioParams["frame_duration"].(float64); ok {
-			h.LogInfo("客户端帧时长: " + fmt.Sprintf("%d", int(frameDuration)))
 			h.clientAudioFrameDuration = int(frameDuration)
 		}
+		h.LogInfo(fmt.Sprintf("客户端音频参数: format=%s, sample_rate=%d, channels=%d, frame_duration=%d",
+			h.clientAudioFormat, h.clientAudioSampleRate, h.clientAudioChannels, h.clientAudioFrameDuration))
 	}
 	h.sendHelloMessage()
 	h.closeOpusDecoder()

@@ -211,31 +211,12 @@ func main() {
 	}
 
 	// 初始化数据库连接
-	db, dbType, err := database.InitDB()
+	db, dbType, err := database.InitDB(logger)
+	_, _ = db, dbType // 避免未使用变量警告
 	if err != nil {
 		logger.Error(fmt.Sprintf("数据库连接失败: %v", err))
 		return
 	}
-
-	// 打印数据库连接成功信息
-	switch dbType {
-	case "mysql":
-		var version string
-		db.Raw("SELECT VERSION()").Scan(&version)
-		logger.Info(fmt.Sprintf("MySQL 数据库连接成功，版本: %s", version))
-	case "postgres":
-		var version string
-		db.Raw("SELECT version()").Scan(&version)
-		logger.Info(fmt.Sprintf("PostgreSQL 数据库连接成功，版本: %s", version))
-	case "sqlite":
-		var version string
-		db.Raw("SELECT sqlite_version()").Scan(&version)
-		logger.Info(fmt.Sprintf("SQLite 数据库连接成功，版本: %s", version))
-	default:
-		logger.Info("数据库连接成功，未识别的数据库类型")
-	}
-
-	_ = database.InsertDefaultConfigIfNeeded(db)
 
 	// 创建可取消的上下文
 	ctx, cancel := context.WithCancel(context.Background())

@@ -286,7 +286,7 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 
 	// 优化后的MCP管理器处理
 	if h.mcpManager == nil {
-		h.logger.Error("没有可用的MCP管理器")
+		h.LogError("没有可用的MCP管理器")
 		return
 
 	} else {
@@ -485,19 +485,19 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	// 立即发送 stt 消息
 	err := h.sendSTTMessage(text)
 	if err != nil {
-		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
+		h.LogError(fmt.Sprintf("发送STT消息失败: %v", err))
 		return fmt.Errorf("发送STT消息失败: %v", err)
 	}
 
 	// 发送tts start状态
 	if err := h.sendTTSMessage("start", "", 0); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+		h.LogError(fmt.Sprintf("发送TTS开始状态失败: %v", err))
 		return fmt.Errorf("发送TTS开始状态失败: %v", err)
 	}
 
 	// 发送思考状态的情绪
 	if err := h.sendEmotionMessage("thinking"); err != nil {
-		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
+		h.LogError(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
 		return fmt.Errorf("发送情绪消息失败: %v", err)
 	}
 
@@ -519,7 +519,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []providers.Message, round int) error {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error(fmt.Sprintf("genResponseByLLM发生panic: %v", r))
+			h.LogError(fmt.Sprintf("genResponseByLLM发生panic: %v", r))
 			errorMsg := "抱歉，处理您的请求时发生了错误"
 			h.tts_last_text_index = 1 // 重置文本索引
 			h.SpeakAndPlay(errorMsg, 1, round)
@@ -558,7 +558,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		toolCall := response.ToolCalls
 
 		if response.Error != "" {
-			h.logger.Error(fmt.Sprintf("LLM响应错误: %s", response.Error))
+			h.LogError(fmt.Sprintf("LLM响应错误: %s", response.Error))
 			errorMsg := "抱歉，服务暂时不可用，请稍后再试"
 			h.tts_last_text_index = 1 // 重置文本索引
 			h.SpeakAndPlay(errorMsg, 1, round)
@@ -589,16 +589,18 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 		if content != "" {
 			if strings.Contains(content, "服务响应异常") {
-				h.logger.Error(fmt.Sprintf("检测到LLM服务异常: %s", content))
+				h.LogError(fmt.Sprintf("检测到LLM服务异常: %s", content))
 				errorMsg := "抱歉，服务暂时不可用，请稍后再试"
 				h.tts_last_text_index = 1 // 重置文本索引
 				h.SpeakAndPlay(errorMsg, 1, round)
 				return fmt.Errorf("LLM服务异常")
 			}
 
-			if !toolCallFlag {
-				responseMessage = append(responseMessage, content)
+			if toolCallFlag {
+				continue
 			}
+
+			responseMessage = append(responseMessage, content)
 			// 处理分段
 			fullText := utils.JoinStrings(responseMessage)
 			if len(fullText) <= processedChars {
@@ -620,7 +622,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				h.tts_last_text_index = textIndex
 				err := h.SpeakAndPlay(segment, textIndex, round)
 				if err != nil {
-					h.logger.Error(fmt.Sprintf("播放LLM回复分段失败: %v", err))
+					h.LogError(fmt.Sprintf("播放LLM回复分段失败: %v", err))
 				}
 				processedChars += chars
 			}
@@ -639,7 +641,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				bHasError = true
 			}
 			if bHasError {
-				h.logger.Error(fmt.Sprintf("函数调用参数解析失败: %v", err))
+				h.LogError(fmt.Sprintf("函数调用参数解析失败: %v", err))
 			}
 		}
 		if !bHasError {
@@ -647,7 +649,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			responseMessage = []string{}
 			arguments := make(map[string]interface{})
 			if err := json.Unmarshal([]byte(functionArguments), &arguments); err != nil {
-				h.logger.Error(fmt.Sprintf("函数调用参数解析失败: %v", err))
+				h.LogError(fmt.Sprintf("函数调用参数解析失败: %v", err))
 			}
 			functionCallData := map[string]interface{}{
 				"id":        functionID,
@@ -659,7 +661,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				// 处理MCP函数调用
 				result, err := h.mcpManager.ExecuteTool(ctx, functionName, arguments)
 				if err != nil {
-					h.logger.Error(fmt.Sprintf("MCP函数调用失败: %v", err))
+					h.LogError(fmt.Sprintf("MCP函数调用失败: %v", err))
 					if result == nil {
 						result = "MCP工具调用失败"
 					}
@@ -694,7 +696,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}
 	} else {
-		h.logger.Debug(fmt.Sprintf("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars))
+		h.logger.Debug("无剩余文本需要处理: fullResponse长度=%d, processedChars=%d", len(fullResponse), processedChars)
 	}
 
 	// 分析回复并发送相应的情绪
@@ -714,9 +716,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, functionCallData map[string]interface{}, textIndex int) {
 	switch result.Action {
 	case types.ActionTypeError:
-		h.logger.Error(fmt.Sprintf("函数调用错误: %v", result.Result))
+		h.LogError(fmt.Sprintf("函数调用错误: %v", result.Result))
 	case types.ActionTypeNotFound:
-		h.logger.Error(fmt.Sprintf("函数未找到: %v", result.Result))
+		h.LogError(fmt.Sprintf("函数未找到: %v", result.Result))
 	case types.ActionTypeNone:
 		h.LogInfo(fmt.Sprintf("函数调用无操作: %v", result.Result))
 	case types.ActionTypeResponse:
@@ -839,7 +841,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 
 	// 删除非缓存音频文件
 	if err := os.Remove(filepath); err != nil {
-		h.logger.Error(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
+		h.LogError(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
 	} else {
 		h.logger.Debug(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
 	}
@@ -877,14 +879,14 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	// 生成语音文件
 	filepath, err := h.providers.tts.ToTTS(text)
 	if err != nil {
-		h.logger.Error(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
+		h.LogError(fmt.Sprintf("TTS转换失败:text(%s) %v", text, err))
 		return
 	} else {
 		h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", text, textIndex, filepath))
 		// 如果是快速回复词，保存到缓存
 		if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 			if err := h.quickReplyCache.SaveCachedAudio(text, filepath); err != nil {
-				h.logger.Error(fmt.Sprintf("保存快速回复音频失败: %v", err))
+				h.LogError(fmt.Sprintf("保存快速回复音频失败: %v", err))
 			} else {
 				h.LogInfo(fmt.Sprintf("成功缓存快速回复音频: %s", text))
 			}
@@ -947,7 +949,7 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 func (h *ConnectionHandler) closeOpusDecoder() {
 	if h.opusDecoder != nil {
 		if err := h.opusDecoder.Close(); err != nil {
-			h.logger.Error(fmt.Sprintf("关闭Opus解码器失败: %v", err))
+			h.LogError(fmt.Sprintf("关闭Opus解码器失败: %v", err))
 		}
 		h.opusDecoder = nil
 	}
@@ -997,7 +999,7 @@ func (h *ConnectionHandler) Close() {
 		}
 		if h.providers.asr != nil {
 			if err := h.providers.asr.Reset(); err != nil {
-				h.logger.Error(fmt.Sprintf("重置ASR状态失败: %v", err))
+				h.LogError(fmt.Sprintf("重置ASR状态失败: %v", err))
 			}
 		}
 		h.cleanTTSAndAudioQueue(true)
@@ -1017,7 +1019,7 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	// 使用VLLLM处理图片和文本
 	responses, err := h.providers.vlllm.ResponseWithImage(ctx, h.sessionID, messages, imageData, text)
 	if err != nil {
-		h.logger.Error(fmt.Sprintf("VLLLM生成回复失败，尝试降级到普通LLM: %v", err))
+		h.LogError(fmt.Sprintf("VLLLM生成回复失败，尝试降级到普通LLM: %v", err))
 		// 降级策略：只使用文本部分调用普通LLM
 		fallbackText := fmt.Sprintf("用户发送了一张图片并询问：%s（注：当前无法处理图片，只能根据文字回答）", text)
 		fallbackMessages := append(messages, providers.Message{

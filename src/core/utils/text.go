@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"regexp"
 	"strings"
@@ -12,7 +13,6 @@ var (
 	reSplitString          = regexp.MustCompile(`[.,!?;。！？；：]+`)
 	reMarkdownChars        = regexp.MustCompile(`[\*#\-+=>` + "`" + `~_\[\](){}|\\]`)
 	reRemoveAllPunctuation = regexp.MustCompile(`[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`)
-	reExtractJson          = regexp.MustCompile(`(\{.*\})`)
 	reWakeUpWord           = regexp.MustCompile(`^你好.+`)
 )
 
@@ -68,15 +68,38 @@ func RemoveAllPunctuation(text string) string {
 
 // extract_json_from_string 提取字符串中的 JSON 部分
 func Extract_json_from_string(input string) map[string]interface{} {
-
-	matches := reExtractJson.FindStringSubmatch(input)
-	if len(matches) > 1 {
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(matches[1]), &result); err == nil {
-			return result
+	// 提取最外层的{}
+	start := strings.Index(input, "{")
+	if start == -1 {
+		fmt.Println("没有找到JSON起始符号")
+		return nil
+	}
+	bracketCount := 0
+	end := -1
+outer:
+	for i := start; i < len(input); i++ {
+		switch input[i] {
+		case '{':
+			bracketCount++
+		case '}':
+			bracketCount--
+			if bracketCount == 0 {
+				end = i
+				break outer
+			}
 		}
 	}
-	return nil
+	if end == -1 {
+		fmt.Println("没有找到完整的JSON结构")
+		return nil
+	}
+	jsonStr := input[start : end+1]
+	var jsonData map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &jsonData); err != nil {
+		fmt.Println("JSON解析错误:", err)
+		return nil
+	}
+	return jsonData
 }
 
 // joinStrings 连接字符串切片
