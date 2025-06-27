@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/ota"
@@ -28,6 +29,7 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -201,6 +203,39 @@ func main() {
 		fmt.Println("加载配置或初始化日志系统失败:", err)
 		os.Exit(1)
 	}
+
+	// 加载 .env 文件
+	err = godotenv.Load()
+	if err != nil {
+		logger.Warn("未找到 .env 文件，使用系统环境变量")
+	}
+
+	// 初始化数据库连接
+	db, dbType, err := database.InitDB()
+	if err != nil {
+		logger.Error(fmt.Sprintf("数据库连接失败: %v", err))
+		return
+	}
+
+	// 打印数据库连接成功信息
+	switch dbType {
+	case "mysql":
+		var version string
+		db.Raw("SELECT VERSION()").Scan(&version)
+		logger.Info(fmt.Sprintf("MySQL 数据库连接成功，版本: %s", version))
+	case "postgres":
+		var version string
+		db.Raw("SELECT version()").Scan(&version)
+		logger.Info(fmt.Sprintf("PostgreSQL 数据库连接成功，版本: %s", version))
+	case "sqlite":
+		var version string
+		db.Raw("SELECT sqlite_version()").Scan(&version)
+		logger.Info(fmt.Sprintf("SQLite 数据库连接成功，版本: %s", version))
+	default:
+		logger.Info("数据库连接成功，未识别的数据库类型")
+	}
+
+	_ = database.InsertDefaultConfigIfNeeded(db)
 
 	// 创建可取消的上下文
 	ctx, cancel := context.WithCancel(context.Background())
