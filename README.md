@@ -1,4 +1,5 @@
 小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
+
 ![image](https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3)
 
 小智项目最初是基于[虾哥开源的ESP32项目](https://github.com/78/xiaozhi-esp32?tab=readme-ov-file)，目前已经形成一个很好的开源生态，很多客户端都支持该协议，如ESP32客户端，Android客户端，python客户端等等。
@@ -150,6 +151,19 @@ go build -o xiaozhi-server.exe src/main.go
 
 ```
 .\xiaozhi-server.exe
+```
+
+## SW文档更新
+
+SW文档:[/swagger/index.html](http://localhost:8080/swagger/index.html)
+
+每次修改了代码，或者新增了功能，都需要更新SW文档，以保证文档和代码的一致性
+
+```
+cd src
+swag init -g main.go
+或者这样
+swag init -g main.go && cd ..
 ```
 
 ## Centos系统下源码部署安装指南

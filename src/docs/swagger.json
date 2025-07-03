@@ -1,0 +1,200 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "小智服务端，包含OTA与Vision等接口",
+        "title": "小智服务端 API 文档",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api",
+    "paths": {
+        "/ota/": {
+            "get": {
+                "description": "获取 OTA 服务状态和 WebSocket 地址，供设备查询",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "OTA"
+                ],
+                "summary": "获取 OTA 状态",
+                "responses": {
+                    "200": {
+                        "description": "OTA interface is running, websocket address: ws://...",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "设备上传信息后，返回最新固件版本和下载地址",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OTA"
+                ],
+                "summary": "上传设备信息获取最新固件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "设备ID",
+                        "name": "device-id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "请求体",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ota.OtaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ota.OtaFirmwareResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ota.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "options": {
+                "description": "处理 OTA 接口的 OPTIONS 预检请求，返回 200",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "OTA"
+                ],
+                "summary": "OTA 预检请求",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ota_bin/{filename}": {
+            "get": {
+                "description": "根据文件名下载 OTA 固件",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "OTA"
+                ],
+                "summary": "下载 OTA 固件文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "固件文件名",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "文件流"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ota.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "ota.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "缺少 device-id"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "ota.OtaFirmwareResponse": {
+            "type": "object",
+            "properties": {
+                "firmware": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "example": "/ota_bin/1.0.3.bin"
+                        },
+                        "version": {
+                            "type": "string",
+                            "example": "1.0.3"
+                        }
+                    }
+                },
+                "server_time": {
+                    "type": "object",
+                    "properties": {
+                        "timestamp": {
+                            "type": "integer",
+                            "example": 1688443200000
+                        },
+                        "timezone_offset": {
+                            "type": "integer",
+                            "example": 480
+                        }
+                    }
+                },
+                "websocket": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "example": "wss://example.com/ota"
+                        }
+                    }
+                }
+            }
+        },
+        "ota.OtaRequest": {
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "object",
+                    "properties": {
+                        "version": {
+                            "type": "string",
+                            "example": "1.0.0"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
