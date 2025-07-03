@@ -9,47 +9,6 @@
     "host": "localhost:8080",
     "basePath": "/api",
     "paths": {
-        "/cfg": {
-            "get": {
-                "description": "用于前端检测 /cfg 接口是否正常运行",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Config"
-                ],
-                "summary": "获取配置服务状态",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/server.CfgResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "当前 POST /cfg 接口无实际功能，仅用于协议保留或测试",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Config"
-                ],
-                "summary": "提交配置或检测接口",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/server.CfgResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/ota/": {
             "get": {
                 "description": "获取 OTA 服务状态和 WebSocket 地址，供设备查询",
@@ -234,19 +193,6 @@
                             "example": "1.0.0"
                         }
                     }
-                }
-            }
-        },
-        "server.CfgResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "Cfg service is running"
-                },
-                "status": {
-                    "type": "string",
-                    "example": "ok"
                 }
             }
         }

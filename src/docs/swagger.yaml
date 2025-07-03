@@ -45,15 +45,6 @@ definitions:
             type: string
         type: object
     type: object
-  server.CfgResponse:
-    properties:
-      message:
-        example: Cfg service is running
-        type: string
-      status:
-        example: ok
-        type: string
-    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -61,33 +52,6 @@ info:
   title: 小智服务端 API 文档
   version: "1.0"
 paths:
-  /cfg:
-    get:
-      description: 用于前端检测 /cfg 接口是否正常运行
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.CfgResponse'
-      summary: 获取配置服务状态
-      tags:
-      - Config
-    post:
-      consumes:
-      - application/json
-      description: 当前 POST /cfg 接口无实际功能，仅用于协议保留或测试
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.CfgResponse'
-      summary: 提交配置或检测接口
-      tags:
-      - Config
   /ota/:
     get:
       description: 获取 OTA 服务状态和 WebSocket 地址，供设备查询
