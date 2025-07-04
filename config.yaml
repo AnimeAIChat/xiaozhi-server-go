@@ -133,6 +133,13 @@ LLM:
       type: ollama
       model_name: qwen3 #  使用的模型名称，需要预先使用ollama pull下载
       url: http://localhost:11434  # Ollama服务地址
+    CozeLLM:
+      # 定义LLM API类型
+      type: coze
+      bot_id: 你的bot_id
+      user_id: 你的user_id
+      personal_access_token: 你的coze个人令牌
+      url: "https://api.coze.cn" # Coze服务地址
 
 # 退出指令
 CMD_exit:
