@@ -1,0 +1,133 @@
+basePath: /api
+definitions:
+  ota.ErrorResponse:
+    properties:
+      message:
+        example: 缺少 device-id
+        type: string
+      success:
+        example: false
+        type: boolean
+    type: object
+  ota.OtaFirmwareResponse:
+    properties:
+      firmware:
+        properties:
+          url:
+            example: /ota_bin/1.0.3.bin
+            type: string
+          version:
+            example: 1.0.3
+            type: string
+        type: object
+      server_time:
+        properties:
+          timestamp:
+            example: 1688443200000
+            type: integer
+          timezone_offset:
+            example: 480
+            type: integer
+        type: object
+      websocket:
+        properties:
+          url:
+            example: wss://example.com/ota
+            type: string
+        type: object
+    type: object
+  ota.OtaRequest:
+    properties:
+      application:
+        properties:
+          version:
+            example: 1.0.0
+            type: string
+        type: object
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: 小智服务端，包含OTA与Vision等接口
+  title: 小智服务端 API 文档
+  version: "1.0"
+paths:
+  /ota/:
+    get:
+      description: 获取 OTA 服务状态和 WebSocket 地址，供设备查询
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 'OTA interface is running, websocket address: ws://...'
+          schema:
+            type: string
+      summary: 获取 OTA 状态
+      tags:
+      - OTA
+    options:
+      consumes:
+      - '*/*'
+      description: 处理 OTA 接口的 OPTIONS 预检请求，返回 200
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: OTA 预检请求
+      tags:
+      - OTA
+    post:
+      consumes:
+      - application/json
+      description: 设备上传信息后，返回最新固件版本和下载地址
+      parameters:
+      - description: 设备ID
+        in: header
+        name: device-id
+        required: true
+        type: string
+      - description: 请求体
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/ota.OtaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/ota.OtaFirmwareResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ota.ErrorResponse'
+      summary: 上传设备信息获取最新固件
+      tags:
+      - OTA
+  /ota_bin/{filename}:
+    get:
+      description: 根据文件名下载 OTA 固件
+      parameters:
+      - description: 固件文件名
+        in: path
+        name: filename
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: 文件流
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ota.ErrorResponse'
+      summary: 下载 OTA 固件文件
+      tags:
+      - OTA
+swagger: "2.0"

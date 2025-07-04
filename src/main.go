@@ -1,3 +1,8 @@
+// @title 小智服务端 API 文档
+// @version 1.0
+// @description 小智服务端，包含OTA与Vision等接口
+// @host localhost:8080
+// @BasePath /api
 package main
 
 import (
@@ -15,8 +20,12 @@ import (
 	cfg "xiaozhi-server-go/src/configs/server"
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/utils"
+	_ "xiaozhi-server-go/src/docs"
 	"xiaozhi-server-go/src/ota"
 	"xiaozhi-server-go/src/vision"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	// 导入所有providers以确保init函数被调用
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
@@ -131,6 +140,9 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 		Addr:    ":" + strconv.Itoa(config.Web.Port),
 		Handler: router,
 	}
+
+	// 注册Swagger文档路由
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	g.Go(func() error {
 		logger.Info(fmt.Sprintf("Gin 服务已启动，访问地址: http://0.0.0.0:%d", config.Web.Port))

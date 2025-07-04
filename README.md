@@ -1,173 +1,184 @@
-小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
-![image](https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3)
+# ✨ 小智 AI 聊天机器人后端服务（商业版）
 
-小智项目最初是基于[虾哥开源的ESP32项目](https://github.com/78/xiaozhi-esp32?tab=readme-ov-file)，目前已经形成一个很好的开源生态，很多客户端都支持该协议，如ESP32客户端，Android客户端，python客户端等等。
+小智 AI 是一个语音交互机器人，结合 Qwen、DeepSeek 等强大大模型，通过 MCP 协议连接多端设备（ESP32、Android、Python 等），实现高效自然的人机对话。
 
-本项目旨在为这些客户端提供一个协议兼容的后端服务，并且更容易的应用在符合商务需求的生产环境中。
+本项目是其后端服务，旨在提供一套 **商业级部署方案** —— 高并发、低成本、功能完整、开箱即用。
 
-# 小智服务商业版
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3" alt="Xiaozhi Architecture" width="600">
+</p>
 
-本项目目标为 **小智AI提供商业版后端解决方案**，提供 **高并发，低成本，功能全面，开箱即用的高性能服务**，助力企业快速搭建小智后端服务。
+项目初始基于 [虾哥的 ESP32 开源项目](https://github.com/78/xiaozhi-esp32?tab=readme-ov-file)，目前已形成完整生态，支持多种客户端协议兼容接入。
 
-项目大模型调用全部采用api方式调用，不在本地部署模型，以保证服务的精简和便捷部署。
+---
 
-**如有本地部署模型需求，可联系开发团队，我们已经整理了一套最优的本地部署方案**。
+## ✨ 核心优势
 
-**核心优势**
+| 优势         | 说明                                                   |
+| ---------- | ---------------------------------------------------- |
+| 🚀 高并发     | 单机支持 3000+ 在线，分布式可扩展至百万用户                            |
+| 👥 用户系统    | 完整的用户注册、登录、权限管理能力                                    |
+| 💰 支付集成    | 接入支付系统，助力商业闭环                                        |
+| 🛠️ 模型接入灵活 | 支持通过 API 调用多种大模型，简化部署，支持定制本地部署                       |
+| 📈 商业支持    | 提供 7×24 技术支持与运维保障                                    |
+| 🧠 模型兼容    | 支持 ASR（豆包）、TTS（EdgeTTS）、LLM（OpenAI、Ollama）、图文解说（智谱）等 |
 
-✔ **高并发**——单台服务支持3000以上用户同时在线，分布式部署支持百万用户同时在线
+---
 
-✔ **用户管理**——提供完整的用户注册、登录、管理等功能
+## ✅ 功能清单
 
-✔ **便捷收费**——提供完善的支付系统，助力企业快速实现盈利
+* [x] 支持 PCM / Opus 格式语音对话
+* [x] 支持大模型：ASR（豆包流式）、TTS（EdgeTTS/豆包）、LLM（OpenAI API、Ollama）
+* [x] 图像识别与解说（智谱 API）
+* [x] OTA 固件下发
+* [x] 支持 MCP 协议（客户端 / 本地 / 服务器）
+* [x] 支持 MQTT 连接（商务版功能）
+* [ ] 管理后台开发中...
 
-✔ **专业运维保障**——资深技术团队提供7×24小时监控、故障响应及性能优化支持
+---
 
-# 功能清单
+## 🚀 快速开始
 
-* [x] 支持PCM格式的语音对话
-* [x] 支持Opus格式的语音对话
-* [x] 支持的模型 ASR(豆包流式）LLM（OpenAi API，ollama）TTS（EdgeTTS，豆包TTS）
-* [x] 识图解说（智谱)
-* [x] OTA功能
-* [x] 支持服务端mcp
-* [x] 支持小智客户端mcp调用
-* [x] 支持服务端本地mcp调用
-* [x] 支持mqtt连接【仅在商务版本实现】
-* [x] 管理后台
+### 1. 下载 Release 版
 
+> 推荐直接下载 Release 版本，无需配置开发环境：
 
+👉 [点击前往 Releases 页面](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)
 
-# 安装和使用
+* 选择你平台对应的版本（如 Windows: `windows-amd64-server.exe`）
+* `.upx.exe` 是压缩版本，功能一致，体积更小，适合远程部署
 
-## 下载Release版
+---
 
-推荐下载[Releases ](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)版体验，避免配置开发环境，尽快体验服务效果
+### 2. 设置环境变量
 
-选择对应平台的版本，以windows为例，可以下载windows-amd64-server.exe，也可以下载windows-amd64-server-upx.exe（经过upx压缩，体积更小，效果相同，方便远程部署，其他平台均有upx版本）
-
-下载后放到一个目录，尽量使用英文路径
-
-## 配置环境变量
-
-设置环境变量或者在同目录下拷贝一份.env文件
-
-```sh
+```bash
 cp .env.example .env
 ```
 
-将其中的环境变量修改为你自己的值
+修改 `.env` 中的变量为你自己的值
 
-## 配置config
+---
 
-在同目录下拷贝一份config.yaml文件，推荐改名为.config.yaml
+### 3. 配置 `.config.yaml`
 
-### 配置WS地址
+* 推荐复制一份 `config.yaml` 改名为 `.config.yaml`
+* 按需求配置模型、WebSocket、OTA 地址等字段
+* 不建议自行删减字段结构
 
-修改配置下web选项的websocket ，将其设为你的ip，格式为ws://xxx.xxx.xxx.xxx:8000，端口8000和server配置的端口保持一致
+#### WebSocket 地址配置（必配）
 
-此地址通过ota下发给客户端，最新版本的esp32小智不能配置ws地址，只能通过ota下发
+```yaml
+web:
+  websocket: ws://your-server-ip:8000
+```
 
-### 配置ota地址
+用于 OTA 服务下发给客户端的连接地址，ESP32 客户端会自动从此地址连接 WS，不再手动配置。
 
-esp32硬件编码，将ota地址写入到硬件；有ota配置的功能的设备可以直接配置地址，地址为
+#### OTA 地址配置（必配）
 
-http://xxx.x.x.x:8080/api/ota/
+```text
+http://your-server-ip:8080/api/ota/
+```
 
-8080端口为ota服务配置的地址，如果修改了配置文件，此处做相应修改
+> ESP32 固件内置 OTA 地址，确保该服务地址可用。
 
-### 配置ASR，LLM，TTS
+#### 配置ASR，LLM，TTS
 
 根据配置文件的格式，配置好相关模型服务，尽量不要增减字段
 
-## 开始体验
+---
 
-启动服务，重启小智，如果正确连接到ota服务，服务日志会有打印
+## 💬 MCP 协议配置
 
-... POST     "/api/ota/"
+参考：`src/core/mcp/README.md`
 
-表示客户端已经连接到ota服务，并获取了ws地址，后面请尽情体验
+---
 
-## MCP配置使用
+## 🧪 源码安装与运行
 
-参考MCP目录下的[README文件](https://github.com/AnimeAIChat/xiaozhi-server-go/blob/main/src/core/mcp/README.md)
+### 前置条件
 
-# 源码安装和部署
+* Go 1.24.2+
+* Windows 用户需安装 CGO 和 Opus 库（见下文）
 
-## 前置条件
-
-本项目采用go语言编写，windows建议使用g维护go版本，mac可以使用gvm维护go版本
-
-* go 1.24.2
-
-## 下载源码
-
+```bash
 git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
-
-## 修改配置文件
-
-复制一份config.yaml到.config.yaml，并在配置中填好相应的key等信息，避免密钥泄漏
-
-## windows安装opus库
-
-由于使用了cgo链接opus库，在windows上配置稍微复杂，需要安装cgo编译环境
-
-首先，下载msys2，安装 GCC 工具链：
+cd xiaozhi-server-go
+cp config.yaml .config.yaml
 ```
+
+---
+
+### Windows 安装 Opus 编译环境
+
+安装 [MSYS2](https://www.msys2.org/)，然后：
+
+```bash
 pacman -Syu
-
-pacman -S mingw-w64-x86_64-gcc
-
-pacman -S mingw-w64-x86_64-go mingw-w64-x86_64-opus
-
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-go mingw-w64-x86_64-opus
 pacman -S mingw-w64-x86_64-pkg-config
 ```
-可以在msys2 MINGW64的环境下运行 go run ./src/main.go
 
-如果想要在windows的powershell中运行，可以把mingw64\bin加入环境变量path中，若还有报错，请检查设置
-```
-set PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig #使用你自己的pkgconfig路径
+设置环境变量（用于 PowerShell 或系统变量）：
+
+```bash
+set PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
 set CGO_ENABLED=1
 ```
-再执行
-go run ./src/main.go
 
-## 源码运行
+---
 
-```
+### 运行项目
+
+```bash
 go mod tidy
-
- go run ./src/main.go
+go run ./src/main.go
 ```
 
-## 编译
+### 编译发布版本
 
-```
+```bash
 go build -o xiaozhi-server.exe src/main.go
 ```
 
-## 运行
+---
 
+## 📚 Swagger 文档
+
+* 打开浏览器访问：`http://localhost:8080/swagger/index.html`
+
+### 更新 Swagger 文档（每次修改 API 后都要运行）
+
+```bash
+cd src
+swag init -g main.go
 ```
-.\xiaozhi-server.exe
-```
 
-## Centos系统下源码部署安装指南
+---
 
-- [Centos 8 安装指南](Centos_Guide.md)
+## ☁️ CentOS 源码部署指南
 
-# 社区与支持
-欢迎任何形式的贡献，以帮助我们改善Xiaozhi-server！包括：提交代码、问题、新想法，欢迎交流，可以通过以下方式联系我们：
+> 文档见：[Centos 8 安装指南](Centos_Guide.md)
+
+---
+
+
+## 💬 社区支持
+
+
+欢迎提交 Issue、PR 或新功能建议！
 
 <img src="https://github.com/user-attachments/assets/f93b7e94-2e1b-49dc-87f3-98ec2a020873" width="450" alt="微信群二维码">
 
+---
 
+## 🛠️ 定制开发
 
-
-## 定制开发
 我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。
 
 <img src="https://github.com/user-attachments/assets/e2639bc3-a58a-472f-9e72-b9363f9e79a3" width="450" alt="群主二维码">
 
-# 执照
-本仓库遵循Xiaozhi-server-go Open Source License 协议开源，该许可证本质上是Apache 2.0，但有一些额外的限制。
+## 📄 License
+
+本仓库遵循 `Xiaozhi-server-go Open Source License`（基于 Apache 2.0 增强版）
