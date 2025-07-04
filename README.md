@@ -163,11 +163,13 @@ swag init -g main.go
 
 ---
 
+
 ## 💬 社区支持
+
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/1eb5ba07-bf78-4368-8667-50601816dac2" width="400" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/f93b7e94-2e1b-49dc-87f3-98ec2a020873" width="450" alt="微信群二维码">
 
 ---
 
@@ -175,7 +177,7 @@ swag init -g main.go
 
 我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。
 
----
+<img src="https://github.com/user-attachments/assets/e2639bc3-a58a-472f-9e72-b9363f9e79a3" width="450" alt="群主二维码">
 
 ## 📄 License
 
