@@ -34,7 +34,7 @@
 * [x] 支持小智客户端mcp调用
 * [x] 支持服务端本地mcp调用
 * [x] 支持mqtt连接【仅在商务版本实现】
-* [ ] 管理后台
+* [x] 管理后台
 
 
 
@@ -159,12 +159,15 @@ go build -o xiaozhi-server.exe src/main.go
 # 社区与支持
 欢迎任何形式的贡献，以帮助我们改善Xiaozhi-server！包括：提交代码、问题、新想法，欢迎交流，可以通过以下方式联系我们：
 
-<img src="https://github.com/user-attachments/assets/1eb5ba07-bf78-4368-8667-50601816dac2" width="450" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/f93b7e94-2e1b-49dc-87f3-98ec2a020873" width="450" alt="微信群二维码">
+
 
 
 
 ## 定制开发
 我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。
+
+<img src="https://github.com/user-attachments/assets/e2639bc3-a58a-472f-9e72-b9363f9e79a3" width="450" alt="群主二维码">
 
 # 执照
 本仓库遵循Xiaozhi-server-go Open Source License 协议开源，该许可证本质上是Apache 2.0，但有一些额外的限制。
