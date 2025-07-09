@@ -138,6 +138,13 @@ LLM:
       type: coze
       bot_id: 你的bot_id
       user_id: 你的user_id
+      # 正式环境
+      # 可以在这里创建一个 OAuth服务类应用，得到client_id、public_key、private_key：https://www.coze.cn/open/oauth/apps
+      client_id: 你的coze clientId
+      public_key: 你的coze 公钥
+      private_key: 你的coze 私钥
+      # 个人测试，填了client_id、public_key、private_key此项就不用填了
+      # 可在这里找到你的personal_access_token：https://www.coze.cn/open/oauth/pats
       personal_access_token: 你的coze个人令牌
       url: "https://api.coze.cn" # Coze服务地址
 
