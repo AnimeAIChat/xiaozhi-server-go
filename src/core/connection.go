@@ -635,7 +635,11 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			a := utils.Extract_json_from_string(contentArguments)
 			if a != nil {
 				functionName = a["name"].(string)
-				functionArguments = a["arguments"].(string)
+				argumentsJson, err := json.Marshal(a["arguments"])
+				if err != nil {
+					h.LogError(fmt.Sprintf("函数调用参数解析失败: %v", err))
+				}
+				functionArguments = string(argumentsJson)
 				functionID = uuid.New().String()
 			} else {
 				bHasError = true
