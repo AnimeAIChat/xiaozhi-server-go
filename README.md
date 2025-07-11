@@ -27,13 +27,22 @@
 
 ## ✅ 功能清单
 
+* [x] 支持 websocket 连接
 * [x] 支持 PCM / Opus 格式语音对话
 * [x] 支持大模型：ASR（豆包流式）、TTS（EdgeTTS/豆包）、LLM（OpenAI API、Ollama）
-* [x] 图像识别与解说（智谱 API）
+* [x] 支持语音控制调用摄像头识别图像（智谱 API）
+* [x] 支持 auto/manual/realtime 三种对话模式，支持对话实时打断
+* [x] 支持 ESP32 小智客户端、Python 客户端、Android 客户端连入，无需校验
 * [x] OTA 固件下发
-* [x] 支持 MCP 协议（客户端 / 本地 / 服务器）
+* [x] 支持 MCP 协议（客户端 / 本地 / 服务器），可接入高德地图、天气查询等
+* [x] 支持语音控制切换角色声音
+* [x] 支持语音控制切换预设角色
+* [x] 支持语音控制播放音乐
+* [x] 支持单机部署服务
+* [x] 支持本地数据库 sqlite
 * [x] 支持 MQTT 连接（商务版功能）
-* [ ] 管理后台开发中...
+* [x] 管理后台(商务版已完成)
+
 
 ---
 
@@ -169,7 +178,7 @@ swag init -g main.go
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/f93b7e94-2e1b-49dc-87f3-98ec2a020873" width="450" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/103c32db-5f39-48d0-8868-53d3d095bd3a" width="450" alt="微信群二维码">
 
 ---
 
