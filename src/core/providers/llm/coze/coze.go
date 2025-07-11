@@ -19,6 +19,9 @@ type Provider struct {
 	botID                  string
 	userID                 string
 	accessToken            string
+	clientId               string
+	publicKey              string
+	privateKey             string
 	client                 coze.CozeAPI
 	sessionConversationMap sync.Map
 }
@@ -42,6 +45,18 @@ func NewProvider(config *llm.Config) (llm.Provider, error) {
 	if ok {
 		provider.userID = userID.(string)
 	}
+	clientId, ok := config.Extra["client_id"]
+	if ok {
+		provider.clientId = clientId.(string)
+	}
+	publicKey, ok := config.Extra["public_key"]
+	if ok {
+		provider.publicKey = publicKey.(string)
+	}
+	privateKey, ok := config.Extra["private_key"]
+	if ok {
+		provider.privateKey = privateKey.(string)
+	}
 	accessToken, ok := config.Extra["personal_access_token"]
 	if ok {
 		provider.accessToken = accessToken.(string)
@@ -63,7 +78,23 @@ func (p *Provider) Initialize() error {
 		return fmt.Errorf("缺少Coze基础URL配置")
 	}
 
-	authCli := coze.NewTokenAuth(p.accessToken)
+	var authCli coze.Auth
+	if p.clientId != "" && p.publicKey != "" && p.privateKey != "" {
+		// 正式环境
+		client, err := coze.NewJWTOAuthClient(coze.NewJWTOAuthClientParam{
+			ClientID:      p.clientId,
+			PublicKey:     p.publicKey,
+			PrivateKeyPEM: p.privateKey,
+		}, coze.WithAuthBaseURL(baseURL))
+		if err != nil {
+			return fmt.Errorf("Coze创建JWT授权令牌失败: %v", err)
+		}
+
+		authCli = coze.NewJWTAuth(client, nil)
+	} else {
+		// 个人测试
+		authCli = coze.NewTokenAuth(p.accessToken)
+	}
 	p.client = coze.NewCozeAPI(authCli, coze.WithBaseURL(baseURL))
 	return nil
 }
