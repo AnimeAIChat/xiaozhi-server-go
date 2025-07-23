@@ -40,8 +40,10 @@
 * [x] 支持语音控制播放音乐
 * [x] 支持单机部署服务
 * [x] 支持本地数据库 sqlite
+* [x] 支持MySQL,PostgreSQL（商务版功能）
 * [x] 支持 MQTT 连接（商务版功能）
-* [x] 管理后台(商务版已完成)
+* [x] 支持dify工作流 （商务版功能）
+* [x] 管理后台(商务版已完成：设备绑定，用户、智能体管理)
 
 
 ---
@@ -178,7 +180,7 @@ swag init -g main.go
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/e2eb52aa-76c0-4cc7-93dc-57f7a1bcfbc8" width="450" alt="微信群二维码">
+<img src="https://github.com/user-attachments/assets/0ff96777-37ec-4eea-b75f-1680c4574e07" width="450" alt="微信群二维码">
 
 ---
 
