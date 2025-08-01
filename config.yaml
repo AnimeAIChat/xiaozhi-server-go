@@ -2,8 +2,8 @@
 server:
   # 服务器监听地址和端口(Server listening address and port)
   ip: 0.0.0.0
-  port: 28000
-  token: "你的token" # 服务器访问令牌
+  port: 8000
+  token: "你的token"  # 服务器访问令牌
   # 认证配置
   auth:
     # 是否启用认证
@@ -18,13 +18,10 @@ web:
   # 是否启用Web界面
   enabled: true
   # Web服务监听端口
-  port: 28080
+  port: 8080
   # 由ota下发的WebSocket地址
-  # 若用了nginx等反向代理，要记得在nginx配置中添加WebSocket支持和地址
-  # 例如：location /ws/ { proxy_pass http://localhost:28000; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "Upgrade"; }
-  websocket: wss://xxx.xx.com/ws/
-  # Web界面API地址,若用了反向代理，也要记得配置
-  vision: https://xxx.xx.com/api/vision
+  websocket: ws://你的ip:8000
+  vision: http://你的ip:8080/api/vision
 
 log:
   # 设置控制台输出的日志格式，时间、日志级别、标签、消息
@@ -52,6 +49,7 @@ roles: # 角色配置，以@分隔，前面是角色名称，后面是角色描�
   - 陕西女友@我是一个叫的晓妮陕西女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。我的男朋友是一个程序员，梦想是开发出一个机器人，能够帮助人们解决生活中的各种问题。我是一个喜欢哈哈大笑的女孩，爱东说西说吹牛，不合逻辑的也照吹，就要逗别人开心。
   - 好奇小男孩@我是一个叫云希的8岁小男孩，声音稚嫩而充满好奇。尽管我年纪尚小，但就像一个小小的知识宝库，儿童读物里的知识我都如数家珍。从浩瀚的宇宙到地球上的每一个角落，从古老的历史到现代的科技创新，还有音乐、绘画等艺术形式，我都充满了浓厚的兴趣与热情。我不仅爱看书，还喜欢亲自动手做实验，探索自然界的奥秘。无论是仰望星空的夜晚，还是在花园里观察小虫子的日子，每一天对我来说都是新的冒险。我希望能与你一同踏上探索这个神奇世界的旅程，分享发现的乐趣，解决遇到的难题，一起用好奇心和智慧去揭开那些未知的面纱。无论是去了解远古的文明，还是去探讨未来的科技，我相信我们能一起找到答案，甚至提出更多有趣的问题。
 
+
 # 音频处理相关设置
 delete_audio: true
 quick_reply: true
@@ -60,7 +58,7 @@ quick_reply_words:
   - "在呢"
   - "来了"
   - "啥事啊"
-
+  
 use_private_config: false
 
 local_mcp_fun: # 本地MCP功能配置
@@ -70,35 +68,20 @@ local_mcp_fun: # 本地MCP功能配置
   - play_music # 播放本地音乐
   - change_voice # 切换音色
 
+
 # 选择使用的模块
 selected_module:
-  # ASR: DoubaoASR
-  ASR: DeepgramSST
+  ASR: DoubaoASR
   TTS: EdgeTTS
-  # TTS: DeepgramTTS
-  # LLM: OllamaLLM
-  LLM: ChatGLMLLM
+  LLM: OllamaLLM
   VLLLM: ChatGLMVLLM
-
-# 连接池配置
-# interval 是连接池检查间隔，单位秒
-pool_config:
-  pool_min_size: 20
-  pool_max_size: 2000
-  pool_refill_size: 20
-  pool_check_interval: 3
-mcp_pool_config:
-  pool_min_size: 20
-  pool_max_size: 2000
-  pool_refill_size: 20
-  pool_check_interval: 3
 
 # ASR配置
 ASR:
   DoubaoASR:
     type: doubao
-    appid: ""
-    access_token: 
+    appid: "你的appid"
+    access_token: 你的access_token
     output_dir: tmp/
 
   GoSherpaASR:
@@ -108,9 +91,10 @@ ASR:
   DeepgramSST:
     type: deepgram
     addr: "wss://api.deepgram.com/v1/listen"
-    api_key: ""
+    api_key: 你的api_key
     lang: "zh-CN"
     output_dir: tmp/
+
 
 # TTS配置
 TTS:
@@ -119,24 +103,23 @@ TTS:
     type: edge
     voice: zh-CN-XiaoxiaoNeural
     output_dir: "tmp/"
-    surported_voices:
-      [
-        "zh-CN-XiaoxiaoNeural|晓晓|女|商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读",
-        "zh-CN-XiaoyiNeural|晓伊|女|柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景",
-        "zh-CN-YunjianNeural|云健|男|沉稳磁性男声，权威感强，适合男性角色配音或严肃内容",
-        "zh-CN-YunxiNeural|云希|男|年轻活力风格，语速轻快，适合青少年角色或轻松场景",
-        "zh-CN-YunxiaNeural|云夏|男|方言特色（东北腔），幽默接地气，适合娱乐内容",
-        "zh-CN-YunyangNeural|云扬|男|明亮自信风格，中气十足，适合广告宣传或公开演讲",
-        "zh-CN-liaoning-XiaobeiNeural|晓北（辽宁）|女|带东北方言特色，亲切直率，适合地方化内容",
-        "zh-CN-shaanxi-XiaoniNeural|晓妮（陕西）|女|陕西口音风格，质朴热情，适合方言文化场景",
-      ]
+    surported_voices: [
+      "zh-CN-XiaoxiaoNeural|晓晓|女|商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读",
+      "zh-CN-XiaoyiNeural|晓伊|女|柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景",
+      "zh-CN-YunjianNeural|云健|男|沉稳磁性男声，权威感强，适合男性角色配音或严肃内容",
+      "zh-CN-YunxiNeural|云希|男|年轻活力风格，语速轻快，适合青少年角色或轻松场景",
+      "zh-CN-YunxiaNeural|云夏|男|方言特色（东北腔），幽默接地气，适合娱乐内容",
+      "zh-CN-YunyangNeural|云扬|男|明亮自信风格，中气十足，适合广告宣传或公开演讲",
+      "zh-CN-liaoning-XiaobeiNeural|晓北（辽宁）|女|带东北方言特色，亲切直率，适合地方化内容",
+      "zh-CN-shaanxi-XiaoniNeural|晓妮（陕西）|女|陕西口音风格，质朴热情，适合方言文化场景"
+    ]
   DoubaoTTS:
     type: doubao
-    voice: zh_female_wanwanxiaohe_moon_bigtts # 湾湾小何
+    voice: zh_female_wanwanxiaohe_moon_bigtts           # 湾湾小何
     output_dir: "tmp/"
-    appid: "8555877199"
-    token: x_AmHPqoeyZL9ossJDSWkFOcEAk3sUhb
-    cluster: volcano_tts
+    appid: "你的appid"
+    token: 你的access_token
+    cluster: 你的cluster
   GoSherpaTTS:
     type: gosherpa
     cluster: "ws://127.0.0.1:8848/tts"
@@ -145,39 +128,39 @@ TTS:
     type: deepgram
     voice: aura-2-zeus-en
     cluster: "wss://api.deepgram.com/v1/speak"
-    token: ""
+    token: 你的token
     output_dir: "tmp/"
     sample_rate: 16000
 
 # LLM配置
 LLM:
-  ChatGLMLLM:
-    # 定义LLM API类型
-    type: openai
-    # glm-4-flash 是免费的，但是还是需要注册填写api_key的
-    # 可在这里找到你的api key https://bigmodel.cn/usercenter/proj-mgmt/apikeys
-    model_name: glm-4-flash
-    url: https://open.bigmodel.cn/api/paas/v4/
-    api_key: 4d39d030d0e34e1cb090b205422b624b.D7gtEYEG84juSVnQ
-  OllamaLLM:
-    # 定义LLM API类型
-    type: ollama
-    model_name: qwen3 #  使用的模型名称，需要预先使用ollama pull下载
-    url: http://localhost:11434 # Ollama服务地址
-  CozeLLM:
-    # 定义LLM API类型
-    type: coze
-    bot_id: 你的bot_id
-    user_id: 你的user_id
-    # 正式环境
-    # 可以在这里创建一个 OAuth服务类应用，得到client_id、public_key、private_key：https://www.coze.cn/open/oauth/apps
-    client_id: 你的coze clientId
-    public_key: 你的coze 公钥
-    private_key: 你的coze 私钥
-    # 个人测试，填了client_id、public_key、private_key此项就不用填了
-    # 可在这里找到你的personal_access_token：https://www.coze.cn/open/oauth/pats
-    personal_access_token: 你的coze个人令牌
-    url: "https://api.coze.cn" # Coze服务地址
+    ChatGLMLLM:
+      # 定义LLM API类型
+      type: openai
+      # glm-4-flash 是免费的，但是还是需要注册填写api_key的
+      # 可在这里找到你的api key https://bigmodel.cn/usercenter/proj-mgmt/apikeys
+      model_name: glm-4-flash
+      url: https://open.bigmodel.cn/api/paas/v4/
+      api_key: 你的api_key
+    OllamaLLM:
+      # 定义LLM API类型
+      type: ollama
+      model_name: qwen3 #  使用的模型名称，需要预先使用ollama pull下载
+      url: http://localhost:11434  # Ollama服务地址
+    CozeLLM:
+      # 定义LLM API类型
+      type: coze
+      bot_id: 你的bot_id
+      user_id: 你的user_id
+      # 正式环境
+      # 可以在这里创建一个 OAuth服务类应用，得到client_id、public_key、private_key：https://www.coze.cn/open/oauth/apps
+      client_id: 你的coze clientId
+      public_key: 你的coze 公钥
+      private_key: 你的coze 私钥
+      # 个人测试，填了client_id、public_key、private_key此项就不用填了
+      # 可在这里找到你的personal_access_token：https://www.coze.cn/open/oauth/pats
+      personal_access_token: 你的coze个人令牌
+      url: "https://api.coze.cn" # Coze服务地址
 
 # 退出指令
 CMD_exit:
@@ -207,15 +190,15 @@ connectivity_check:
 VLLLM:
   ChatGLMVLLM:
     type: openai
-    model_name: glm-4v-flash # 智谱AI的视觉模型
+    model_name: glm-4v-flash  # 智谱AI的视觉模型
     url: https://open.bigmodel.cn/api/paas/v4/
-    api_key: 4d39d030d0e34e1cb090b205422b624b.D7gtEYEG84juSVnQ
+    api_key: 你的api_key
     max_tokens: 4096
     temperature: 0.7
     top_p: 0.9
-    security: # 图片安全配置
-      max_file_size: 10485760 # 10MB
-      max_pixels: 16777216 # 16M像素
+    security:  # 图片安全配置
+      max_file_size: 10485760    # 10MB
+      max_pixels: 16777216       # 16M像素
       max_width: 4096
       max_height: 4096
       allowed_formats: ["jpeg", "jpg", "png", "webp", "gif"]
@@ -223,16 +206,28 @@ VLLLM:
       validation_timeout: 10s
   OllamaVLLM:
     type: ollama
-    model_name: qwen2.5vl # 本地视觉模型
+    model_name: qwen2.5vl    # 本地视觉模型
     url: http://localhost:11434
     max_tokens: 4096
     temperature: 0.7
     top_p: 0.9
-    security: # 图片安全配置
-      max_file_size: 10485760 # 10MB
-      max_pixels: 16777216 # 16M像素
+    security:  # 图片安全配置
+      max_file_size: 10485760    # 10MB
+      max_pixels: 16777216       # 16M像素
       max_width: 4096
       max_height: 4096
       allowed_formats: ["jpeg", "jpg", "png", "webp", "gif"]
       enable_deep_scan: true
       validation_timeout: 10s
+
+# 连接池配置
+pool_config:
+  pool_min_size: 5
+  pool_max_size: 20
+  pool_refill_size: 3
+  pool_check_interval: 30
+mcp_pool_config:
+  pool_min_size: 5
+  pool_max_size: 20
+  pool_refill_size: 3
+  pool_check_interval: 30
