@@ -28,11 +28,13 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	// 导入所有providers以确保init函数被调用
+	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
 	_ "xiaozhi-server-go/src/core/providers/asr/gosherpa"
 	_ "xiaozhi-server-go/src/core/providers/llm/coze"
 	_ "xiaozhi-server-go/src/core/providers/llm/ollama"
 	_ "xiaozhi-server-go/src/core/providers/llm/openai"
+	_ "xiaozhi-server-go/src/core/providers/tts/deepgram"
 	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
 	_ "xiaozhi-server-go/src/core/providers/tts/edge"
 	_ "xiaozhi-server-go/src/core/providers/tts/gosherpa"

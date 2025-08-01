@@ -88,6 +88,13 @@ ASR:
     type: gosherpa
     addr: "ws://127.0.0.1:8848/asr"
 
+  DeepgramSST:
+    type: deepgram
+    addr: "wss://api.deepgram.com/v1/listen"
+    api_key: 你的api_key
+    lang: "zh-CN"
+    output_dir: tmp/
+
 
 # TTS配置
 TTS:
@@ -117,6 +124,13 @@ TTS:
     type: gosherpa
     cluster: "ws://127.0.0.1:8848/tts"
     output_dir: "tmp/"
+  DeepgramTTS:
+    type: deepgram
+    voice: aura-2-zeus-en
+    cluster: "wss://api.deepgram.com/v1/speak"
+    token: 你的token
+    output_dir: "tmp/"
+    sample_rate: 16000
 
 # LLM配置
 LLM:
@@ -205,3 +219,15 @@ VLLLM:
       allowed_formats: ["jpeg", "jpg", "png", "webp", "gif"]
       enable_deep_scan: true
       validation_timeout: 10s
+
+# 连接池配置
+pool_config:
+  pool_min_size: 5
+  pool_max_size: 20
+  pool_refill_size: 3
+  pool_check_interval: 30
+mcp_pool_config:
+  pool_min_size: 5
+  pool_max_size: 20
+  pool_refill_size: 3
+  pool_check_interval: 30
