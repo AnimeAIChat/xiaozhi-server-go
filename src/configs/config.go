@@ -49,6 +49,9 @@ type Config struct {
 
 	SelectedModule map[string]string `yaml:"selected_module"`
 
+	PoolConfig    PoolConfig    `yaml:"pool_config"`
+	McpPoolConfig McpPoolConfig `yaml:"mcp_pool_config"`
+
 	VAD   map[string]VADConfig  `yaml:"VAD"`
 	ASR   map[string]ASRConfig  `yaml:"ASR"`
 	TTS   map[string]TTSConfig  `yaml:"TTS"`
@@ -68,6 +71,19 @@ type VADConfig struct {
 	Threshold          float64                `yaml:"threshold"`
 	MinSilenceDuration int                    `yaml:"min_silence_duration_ms"`
 	Extra              map[string]interface{} `yaml:",inline"`
+}
+
+type PoolConfig struct {
+	PoolMinSize       int `yaml:"pool_min_size"`
+	PoolMaxSize       int `yaml:"pool_max_size"`
+	PoolRefillSize    int `yaml:"pool_refill_size"`
+	PoolCheckInterval int `yaml:"pool_check_interval"`
+}
+type McpPoolConfig struct {
+	PoolMinSize       int `yaml:"pool_min_size"`
+	PoolMaxSize       int `yaml:"pool_max_size"`
+	PoolRefillSize    int `yaml:"pool_refill_size"`
+	PoolCheckInterval int `yaml:"pool_check_interval"`
 }
 
 // ASRConfig ASR配置结构
