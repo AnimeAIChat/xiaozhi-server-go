@@ -218,16 +218,6 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 	currentRound := h.talkRound
 	h.LogInfo(fmt.Sprintf("开始新的图片对话轮次: %d", currentRound))
 
-	// 判断是否需要验证
-	if h.isNeedAuth() {
-		if err := h.checkAndBroadcastAuthCode(); err != nil {
-			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
-			return err
-		}
-		h.LogInfo("设备未认证，等待管理员认证")
-		return nil
-	}
-
 	// 检查是否有VLLLM Provider
 	if h.providers.vlllm == nil {
 		h.logger.Warn("未配置VLLLM服务，图片消息将被忽略")

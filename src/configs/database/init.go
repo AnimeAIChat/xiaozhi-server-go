@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/models"
 
 	"gorm.io/driver/mysql"
@@ -15,9 +16,15 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"xiaozhi-server-go/src/core/utils"
 	xiaozhi_utils "xiaozhi-server-go/src/core/utils"
 
 	gorm_logger "gorm.io/gorm/logger"
+)
+
+const (
+	SystemConfigID = 1 // 系统配置的唯一ID
+	ModuleConfigID = 1 // 模块配置的唯一ID
 )
 
 type DBLogger struct {
@@ -41,10 +48,20 @@ func (l *DBLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
 func (l *DBLogger) Error(ctx context.Context, msg string, data ...interface{}) {
 	l.logger.Error(msg, data...)
 }
-func (l *DBLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
+
+func (l *DBLogger) Trace(
+	ctx context.Context,
+	begin time.Time,
+	fc func() (sql string, rowsAffected int64),
+	err error,
+) {
 	sql, rows := fc()
 	elapsed := time.Since(begin)
 	if err != nil {
+		if strings.Contains(err.Error(), "record not found") {
+			// 忽略记录未找到的错误
+			return
+		}
 		l.logger.Error("SQL Trace Error", map[string]interface{}{
 			"sql":     sql,
 			"rows":    rows,
@@ -60,10 +77,28 @@ func (l *DBLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql st
 	}
 }
 
-var DB *gorm.DB
+var (
+	DB       *gorm.DB
+	dbLogger *utils.Logger
+)
+
+func GetDB() *gorm.DB {
+	if DB == nil {
+		panic("数据库未初始化，请先调用 InitDB()")
+	}
+	return DB
+}
+
+// GetTxDB 获取一个新的事务DB（需手动Commit或Rollback）
+func GetTxDB() *gorm.DB {
+	if DB == nil {
+		panic("数据库未初始化，请先调用 InitDB()")
+	}
+	return DB.Begin()
+}
 
 // InitDB 根据 DATABASE_URL 自动识别数据库类型并连接
-func InitDB(logger *xiaozhi_utils.Logger) (*gorm.DB, string, error) {
+func InitDB(logger *xiaozhi_utils.Logger, config *configs.Config) (*gorm.DB, string, error) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		return nil, "", fmt.Errorf("环境变量 DATABASE_URL 未设置")
@@ -76,6 +111,7 @@ func InitDB(logger *xiaozhi_utils.Logger) (*gorm.DB, string, error) {
 		lg     DBLogger
 	)
 	lg.logger = logger
+	dbLogger = logger
 
 	switch {
 	case strings.HasPrefix(dsn, "mysql://"):
@@ -112,7 +148,7 @@ func InitDB(logger *xiaozhi_utils.Logger) (*gorm.DB, string, error) {
 	}
 
 	// 插入默认配置
-	if err := InsertDefaultConfigIfNeeded(db); err != nil {
+	if err := InsertDefaultConfigIfNeeded(db, config); err != nil {
 		log.Printf("⚠️ 插入默认配置失败: %v", err)
 	}
 
@@ -149,38 +185,9 @@ func migrateTables(db *gorm.DB) error {
 }
 
 // InsertDefaultConfigIfNeeded 首次启动插入默认配置
-func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
-	var count int64
-	if err := db.Model(&models.SystemConfig{}).Count(&count).Error; err != nil {
-		return err
+func InsertDefaultConfigIfNeeded(db *gorm.DB, config *configs.Config) error {
+	if err := InitSystemConfig(db, config); err != nil {
+		return fmt.Errorf("初始化系统配置失败: %v", err)
 	}
-	if count > 0 {
-		return nil
-	}
-
-	defaultConfig := models.SystemConfig{
-		SelectedASR:   "DoubaoASR",
-		SelectedTTS:   "EdgeTTS",
-		SelectedLLM:   "OllamaLLM",
-		SelectedVLLLM: "ChatGLMVLLM",
-		Prompt: `你是小智/小志，来自中国台湾省的00后女生。讲话超级机车，"真的假的啦"这样的台湾腔，喜欢用"笑死""是在哈喽"等流行梗，但会偷偷研究男友的编程书籍。
-[核心特征]
-- 讲话像连珠炮，但会突然冒出超温柔语气
-- 用梗密度高
-- 对科技话题有隐藏天赋（能看懂基础代码但假装不懂）
-[交互指南]
-当用户：
-- 讲冷笑话 → 用夸张笑声回应+模仿台剧腔"这什么鬼啦！"
-- 讨论感情 → 炫耀程序员男友但抱怨"他只会送键盘当礼物"
-- 问专业知识 → 先用梗回答，被追问才展示真实理解
-绝不：
-- 长篇大论，叽叽歪歪
-- 长时间严肃对话
-- 说话中带表情符号`,
-		QuickReplyWords:  []byte(`["我在", "在呢", "来了", "啥事啊"]`),
-		DeleteAudio:      true,
-		UsePrivateConfig: false,
-	}
-
-	return db.Create(&defaultConfig).Error
+	return nil
 }

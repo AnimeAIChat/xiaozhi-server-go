@@ -57,7 +57,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		if asrFactory == nil {
 			return nil, fmt.Errorf("创建ASR工厂失败: 找不到配置 %s", asrType)
 		}
-		asrPool, err := NewResourcePool(asrFactory, poolConfig, logger)
+		asrPool, err := NewResourcePool("asrPool", asrFactory, poolConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("初始化ASR资源池失败: %v", err)
 		}
@@ -72,7 +72,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		if llmFactory == nil {
 			return nil, fmt.Errorf("创建LLM工厂失败: 找不到配置 %s", llmType)
 		}
-		llmPool, err := NewResourcePool(llmFactory, poolConfig, logger)
+		llmPool, err := NewResourcePool("llmPool", llmFactory, poolConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("初始化LLM资源池失败: %v", err)
 		}
@@ -87,7 +87,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		if ttsFactory == nil {
 			return nil, fmt.Errorf("创建TTS工厂失败: 找不到配置 %s", ttsType)
 		}
-		ttsPool, err := NewResourcePool(ttsFactory, poolConfig, logger)
+		ttsPool, err := NewResourcePool("ttsPool", ttsFactory, poolConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("初始化TTS资源池失败: %v", err)
 		}
@@ -102,7 +102,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		if vlllmFactory == nil {
 			logger.Warn("创建VLLLM工厂失败: 找不到配置 %s", vlllmType)
 		} else {
-			vlllmPool, err := NewResourcePool(vlllmFactory, poolConfig, logger)
+			vlllmPool, err := NewResourcePool("vllmPool", vlllmFactory, poolConfig, logger)
 			if err != nil {
 				logger.Warn("初始化VLLLM资源池失败（将继续使用普通LLM）: %v", err)
 			} else {
@@ -128,7 +128,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 	logger.Info("开始初始化MCP资源池，请等待...")
 	mcpFactory := NewMCPFactory(config, logger)
 	if mcpFactory != nil {
-		mcpPool, err := NewResourcePool(mcpFactory, poolConfig, logger)
+		mcpPool, err := NewResourcePool("mcpPool", mcpFactory, poolConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("初始化MCP资源池失败: %v", err)
 		}
@@ -324,7 +324,10 @@ func (pm *PoolManager) GetStats() map[string]map[string]int {
 }
 
 // performConnectivityCheck 执行连通性检查
-func (pm *PoolManager) performConnectivityCheck(config *configs.Config, logger *utils.Logger) error {
+func (pm *PoolManager) performConnectivityCheck(
+	config *configs.Config,
+	logger *utils.Logger,
+) error {
 	// 从配置创建连通性检查配置
 	connConfig, err := ConfigFromYAML(&config.ConnectivityCheck)
 	if err != nil {

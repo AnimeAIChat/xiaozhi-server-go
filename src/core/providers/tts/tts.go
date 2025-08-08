@@ -4,23 +4,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 // Config TTS配置结构
 type Config struct {
-	Type            string   `yaml:"type"`
-	OutputDir       string   `yaml:"output_dir"`
-	Voice           string   `yaml:"voice,omitempty"`
-	Format          string   `yaml:"format,omitempty"`
-	SampleRate      int      `yaml:"sample_rate,omitempty"`
-	AppID           string   `yaml:"appid"`
-	Token           string   `yaml:"token"`
-	Cluster         string   `yaml:"cluster"`
-	SurportedVoices []string `yaml:"surported_voices"` // 支持的语音列表
+	Name            string              `yaml:"name"` // TTS提供者名称
+	Type            string              `yaml:"type"`
+	OutputDir       string              `yaml:"output_dir"`
+	Voice           string              `yaml:"voice,omitempty"`
+	Format          string              `yaml:"format,omitempty"`
+	SampleRate      int                 `yaml:"sample_rate,omitempty"`
+	AppID           string              `yaml:"appid"`
+	Token           string              `yaml:"token"`
+	Cluster         string              `yaml:"cluster"`
+	SupportedVoices []configs.VoiceInfo `yaml:"supported_voices"` // 支持的语音列表
 }
 
 // Provider TTS提供者接口
@@ -54,7 +54,7 @@ func NewBaseProvider(config *Config, deleteFile bool) *BaseProvider {
 
 // Initialize 初始化提供者
 func (p *BaseProvider) Initialize() error {
-	if err := os.MkdirAll(p.config.OutputDir, 0755); err != nil {
+	if err := os.MkdirAll(p.config.OutputDir, 0o755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %v", err)
 	}
 	return nil
@@ -66,24 +66,27 @@ func (p *BaseProvider) SetVoice(voice string) error {
 		return fmt.Errorf("声音不能为空")
 	}
 	cnNames := map[string]string{}
-	enNames := []string{}
-	for _, v := range p.config.SurportedVoices {
-		// "zh-CN-XiaoxiaoNeural|晓晓|女|商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读"
-		parts := strings.Split(v, "|")
-		if len(parts) >= 2 {
-			cnNames[parts[1]] = parts[0] // 中文名
-			enNames = append(enNames, parts[0])
-		}
+	enNames := map[string]string{}
+	voiceNames := []string{}
+	for _, v := range p.config.SupportedVoices {
+		cnNames[v.DisplayName] = v.Name // 中文名
+		enNames[v.Name] = v.Name        // 英文名（实际是音色名）
+		voiceNames = append(voiceNames, v.Name)
 	}
 
-	// 如果是中文名，则转换为英文名
+	// 如果是中文名，则转换为音色名称
 	if enVoice, ok := cnNames[voice]; ok {
 		voice = enVoice
 	}
 
+	// 如果是英文名，则转换为音色名称
+	if enVoice, ok := enNames[voice]; ok {
+		voice = enVoice
+	}
+
 	// 检查声音是否在支持的列表中
-	if !utils.IsInArray(voice, enNames) {
-		return fmt.Errorf("不支持的声音: %s, 可用声音: %v", voice, enNames)
+	if !utils.IsInArray(voice, voiceNames) {
+		return fmt.Errorf("不支持的声音: %s, 可用声音: %v", voice, voiceNames)
 	}
 
 	p.Config().Voice = voice
@@ -112,9 +115,7 @@ func (p *BaseProvider) Cleanup() error {
 // Factory TTS工厂函数类型
 type Factory func(config *Config, deleteFile bool) (Provider, error)
 
-var (
-	factories = make(map[string]Factory)
-)
+var factories = make(map[string]Factory)
 
 // Register 注册TTS提供者工厂
 func Register(name string, factory Factory) {

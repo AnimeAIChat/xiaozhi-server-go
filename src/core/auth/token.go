@@ -62,7 +62,6 @@ func (at *AuthToken) VerifyToken(tokenString string) (bool, string, error) {
 		}
 		return at.secretKey, nil
 	})
-
 	if err != nil {
 		return false, "", fmt.Errorf("failed to parse token: %w", err)
 	}

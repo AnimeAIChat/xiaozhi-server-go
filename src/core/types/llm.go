@@ -70,13 +70,13 @@ type Message struct {
 }
 
 func (m *Message) Print() {
-	//转为json字符串
+	// 转为json字符串
 	jsonStr, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		fmt.Println("json marshal error:", err)
 		return
 	}
-	//fmt.Println("Message:")
+	// fmt.Println("Message:")
 	fmt.Println(string(jsonStr))
 }
 
@@ -121,5 +121,12 @@ type FunctionRegistryInterface interface {
 type LLMProvider interface {
 	Provider
 	Response(ctx context.Context, sessionID string, messages []Message) (<-chan string, error)
-	ResponseWithFunctions(ctx context.Context, sessionID string, messages []Message, tools []openai.Tool) (<-chan Response, error)
+	ResponseWithFunctions(
+		ctx context.Context,
+		sessionID string,
+		messages []Message,
+		tools []openai.Tool,
+	) (<-chan Response, error)
+	GetSessionID() string                       // 获取当前会话ID
+	SetIdentityFlag(idType string, flag string) // 设置身份标识
 }

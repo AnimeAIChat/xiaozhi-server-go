@@ -2,6 +2,7 @@ package function
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -35,6 +36,27 @@ func (fr *FunctionRegistry) GetAllFunctions() []openai.Tool {
 	functions := make([]openai.Tool, 0, len(fr.functions))
 	for _, function := range fr.functions {
 		functions = append(functions, function)
+	}
+	return functions
+}
+
+func (fr *FunctionRegistry) GetFunctionByFilter(filter []string) []openai.Tool {
+	if len(filter) == 0 {
+		return fr.GetAllFunctions()
+	}
+	functions := make([]openai.Tool, 0)
+	for name, function := range fr.functions {
+		// ����self��local��ͷ�ĺ���
+		if strings.HasPrefix(name, "self") || strings.HasPrefix(name, "local") {
+			functions = append(functions, function)
+			continue
+		}
+		for _, f := range filter {
+			if name == f {
+				functions = append(functions, function)
+				break
+			}
+		}
 	}
 	return functions
 }

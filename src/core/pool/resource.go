@@ -25,6 +25,7 @@ type ResourceFactory interface {
 
 // ResourcePool 通用资源池
 type ResourcePool struct {
+	poolName    string
 	factory     ResourceFactory
 	pool        chan interface{}
 	minSize     int
@@ -45,17 +46,23 @@ type PoolConfig struct {
 }
 
 // NewResourcePool 创建资源池
-func NewResourcePool(factory ResourceFactory, config PoolConfig, logger *utils.Logger) (*ResourcePool, error) {
+func NewResourcePool(
+	poolName string,
+	factory ResourceFactory,
+	config PoolConfig,
+	logger *utils.Logger,
+) (*ResourcePool, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	pool := &ResourcePool{
-		factory: factory,
-		pool:    make(chan interface{}, config.MaxSize),
-		minSize: config.MinSize,
-		maxSize: config.MaxSize,
-		logger:  logger,
-		ctx:     ctx,
-		cancel:  cancel,
+		poolName: poolName,
+		factory:  factory,
+		pool:     make(chan interface{}, config.MaxSize),
+		minSize:  config.MinSize,
+		maxSize:  config.MaxSize,
+		logger:   logger,
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// 预创建最小数量的资源
@@ -80,10 +87,11 @@ func (p *ResourcePool) Get() (interface{}, error) {
 		return resource, nil
 	default:
 		// 池中没有资源时，检查是否可以创建新资源
+		p.logger.Info("%s 资源池中没有可用资源，尝试创建新资源", p.poolName)
 		p.mutex.Lock()
 		if p.currentSize >= p.maxSize {
 			p.mutex.Unlock()
-			return nil, fmt.Errorf("资源池已达到最大容量 %d，无法创建新资源", p.maxSize)
+			return nil, fmt.Errorf("%s 资源池已达到最大容量 %d，无法创建新资源", p.poolName, p.maxSize)
 		}
 		p.currentSize++
 		p.mutex.Unlock()
@@ -128,9 +136,16 @@ func (p *ResourcePool) refillPool(refillSize int) {
 	if currentSize < refillSize {
 		needCreate := refillSize - currentSize
 		for i := 0; i < needCreate && currentSize < p.maxSize; i++ {
+			p.logger.Info(
+				"%s 资源池当前资源数量 %d，创建新资源补充(%d/%d)",
+				p.poolName,
+				currentSize,
+				i+1,
+				needCreate,
+			)
 			resource, err := p.factory.Create()
 			if err != nil {
-				p.logger.Error("创建资源失败: %v", err)
+				p.logger.Error("%s 创建资源失败: %v", p.poolName, err)
 				continue
 			}
 
@@ -141,6 +156,7 @@ func (p *ResourcePool) refillPool(refillSize int) {
 				p.mutex.Unlock()
 			default:
 				// 池满了，销毁资源
+				p.logger.Warn("%s 资源池已满，销毁新创建的资源", p.poolName)
 				p.factory.Destroy(resource)
 			}
 		}
@@ -161,7 +177,7 @@ func (p *ResourcePool) Close() {
 // Put 将资源归还到池中
 func (p *ResourcePool) Put(resource interface{}) error {
 	if resource == nil {
-		return fmt.Errorf("不能将nil资源归还到池中")
+		return fmt.Errorf("%s 不能将nil资源归还到池中", p.poolName)
 	}
 
 	// 检查池是否已关闭
@@ -183,11 +199,11 @@ func (p *ResourcePool) Put(resource interface{}) error {
 		return nil
 	case <-timeout.C:
 		// 超时后销毁资源而不是阻塞
-		p.logger.Warn("资源归还超时，销毁资源")
+		p.logger.Warn("%s 资源归还超时，销毁资源", p.poolName)
 		return p.factory.Destroy(resource)
 	default:
 		// 池已满，销毁多余的资源
-		p.logger.Debug("资源池已满，销毁归还的资源")
+		p.logger.Debug("%s 资源池已满，销毁归还的资源", p.poolName)
 		return p.factory.Destroy(resource)
 	}
 }
