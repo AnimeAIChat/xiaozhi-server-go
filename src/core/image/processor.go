@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -32,7 +31,7 @@ type ImageProcessor struct {
 func NewImageProcessor(config *configs.VLLMConfig, logger *utils.Logger) (*ImageProcessor, error) {
 	// 创建临时目录
 	tempDir := filepath.Join("tmp", "images")
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %v", err)
 	}
 
@@ -127,7 +126,11 @@ func (p *ImageProcessor) ProcessImage(ctx context.Context, imageData ImageData) 
 }
 
 // processURLImage 处理URL图片
-func (p *ImageProcessor) processURLImage(ctx context.Context, url string, format string) (string, error) {
+func (p *ImageProcessor) processURLImage(
+	ctx context.Context,
+	url string,
+	format string,
+) (string, error) {
 	// 创建唯一的临时文件名
 	tempFileName := fmt.Sprintf("img_%d_%s", time.Now().UnixNano(), uuid.New().String())
 	if format != "" {

@@ -73,7 +73,16 @@ func NewResourceQuota() *ResourceQuota {
 		TotalUsedQuota:     0,
 		TotalRunningTasks:  0,
 		UserLevel:          UserLevelBasic,
-		LastResetDate:      time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()),
+		LastResetDate: time.Date(
+			now.Year(),
+			now.Month(),
+			now.Day(),
+			0,
+			0,
+			0,
+			0,
+			now.Location(),
+		),
 	}
 
 	return quota
@@ -138,7 +147,6 @@ func (rq *ResourceQuota) CompleteTask(taskType TaskType) {
 	defer rq.mu.Unlock()
 
 	rq.TotalRunningTasks--
-
 }
 
 // DecrementQuota decrements the used quota for a task type
@@ -156,5 +164,4 @@ func (rq *ResourceQuota) ResetQuota(taskType TaskType) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 	rq.TotalUsedQuota = 0
-
 }

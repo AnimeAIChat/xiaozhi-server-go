@@ -38,6 +38,7 @@ type Manager struct {
 
 // NewManagerForPool 创建用于资源池的MCP管理器
 func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
+	lg.Info("创建MCP Manager用于资源池")
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
@@ -65,7 +66,6 @@ func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 
 // preInitializeServers 预初始化不依赖连接的MCP服务器
 func (m *Manager) preInitializeServers() error {
-
 	m.localClient, _ = NewLocalClient(m.logger, m.systemCfg)
 	m.localClient.Start(context.Background())
 	m.clients["local"] = m.localClient
@@ -109,7 +109,11 @@ func (m *Manager) preInitializeServers() error {
 }
 
 // BindConnection 绑定连接到MCP Manager
-func (m *Manager) BindConnection(conn Conn, fh types.FunctionRegistryInterface, params interface{}) error {
+func (m *Manager) BindConnection(
+	conn Conn,
+	fh types.FunctionRegistryInterface,
+	params interface{},
+) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -176,7 +180,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 				if !m.isToolRegistered(toolName) {
 					m.funcHandler.RegisterFunction(toolName, tool)
 					m.tools = append(m.tools, toolName)
-					//m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
+					// m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
 				}
 			}
 		}
@@ -345,7 +349,7 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 				m.logger.Error(fmt.Sprintf("注册工具失败: %s, 错误: %v", toolName, err))
 				continue
 			}
-			//m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
+			// m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}
 }
@@ -365,7 +369,11 @@ func (m *Manager) IsMCPTool(toolName string) bool {
 }
 
 // ExecuteTool 执行工具调用
-func (m *Manager) ExecuteTool(ctx context.Context, toolName string, arguments map[string]interface{}) (interface{}, error) {
+func (m *Manager) ExecuteTool(
+	ctx context.Context,
+	toolName string,
+	arguments map[string]interface{},
+) (interface{}, error) {
 	m.logger.Info(fmt.Sprintf("Executing tool %s with arguments: %v", toolName, arguments))
 
 	m.mu.RLock()

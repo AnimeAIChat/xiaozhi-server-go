@@ -2,7 +2,7 @@ package interfaces
 
 // Conn WebSocket连接接口
 type Conn interface {
-	ReadMessage() (messageType int, p []byte, err error)
+	ReadMessage(stopChan <-chan struct{}) (messageType int, p []byte, err error)
 	WriteMessage(messageType int, data []byte) error
 }
 

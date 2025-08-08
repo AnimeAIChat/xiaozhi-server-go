@@ -126,8 +126,11 @@ func (c *LocalClient) GetAvailableTools() []openai.Tool {
 }
 
 // CallTool 调用本地客户端的指定工具
-func (c *LocalClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
-
+func (c *LocalClient) CallTool(
+	ctx context.Context,
+	name string,
+	args map[string]interface{},
+) (interface{}, error) {
 	// 检查工具是否存在
 	if !c.HasTool(name) {
 		return nil, fmt.Errorf("tool %s not found", name)
@@ -161,7 +164,12 @@ func (c *LocalClient) ResetConnection() error {
 	return nil
 }
 
-func (c *LocalClient) AddTool(name string, description string, input ToolInputSchema, handler HandlerFunc) error {
+func (c *LocalClient) AddTool(
+	name string,
+	description string,
+	input ToolInputSchema,
+	handler HandlerFunc,
+) error {
 	if c.HasTool(name) {
 		return fmt.Errorf("tool %s already exists", name)
 	}

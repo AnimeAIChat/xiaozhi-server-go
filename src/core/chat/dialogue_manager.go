@@ -59,9 +59,30 @@ func (dm *DialogueManager) KeepRecentMessages(maxMessages int) {
 	}
 }
 
+// GetRecentMessages 获取最近的对话消息
+// 如果 maxMessages <= 0，则返回全部对话消息
+func (dm *DialogueManager) GetRecentMessages(maxMessages int) []Message {
+	if maxMessages <= 0 || len(dm.dialogue) <= maxMessages {
+		return dm.dialogue
+	}
+	// 保留system消息和最近的 maxMessages 条消息
+	if len(dm.dialogue) > 0 && dm.dialogue[0].Role == "system" {
+		// 保留system消息
+		return append([]Message{dm.dialogue[0]}, dm.dialogue[len(dm.dialogue)-maxMessages:]...)
+	}
+	return dm.dialogue
+}
+
 // Put 添加新消息到对话
 func (dm *DialogueManager) Put(message Message) {
 	dm.dialogue = append(dm.dialogue, message)
+}
+
+func (dm *DialogueManager) GetLastTwoMessages() []Message {
+	if len(dm.dialogue) < 2 {
+		return nil
+	}
+	return dm.dialogue[len(dm.dialogue)-2:]
 }
 
 // GetLLMDialogue 获取完整对话历史
@@ -92,9 +113,18 @@ func (dm *DialogueManager) Clear() {
 	dm.dialogue = make([]Message, 0)
 }
 
+func (dm *DialogueManager) Length() int {
+	return len(dm.dialogue)
+}
+
 // ToJSON 将对话历史转换为JSON字符串
-func (dm *DialogueManager) ToJSON() (string, error) {
-	bytes, err := json.Marshal(dm.dialogue)
+func (dm *DialogueManager) ToJSON(keepSystemPrompt bool) (string, error) {
+	dialogue := dm.dialogue
+	if !keepSystemPrompt && len(dialogue) > 0 && dialogue[0].Role == "system" {
+		// 如果不保留系统消息，则移除第一条消息
+		dialogue = dialogue[1:]
+	}
+	bytes, err := json.Marshal(dialogue)
 	if err != nil {
 		return "", err
 	}

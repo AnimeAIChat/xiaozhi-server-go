@@ -46,7 +46,7 @@ func (fr *FunctionRegistry) GetFunctionByFilter(filter []string) []openai.Tool {
 	}
 	functions := make([]openai.Tool, 0)
 	for name, function := range fr.functions {
-		// ����self��local��ͷ�ĺ���
+		// 返回self和local开头的函数
 		if strings.HasPrefix(name, "self") || strings.HasPrefix(name, "local") {
 			functions = append(functions, function)
 			continue

@@ -84,7 +84,7 @@ func (tdg *TestDataGenerator) GenerateTestAudioFile(outputPath string) error {
 	}
 
 	// 将音频数据写入文件
-	err = os.WriteFile(outputPath, audioData, 0644)
+	err = os.WriteFile(outputPath, audioData, 0o644)
 	if err != nil {
 		return fmt.Errorf("写入测试音频文件失败: %v", err)
 	}
