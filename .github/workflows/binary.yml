@@ -106,7 +106,7 @@ jobs:
                 -o ../linux-${{ matrix.arch }}-server && \
               # copy original binary before compression
               cp ../linux-${{ matrix.arch }}-server ../linux-${{ matrix.arch }}-server-upx && \
-              upx --best ../linux-${{ matrix.arch }}-server-upx\
+              upx --lzma ../linux-${{ matrix.arch }}-server-upx\
             "
 
       - name: Upload Linux binaries
