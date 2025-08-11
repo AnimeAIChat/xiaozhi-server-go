@@ -1,0 +1,17 @@
+services:
+  app:
+    image: ghcr.io/animeaichat/zhi-server:server
+    container_name: xiaozhi-server
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: ["./linux-binaries-arm64"] #修改成程序文件名
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=sqlite://./config.db
+      # - DATABASE_URL=mysql://root:123456@tcp(127.0.0.1:3306)/test?parseTime=true
+      # - DATABASE_URL=postgres://postgres:123456@localhost:5432/test?sslmode=disable
+      - ENV=production
+      - PORT=8080
