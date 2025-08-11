@@ -65,7 +65,7 @@ jobs:
             -ldflags "-s -w -extldflags '-static'" \
             -o ../windows-amd64-server.exe
           cp ../windows-amd64-server.exe ../windows-amd64-server-upx.exe
-          upx --best ../windows-amd64-server-upx.exe
+          upx --lzma ../windows-amd64-server-upx.exe
 
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
