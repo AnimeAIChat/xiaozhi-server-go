@@ -7,9 +7,7 @@ import (
 	"strings"
 )
 
-var (
-	musicNames []string
-)
+var musicNames []string
 
 // MusicMatch 表示音乐文件匹配结果
 type MusicMatch struct {
@@ -145,14 +143,19 @@ func GetMusicFilePathFuzzy(songName string) (string, string, error) {
 		return bestMatch.FilePath, fileName, nil
 	}
 
-	return "", "", fmt.Errorf("no music file found matching '%s' (best similarity: %.2f)", songName, bestMatch.Similarity)
+	return "", "", fmt.Errorf(
+		"no music file found matching '%s' (best similarity: %.2f)",
+		songName,
+		bestMatch.Similarity,
+	)
 }
 
 // normalizeString 标准化字符串，去除特殊字符和空格，转换为小写
 func normalizeString(s string) string {
 	var result strings.Builder
 	for _, r := range s {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r >= 0x4e00 && r <= 0x9fff {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			r >= 0x4e00 && r <= 0x9fff {
 			result.WriteRune(r)
 		}
 	}

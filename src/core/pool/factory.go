@@ -21,6 +21,7 @@ import (
 
 // ProviderFactory 简化的提供者工厂
 type ProviderFactory struct {
+	Name         string // 提供者名称
 	providerType string
 	config       interface{}
 	logger       *utils.Logger
@@ -79,6 +80,7 @@ func NewASRFactory(asrType string, config *configs.Config, logger *utils.Logger)
 		return &ProviderFactory{
 			providerType: "asr",
 			config: &asr.Config{
+				Name: asrType,
 				Type: asrType,
 				Data: asrCfg,
 			},
@@ -97,6 +99,7 @@ func NewLLMFactory(llmType string, config *configs.Config, logger *utils.Logger)
 		return &ProviderFactory{
 			providerType: "llm",
 			config: &llm.Config{
+				Name:        llmType,
 				Type:        llmCfg.Type,
 				ModelName:   llmCfg.ModelName,
 				BaseURL:     llmCfg.BaseURL,
@@ -117,6 +120,7 @@ func NewTTSFactory(ttsType string, config *configs.Config, logger *utils.Logger)
 		return &ProviderFactory{
 			providerType: "tts",
 			config: &tts.Config{
+				Name:            ttsType,
 				Type:            ttsCfg.Type,
 				Voice:           ttsCfg.Voice,
 				Format:          ttsCfg.Format,
@@ -124,7 +128,7 @@ func NewTTSFactory(ttsType string, config *configs.Config, logger *utils.Logger)
 				AppID:           ttsCfg.AppID,
 				Token:           ttsCfg.Token,
 				Cluster:         ttsCfg.Cluster,
-				SurportedVoices: ttsCfg.SurportedVoices,
+				SupportedVoices: ttsCfg.SupportedVoices,
 			},
 			logger: logger,
 			params: map[string]interface{}{
@@ -136,9 +140,14 @@ func NewTTSFactory(ttsType string, config *configs.Config, logger *utils.Logger)
 	return nil
 }
 
-func NewVLLLMFactory(vlllmType string, config *configs.Config, logger *utils.Logger) ResourceFactory {
+func NewVLLLMFactory(
+	vlllmType string,
+	config *configs.Config,
+	logger *utils.Logger,
+) ResourceFactory {
 	if vlllmCfg, ok := config.VLLLM[vlllmType]; ok {
 		return &ProviderFactory{
+			Name:         vlllmType,
 			providerType: "vlllm",
 			config:       &vlllmCfg,
 			logger:       logger,

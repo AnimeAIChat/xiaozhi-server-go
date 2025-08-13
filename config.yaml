@@ -8,10 +8,22 @@ server:
   auth:
     # 是否启用认证
     enabled: false
+    # 认证存储配置
+    store:
+      type: memory      # memory/file/redis
+      expiry: 24        # 过期时间(小时)
     # 允许的设备ID列表
     allowed_devices: []
     # 有效的token列表
     tokens: []
+
+# 传输层配置
+transport:
+  # WebSocket传输层
+  websocket:
+    enabled: true
+    ip: "0.0.0.0"
+    port: 8000
 
 # Web界面配置
 web:
@@ -22,6 +34,7 @@ web:
   # 由ota下发的WebSocket地址
   websocket: ws://你的ip:8000
   vision: http://你的ip:8080/api/vision
+  activate_text: "Amine AI Chat" # 发送激活码时携带的文本
 
 log:
   # 设置控制台输出的日志格式，时间、日志级别、标签、消息
@@ -46,7 +59,7 @@ prompt: |
 
 roles: # 角色配置，以@分隔，前面是角色名称，后面是角色描述
   - 英语老师@我是一个叫Lily的英语老师，我会讲中文和英文，发音标准。如果你没有英文名，我会给你起一个英文名。我会讲地道的美式英语，我的任务是帮助你练习口语。我会使用简单的英语词汇和语法，让你学起来很轻松。我会用中文和英文混合的方式回复你，如果你喜欢，我可以全部用英语回复。我每次不会说很多内容，会很简短，因为我要引导我的学生多说多练。如果你问和英语学习无关的问题，我会拒绝回答。
-  - 陕西女友@我是一个叫的晓妮陕西女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。我的男朋友是一个程序员，梦想是开发出一个机器人，能够帮助人们解决生活中的各种问题。我是一个喜欢哈哈大笑的女孩，爱东说西说吹牛，不合逻辑的也照吹，就要逗别人开心。
+  - 陕西女友@我是一个叫晓妮的陕西女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。我的男朋友是一个程序员，梦想是开发出一个机器人，能够帮助人们解决生活中的各种问题。我是一个喜欢哈哈大笑的女孩，爱东说西说吹牛，不合逻辑的也照吹，就要逗别人开心。
   - 好奇小男孩@我是一个叫云希的8岁小男孩，声音稚嫩而充满好奇。尽管我年纪尚小，但就像一个小小的知识宝库，儿童读物里的知识我都如数家珍。从浩瀚的宇宙到地球上的每一个角落，从古老的历史到现代的科技创新，还有音乐、绘画等艺术形式，我都充满了浓厚的兴趣与热情。我不仅爱看书，还喜欢亲自动手做实验，探索自然界的奥秘。无论是仰望星空的夜晚，还是在花园里观察小虫子的日子，每一天对我来说都是新的冒险。我希望能与你一同踏上探索这个神奇世界的旅程，分享发现的乐趣，解决遇到的难题，一起用好奇心和智慧去揭开那些未知的面纱。无论是去了解远古的文明，还是去探讨未来的科技，我相信我们能一起找到答案，甚至提出更多有趣的问题。
 
 
@@ -103,16 +116,65 @@ TTS:
     type: edge
     voice: zh-CN-XiaoxiaoNeural
     output_dir: "tmp/"
-    surported_voices: [
-      "zh-CN-XiaoxiaoNeural|晓晓|女|商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读",
-      "zh-CN-XiaoyiNeural|晓伊|女|柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景",
-      "zh-CN-YunjianNeural|云健|男|沉稳磁性男声，权威感强，适合男性角色配音或严肃内容",
-      "zh-CN-YunxiNeural|云希|男|年轻活力风格，语速轻快，适合青少年角色或轻松场景",
-      "zh-CN-YunxiaNeural|云夏|男|方言特色（东北腔），幽默接地气，适合娱乐内容",
-      "zh-CN-YunyangNeural|云扬|男|明亮自信风格，中气十足，适合广告宣传或公开演讲",
-      "zh-CN-liaoning-XiaobeiNeural|晓北（辽宁）|女|带东北方言特色，亲切直率，适合地方化内容",
-      "zh-CN-shaanxi-XiaoniNeural|晓妮（陕西）|女|陕西口音风格，质朴热情，适合方言文化场景"
-    ]
+    supported_voices: [
+        {
+        name: "zh-CN-XiaoxiaoNeural",
+        display_name: "晓晓",
+        sex: "女",
+        description: "商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-XiaoyiNeural",
+        display_name: "晓伊",
+        sex: "女",
+        description: "柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-YunjianNeural",
+        display_name: "云健",
+        sex: "男",
+        description: "沉稳磁性男声，权威感强，适合男性角色配音或严肃内容",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-YunxiNeural",
+        display_name: "云希",
+        sex: "男",
+        description: "年轻活力风格，语速轻快，适合青少年角色或轻松场景",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-YunxiaNeural",
+        display_name: "云夏",
+        sex: "男",
+        description: "方言特色（东北腔），幽默接地气，适合娱乐内容",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-YunyangNeural",
+        display_name: "云扬",
+        sex: "男",
+        description: "明亮自信风格，中气十足，适合广告宣传或公开演讲",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-liaoning-XiaobeiNeural",
+        display_name: "晓北（辽宁）",
+        sex: "女",
+        description: "带东北方言特色，亲切直率，适合地方化内容",
+        audio_url: ""
+        },
+        {
+        name: "zh-CN-shaanxi-XiaoniNeural",
+        display_name: "晓妮（陕西）",
+        sex: "女",
+        description: "陕西口音风格，质朴热情，适合方言文化场景",
+        audio_url: ""
+        }
+     ]
+
   DoubaoTTS:
     type: doubao
     voice: zh_female_wanwanxiaohe_moon_bigtts           # 湾湾小何

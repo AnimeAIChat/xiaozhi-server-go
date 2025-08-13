@@ -41,7 +41,7 @@ func RegisterTaskExecutor(taskType TaskType, executor TaskExecutor) {
 	taskRegistry.mu.Lock()
 	defer taskRegistry.mu.Unlock()
 	taskRegistry.executors[taskType] = executor
-	fmt.Printf("注册任务类型: %s\n", taskType)
+	// fmt.Printf("注册任务类型: %s\n", taskType)
 }
 
 // GetTaskExecutor retrieves the executor for a specific task type

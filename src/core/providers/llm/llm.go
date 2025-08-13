@@ -2,12 +2,12 @@ package llm
 
 import (
 	"fmt"
-
 	"xiaozhi-server-go/src/core/types"
 )
 
 // Config LLM配置结构
 type Config struct {
+	Name        string                 `yaml:"name"` // LLM提供者名称
 	Type        string                 `yaml:"type"`
 	ModelName   string                 `yaml:"model_name"`
 	BaseURL     string                 `yaml:"base_url,omitempty"`
@@ -25,7 +25,8 @@ type Provider interface {
 
 // BaseProvider LLM基础实现
 type BaseProvider struct {
-	config *Config
+	config    *Config
+	SessionID string // 当前会话ID
 }
 
 // Config 获取配置
@@ -50,12 +51,18 @@ func (p *BaseProvider) Cleanup() error {
 	return nil
 }
 
+func (p *BaseProvider) GetSessionID() string {
+	return p.SessionID
+}
+
+func (p *BaseProvider) SetIdentityFlag(idType string, flag string) {
+	// 默认实现，子类可以覆盖
+}
+
 // Factory LLM工厂函数类型
 type Factory func(config *Config) (Provider, error)
 
-var (
-	factories = make(map[string]Factory)
-)
+var factories = make(map[string]Factory)
 
 // Register 注册LLM提供者工厂
 func Register(name string, factory Factory) {

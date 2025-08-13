@@ -50,7 +50,7 @@ func (qrc *QuickReplyCache) FindCachedAudio(text string) string {
 // SaveCachedAudio 保存快速回复音频到缓存目录
 func (qrc *QuickReplyCache) SaveCachedAudio(text, sourcePath string) error {
 	// 创建缓存目录
-	if err := os.MkdirAll(qrc.CacheDir, 0755); err != nil {
+	if err := os.MkdirAll(qrc.CacheDir, 0o755); err != nil {
 		return fmt.Errorf("创建缓存目录失败: %v", err)
 	}
 
@@ -73,7 +73,13 @@ func (qrc *QuickReplyCache) generateFilename(text string) string {
 	safeText := qrc.sanitizeFilename(text)
 
 	// 生成文件名格式: text_provider_voice.format
-	filename := fmt.Sprintf("%s_%s_%s.%s", safeText, qrc.TTSProvider, qrc.VoiceName, qrc.AudioFormat)
+	filename := fmt.Sprintf(
+		"%s_%s_%s.%s",
+		safeText,
+		qrc.TTSProvider,
+		qrc.VoiceName,
+		qrc.AudioFormat,
+	)
 
 	return filename
 }

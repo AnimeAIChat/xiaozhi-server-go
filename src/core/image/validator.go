@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image"
 	"strings"
-
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -24,7 +23,10 @@ type ImageSecurityValidator struct {
 }
 
 // NewImageSecurityValidator 创建新的图片安全验证器
-func NewImageSecurityValidator(config *configs.SecurityConfig, logger *utils.Logger) *ImageSecurityValidator {
+func NewImageSecurityValidator(
+	config *configs.SecurityConfig,
+	logger *utils.Logger,
+) *ImageSecurityValidator {
 	return &ImageSecurityValidator{
 		config: config,
 		logger: logger,
@@ -67,12 +69,19 @@ func (v *ImageSecurityValidator) ValidateImageData(imageData ImageData) Validati
 }
 
 // deepValidateImage 深度验证图片 - 优化验证策略
-func (v *ImageSecurityValidator) deepValidateImage(data []byte, declaredFormat string) ValidationResult {
+func (v *ImageSecurityValidator) deepValidateImage(
+	data []byte,
+	declaredFormat string,
+) ValidationResult {
 	result := ValidationResult{IsValid: false}
 
 	// 1. 基础大小检查
 	if int64(len(data)) > v.config.MaxFileSize {
-		result.Error = fmt.Errorf("文件大小超限: %d bytes，最大允许: %d bytes", len(data), v.config.MaxFileSize)
+		result.Error = fmt.Errorf(
+			"文件大小超限: %d bytes，最大允许: %d bytes",
+			len(data),
+			v.config.MaxFileSize,
+		)
 		result.SecurityRisk = "文件过大，可能是DoS攻击"
 		v.logger.Warn("检测到超大文件", map[string]interface{}{
 			"size":     len(data),
@@ -280,7 +289,10 @@ func (v *ImageSecurityValidator) checkSVGScripts(dataStr string) bool {
 }
 
 // validateImageDecoding 验证图片解码
-func (v *ImageSecurityValidator) validateImageDecoding(data []byte, format string) ValidationResult {
+func (v *ImageSecurityValidator) validateImageDecoding(
+	data []byte,
+	format string,
+) ValidationResult {
 	result := ValidationResult{Format: format}
 	reader := bytes.NewReader(data)
 

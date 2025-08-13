@@ -117,7 +117,11 @@ type HealthChecker struct {
 }
 
 // NewHealthChecker 创建健康检查器
-func NewHealthChecker(config *configs.Config, connConfig *ConnectivityConfig, logger *utils.Logger) *HealthChecker {
+func NewHealthChecker(
+	config *configs.Config,
+	connConfig *ConnectivityConfig,
+	logger *utils.Logger,
+) *HealthChecker {
 	if connConfig == nil {
 		connConfig = DefaultConnectivityConfig()
 	}
@@ -189,7 +193,11 @@ func (hc *HealthChecker) CheckAllProviders(ctx context.Context, mode CheckMode) 
 }
 
 // checkASRProvider 检查ASR提供者
-func (hc *HealthChecker) checkASRProvider(ctx context.Context, asrType string, mode CheckMode) error {
+func (hc *HealthChecker) checkASRProvider(
+	ctx context.Context,
+	asrType string,
+	mode CheckMode,
+) error {
 	hc.logger.Info("检查ASR提供者: %s", asrType)
 
 	start := time.Now()
@@ -287,7 +295,11 @@ func (hc *HealthChecker) checkASRProvider(ctx context.Context, asrType string, m
 }
 
 // checkLLMProvider 检查LLM提供者
-func (hc *HealthChecker) checkLLMProvider(ctx context.Context, llmType string, mode CheckMode) error {
+func (hc *HealthChecker) checkLLMProvider(
+	ctx context.Context,
+	llmType string,
+	mode CheckMode,
+) error {
 	hc.logger.Info("检查LLM提供者: %s", llmType)
 
 	start := time.Now()
@@ -386,7 +398,11 @@ func (hc *HealthChecker) checkLLMProvider(ctx context.Context, llmType string, m
 }
 
 // checkTTSProvider 检查TTS提供者
-func (hc *HealthChecker) checkTTSProvider(ctx context.Context, ttsType string, mode CheckMode) error {
+func (hc *HealthChecker) checkTTSProvider(
+	ctx context.Context,
+	ttsType string,
+	mode CheckMode,
+) error {
 	hc.logger.Info("检查TTS提供者: %s", ttsType)
 
 	start := time.Now()
@@ -470,7 +486,11 @@ func (hc *HealthChecker) checkTTSProvider(ctx context.Context, ttsType string, m
 }
 
 // checkVLLLMProvider 检查VLLLM提供者
-func (hc *HealthChecker) checkVLLLMProvider(ctx context.Context, vlllmType string, mode CheckMode) error {
+func (hc *HealthChecker) checkVLLLMProvider(
+	ctx context.Context,
+	vlllmType string,
+	mode CheckMode,
+) error {
 	hc.logger.Info("检查VLLLM提供者: %s", vlllmType)
 
 	start := time.Now()
@@ -537,7 +557,13 @@ func (hc *HealthChecker) checkVLLLMProvider(ctx context.Context, vlllmType strin
 		}
 
 		// 调用VLLLM的ResponseWithImage方法
-		responseChan, err := vlllmProvider.ResponseWithImage(testCtx, "health_check", []providers.Message{}, imageData, testPrompt)
+		responseChan, err := vlllmProvider.ResponseWithImage(
+			testCtx,
+			"health_check",
+			[]providers.Message{},
+			imageData,
+			testPrompt,
+		)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Errorf("VLLLM图像分析测试失败: %v", err)
@@ -598,7 +624,13 @@ func (hc *HealthChecker) generateTestAudioData() ([]byte, error) {
 		sampleIndex := i / 2
 		frequency := 440.0 // A4音调
 		amplitude := 1000  // 低幅度
-		sample := int16(float64(amplitude) * math.Sin(2*math.Pi*frequency*float64(sampleIndex)/float64(sampleRate)))
+		sample := int16(
+			float64(
+				amplitude,
+			) * math.Sin(
+				2*math.Pi*frequency*float64(sampleIndex)/float64(sampleRate),
+			),
+		)
 
 		// 小端序写入
 		testAudioData[i] = byte(sample & 0xFF)
@@ -611,7 +643,10 @@ func (hc *HealthChecker) generateTestAudioData() ([]byte, error) {
 }
 
 // createWithRetry 带重试的创建实例
-func (hc *HealthChecker) createWithRetry(ctx context.Context, factory ResourceFactory) (interface{}, error) {
+func (hc *HealthChecker) createWithRetry(
+	ctx context.Context,
+	factory ResourceFactory,
+) (interface{}, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < hc.connConfig.RetryAttempts; attempt++ {

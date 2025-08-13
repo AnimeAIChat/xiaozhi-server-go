@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
@@ -78,7 +77,6 @@ func (c *XiaoZhiMCPClient) SetID(deviceID string, clientID string) {
 func (c *XiaoZhiMCPClient) SetToken(token string) {
 	auth := auth.NewAuthToken(token)
 	visionToken, err := auth.GenerateToken(c.deviceID)
-
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("生成Vision Token失败: %v", err))
 		return
@@ -192,7 +190,11 @@ func (c *XiaoZhiMCPClient) GetAvailableTools() []openai.Tool {
 }
 
 // CallTool 调用指定的工具
-func (c *XiaoZhiMCPClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
+func (c *XiaoZhiMCPClient) CallTool(
+	ctx context.Context,
+	name string,
+	args map[string]interface{},
+) (interface{}, error) {
 	if !c.IsReady() {
 		return nil, fmt.Errorf("MCP客户端尚未准备就绪")
 	}
@@ -399,7 +401,7 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListContinueRequest(cursor string) error 
 
 // HandleMCPMessage 处理MCP消息
 func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error {
-	//c.logger.Info("处理MCP消息: " + fmt.Sprintf("%v", msgMap))
+	// c.logger.Info("处理MCP消息: " + fmt.Sprintf("%v", msgMap))
 	// 获取payload
 	payload, ok := msgMap["payload"].(map[string]interface{})
 	if !ok {
@@ -439,13 +441,14 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 			c.logger.Debug("收到MCP工具列表响应")
 
 			// 解析工具列表
+			toolNames := ""
 			if toolsData, ok := result.(map[string]interface{}); ok {
 				tools, ok := toolsData["tools"].([]interface{})
 				if !ok {
 					return fmt.Errorf("工具列表格式错误")
 				}
 
-				c.logger.Info(fmt.Sprintf("客户端设备支持的工具数量: %d", len(tools)))
+				c.logger.Debug(fmt.Sprintf("客户端设备支持的工具数量: %d", len(tools)))
 
 				// 解析工具并添加到列表中
 				c.mu.Lock()
@@ -494,8 +497,10 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					// 建立名称映射关系
 					sanitizedName := sanitizeToolName(name)
 					c.toolNameMap[sanitizedName] = name
-					c.logger.Info(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
+					c.logger.Debug(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
+					toolNames += fmt.Sprintf("%s ", name)
 				}
+				c.logger.Info(fmt.Sprintf("客户端工具列表: %s", toolNames))
 
 				// 检查是否需要继续获取下一页工具
 				if nextCursor, ok := toolsData["nextCursor"].(string); ok && nextCursor != "" {

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"time"
-
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 // Config ASR配置结构
 type Config struct {
+	Name string `yaml:"name"` // ASR提供者名称
 	Type string
 	Data map[string]interface{}
 }
@@ -33,8 +33,9 @@ type BaseProvider struct {
 	silenceThreshold float64 // 能量阈值
 	silenceDuration  int     // 静音持续时间(ms)
 
-	StartListenTime time.Time // 最后一次ASR处理时间
-	SilenceCount    int       // 连续静音计数
+	BEnableSilenceDetection bool      // 是否启用静音检测
+	StartListenTime         time.Time // 最后一次ASR处理时间
+	SilenceCount            int       // 连续静音计数
 
 	listener providers.AsrEventListener
 }
@@ -44,14 +45,25 @@ func (p *BaseProvider) ResetStartListenTime() {
 }
 
 func (p *BaseProvider) SilenceTime() time.Duration {
+	if !p.BEnableSilenceDetection {
+		return 0
+	}
 	if p.StartListenTime.IsZero() {
 		return 0
 	}
 	return time.Since(p.StartListenTime)
 }
 
+func (p *BaseProvider) EnableSilenceDetection(bEnable bool) {
+	p.BEnableSilenceDetection = bEnable
+}
+
 func (p *BaseProvider) GetSilenceCount() int {
 	return p.SilenceCount
+}
+
+func (p *BaseProvider) ResetSilenceCount() {
+	p.SilenceCount = 0
 }
 
 // SetListener 设置事件监听器
@@ -110,9 +122,7 @@ func (p *BaseProvider) Cleanup() error {
 // Factory ASR工厂函数类型
 type Factory func(config *Config, deleteFile bool, logger *utils.Logger) (Provider, error)
 
-var (
-	factories = make(map[string]Factory)
-)
+var factories = make(map[string]Factory)
 
 // Register 注册ASR提供者工厂
 func Register(name string, factory Factory) {

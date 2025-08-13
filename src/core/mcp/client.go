@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -77,7 +76,7 @@ func NewClient(config *Config, logger *utils.Logger) (*Client, error) {
 // Start 启动MCP客户端并监听资源更新
 func (c *Client) Start(ctx context.Context) error {
 	if c.useStdioClient {
-		//c.logger.Info("Starting MCP stdio client with command: %s", c.config.Command)
+		// c.logger.Info("Starting MCP stdio client with command: %s", c.config.Command)
 
 		// 创建初始化请求
 		initRequest := mcp.InitializeRequest{}
@@ -118,7 +117,6 @@ func (c *Client) Start(ctx context.Context) error {
 
 // fetchTools 获取可用的工具列表
 func (c *Client) fetchTools(ctx context.Context) error {
-
 	if c.useStdioClient {
 		// 使用协议方式获取工具列表
 		toolsRequest := mcp.ListToolsRequest{}
@@ -150,7 +148,7 @@ func (c *Client) fetchTools(ctx context.Context) error {
 				},
 			})
 			toolNames += fmt.Sprintf("%s, ", tool.Name)
-			//log.Printf("Added tool: %s - %s %v; %v; %v", tool.Name, tool.Description, tool.InputSchema, tool.RawInputSchema, tool.Annotations)
+			// log.Printf("Added tool: %s - %s %v; %v; %v", tool.Name, tool.Description, tool.InputSchema, tool.RawInputSchema, tool.Annotations)
 		}
 		c.logger.Info("Fetching %s available tools %s", c.name, toolNames)
 		return nil
@@ -223,7 +221,11 @@ func (c *Client) GetAvailableTools() []openai.Tool {
 }
 
 // CallTool 调用指定的工具
-func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (interface{}, error) {
+func (c *Client) CallTool(
+	ctx context.Context,
+	name string,
+	args map[string]any,
+) (interface{}, error) {
 	// 如果有mcp_前缀，则去掉前缀
 	if len(name) > 4 && name[:4] == "mcp_" {
 		name = name[4:]

@@ -27,6 +27,8 @@ const (
 	LogRetentionDays = 7 // 日志保留天数，硬编码7天
 )
 
+var DefaultLogger *Logger
+
 // Logger 日志接口实现
 type Logger struct {
 	config      *configs.Config
@@ -58,13 +60,13 @@ func configLogLevelToSlogLevel(configLevel string) slog.Level {
 // NewLogger 创建新的日志记录器
 func NewLogger(config *configs.Config) (*Logger, error) {
 	// 确保日志目录存在
-	if err := os.MkdirAll(config.Log.LogDir, 0755); err != nil {
+	if err := os.MkdirAll(config.Log.LogDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建日志目录失败: %v", err)
 	}
 
 	// 打开或创建日志文件
 	logPath := filepath.Join(config.Log.LogDir, config.Log.LogFile)
-	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("打开日志文件失败: %v", err)
 	}
@@ -97,6 +99,9 @@ func NewLogger(config *configs.Config) (*Logger, error) {
 
 	// 启动日志轮转检查器
 	logger.startRotationChecker()
+	if DefaultLogger == nil {
+		DefaultLogger = logger
+	}
 
 	return logger, nil
 }
@@ -153,7 +158,7 @@ func (l *Logger) rotateLogFile(newDate string) {
 	}
 
 	// 创建新的日志文件
-	file, err := os.OpenFile(currentLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(currentLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		l.textLogger.Error("创建新日志文件失败", slog.String("error", err.Error()))
 		return

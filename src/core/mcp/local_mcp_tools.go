@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 	"time"
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/types"
 )
 
 func (c *LocalClient) AddToolExit() error {
-
 	InputSchema := ToolInputSchema{
 		Type: "object",
 		Properties: map[string]any{
@@ -39,7 +39,6 @@ func (c *LocalClient) AddToolExit() error {
 }
 
 func (c *LocalClient) AddToolTime() error {
-
 	InputSchema := ToolInputSchema{
 		Type:       "object",
 		Properties: map[string]any{},
@@ -69,7 +68,9 @@ func (c *LocalClient) AddToolChangeRole() error {
 	prompts := map[string]string{}
 	roleNames := ""
 	if roles == nil {
-		c.logger.Warn("AddToolChangeRole: roles settings is nil or empty, Skipping tool registration")
+		c.logger.Warn(
+			"AddToolChangeRole: roles settings is nil or empty, Skipping tool registration",
+		)
 		return nil
 	} else {
 		for _, role := range roles {
@@ -112,12 +113,15 @@ func (c *LocalClient) AddToolChangeRole() error {
 }
 
 func (c *LocalClient) AddToolChangeVoice() error {
-
-	voices := []string{}
+	voices := []configs.VoiceInfo{}
 	if ttsType, ok := c.cfg.SelectedModule["TTS"]; ok && ttsType != "" {
-		voices = c.cfg.TTS[ttsType].SurportedVoices
+		voices = c.cfg.TTS[ttsType].SupportedVoices
 	}
-	voiceDes := strings.Join(voices, ", ")
+	voiceDesArr := []string{}
+	for _, v := range voices {
+		voiceDesArr = append(voiceDesArr, v.Name+"("+v.DisplayName+"-"+v.Sex+")："+v.Description)
+	}
+	voiceDes := strings.Join(voiceDesArr, ", ")
 
 	InputSchema := ToolInputSchema{
 		Type: "object",

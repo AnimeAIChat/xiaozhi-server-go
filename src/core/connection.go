@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
@@ -33,7 +34,7 @@ type Connection interface {
 	// 发送消息
 	WriteMessage(messageType int, data []byte) error
 	// 读取消息
-	ReadMessage() (messageType int, data []byte, err error)
+	ReadMessage(stopChan <-chan struct{}) (messageType int, data []byte, err error)
 	// 关闭连接
 	Close() error
 	// 获取连接ID
@@ -61,6 +62,7 @@ type ConnectionHandler struct {
 	conn             Connection
 	closeOnce        sync.Once
 	taskMgr          *task.TaskManager
+	authManager      *auth.AuthManager // 认证管理器
 	safeCallbackFunc func(func(*ConnectionHandler)) func()
 	providers        struct {
 		asr   providers.ASRProvider
@@ -72,10 +74,11 @@ type ConnectionHandler struct {
 	initailVoice string // 初始语音名称
 
 	// 会话相关
-	sessionID string
-	deviceID  string            // 设备ID
-	clientId  string            // 客户端ID
-	headers   map[string]string // HTTP头部信息
+	sessionID     string            // 设备与服务端会话ID
+	deviceID      string            // 设备ID
+	clientId      string            // 客户端ID
+	headers       map[string]string // HTTP头部信息
+	transportType string            // 传输类型
 
 	// 客户端音频相关
 	clientAudioFormat        string
@@ -186,6 +189,9 @@ func NewConnectionHandler(
 		}
 		if key == "Session-Id" {
 			handler.sessionID = values[0] // 会话ID
+		}
+		if key == "Transport-Type" {
+			handler.transportType = values[0] // 传输类型
 		}
 		logger.Info("HTTP头部信息: %s: %s", key, values[0])
 	}
@@ -313,9 +319,9 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 		case <-h.stopChan:
 			return
 		default:
-			messageType, message, err := conn.ReadMessage()
+			messageType, message, err := conn.ReadMessage(h.stopChan)
 			if err != nil {
-				h.LogError(fmt.Sprintf("读取消息失败: %v", err))
+				h.LogError(fmt.Sprintf("读取消息失败: %v, 退出主消息循环", err))
 				return
 			}
 
@@ -470,16 +476,6 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	h.roundStartTime = time.Now()
 	currentRound := h.talkRound
 	h.LogInfo(fmt.Sprintf("开始新的对话轮次: %d", currentRound))
-
-	// 判断是否需要验证
-	if h.isNeedAuth() {
-		if err := h.checkAndBroadcastAuthCode(); err != nil {
-			h.logger.Error(fmt.Sprintf("检查认证码失败: %v", err))
-			return err
-		}
-		h.LogInfo("设备未认证，等待管理员认证")
-		return nil
-	}
 
 	// 普通文本消息处理流程
 	// 立即发送 stt 消息
@@ -798,13 +794,6 @@ func (h *ConnectionHandler) isNeedAuth() bool {
 		return false
 	}
 	return !h.isDeviceVerified
-}
-
-// checkAndBroadcastAuthCode 检查并广播认证码
-func (h *ConnectionHandler) checkAndBroadcastAuthCode() error {
-	// 这里简化了认证逻辑，实际需要根据具体需求实现
-	text := "请联系管理员进行设备认证"
-	return h.SpeakAndPlay(text, 0, h.talkRound)
 }
 
 // processTTSQueueCoroutine 处理TTS队列

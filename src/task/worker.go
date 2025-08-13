@@ -29,7 +29,11 @@ type Worker struct {
 }
 
 // NewWorkerPool creates a new worker pool
-func NewWorkerPool(config ResourceConfig, scheduler *ScheduledTasks, clientManager *ClientManager) *WorkerPool {
+func NewWorkerPool(
+	config ResourceConfig,
+	scheduler *ScheduledTasks,
+	clientManager *ClientManager,
+) *WorkerPool {
 	wp := &WorkerPool{
 		config:        config,
 		taskQueue:     make(chan *Task, config.MaxWorkers*2),
