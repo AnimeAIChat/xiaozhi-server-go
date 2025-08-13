@@ -175,13 +175,13 @@ swag init -g main.go
 
 ## Docker 环境部署
 
-1. 准备`docker-compose.yml`,`config.yaml`,二进制程序文件
+1. 准备`docker-compose.yml`,`.config.yaml`,二进制程序文件
 
 👉 [点击前往 Releases 页面](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)下载二进制程序文件
 
-* 选择你平台对应的版本（如 Liunx: `linux-binaries-arm64`）
+* 选择你平台对应的版本（默认使用 Liunx: `linux-amd64-server-upx`，如使用其他版本，需要修改docker-compose.yml）
 
-2. 三个文件放到同一目录下，配置`docker-compose.yml`,`config.yaml`
+2. 三个文件放到同一目录下，配置`docker-compose.yml`,`.config.yaml`
 
 3. 运行`docker compose up -d`
 
