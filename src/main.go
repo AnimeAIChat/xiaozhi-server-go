@@ -47,7 +47,6 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -87,11 +86,6 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthMa
 	if err != nil {
 		return nil, fmt.Errorf("初始化认证管理器失败: %v", err)
 	}
-
-	logger.Info("认证管理器初始化成功", map[string]interface{}{
-		"store_type": storeConfig.Type,
-		"expiry_hr":  storeConfig.ExpiryHr,
-	})
 
 	return authManager, nil
 }
@@ -311,12 +305,6 @@ func main() {
 	if err != nil {
 		fmt.Println("加载配置或初始化日志系统失败:", err)
 		os.Exit(1)
-	}
-
-	// 加载 .env 文件
-	err = godotenv.Load()
-	if err != nil {
-		logger.Warn("未找到 .env 文件，使用系统环境变量")
 	}
 
 	// 初始化数据库连接

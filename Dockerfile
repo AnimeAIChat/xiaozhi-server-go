@@ -8,4 +8,4 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-CMD ["./zhi-server"]
+CMD ["./xiaozhi-server"]
