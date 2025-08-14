@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -35,7 +36,6 @@ type Config struct {
 			IP      string `yaml:"ip" json:"ip"`
 			Port    int    `yaml:"port" json:"port"`
 		} `yaml:"websocket" json:"websocket"`
-
 	} `yaml:"transport" json:"transport"`
 
 	Log struct {
@@ -76,15 +76,6 @@ type Config struct {
 
 	// 连通性检查配置
 	ConnectivityCheck ConnectivityCheckConfig `yaml:"connectivity_check" json:"connectivity_check"`
-}
-
-// VADConfig VAD配置结构
-type VADConfig struct {
-	Type               string                 `yaml:"type"`
-	ModelDir           string                 `yaml:"model_dir"`
-	Threshold          float64                `yaml:"threshold"`
-	MinSilenceDuration int                    `yaml:"min_silence_duration_ms"`
-	Extra              map[string]interface{} `yaml:",inline"`
 }
 
 type PoolConfig struct {
@@ -173,26 +164,79 @@ type VLLMConfig struct {
 }
 
 var (
-	Cfg     *Config
-	CfgPath string
+	Cfg *Config
 )
 
-// LoadConfig 从文件加载配置
-func LoadConfig() (*Config, string, error) {
+func (cfg *Config) ToString() string {
+	data, _ := yaml.Marshal(cfg)
+	return string(data)
+}
+
+func (cfg *Config) FromString(data string) error {
+	return yaml.Unmarshal([]byte(data), cfg)
+}
+
+func (cfg *Config) setDefaults() {
+	cfg.Transport.WebSocket.Enabled = true
+	cfg.Transport.WebSocket.IP = "0.0.0.0"
+	cfg.Transport.WebSocket.Port = 8000
+
+	cfg.Web.Port = 8080
+
+	cfg.Server.Token = "your_token"
+
+	cfg.Log.LogDir = "logs"
+	cfg.Log.LogLevel = "INFO"
+	cfg.Log.LogFormat = "{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
+	cfg.Log.LogFile = "server.log"
+
+	cfg.PoolConfig.PoolMinSize = 0
+	cfg.PoolConfig.PoolMaxSize = 0
+	cfg.PoolConfig.PoolCheckInterval = 30
+
+}
+
+// LoadConfig 加载配置
+// 第一次从config.yaml加载，加载后存储到数据库加载
+// 如果数据库中已存在配置，则直接加载数据库中的配置
+func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
+	// 尝试从数据库加载配置
+	cfgStr, err := dbi.LoadServerConfig()
+	if err != nil {
+		fmt.Println("加载服务器配置失败:", err)
+		return nil, "", err
+	}
+
+	config := &Config{}
+
+	if cfgStr != "" {
+		config.FromString(cfgStr)
+		Cfg = config
+		path := "database:serverConfig"
+		return Cfg, path, nil
+	}
+
+	// 尝试从文件读取
 	path := ".config.yaml"
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		path = "config.yaml"
 	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, path, err
+		// 读取配置文件失败，使用默认配置
+		config.setDefaults()
+		data, _ = yaml.Marshal(config)
+	} else {
+		if err := yaml.Unmarshal(data, config); err != nil {
+			return nil, path, err
+		}
 	}
 
-	config := &Config{}
-	if err := yaml.Unmarshal(data, config); err != nil {
-		return nil, path, err
+	err = dbi.InitServerConfig(string(data))
+	if err != nil {
+		fmt.Println("初始化服务器配置到数据库失败:", err)
 	}
 	Cfg = config
-	CfgPath = path
 	return config, path, nil
 }

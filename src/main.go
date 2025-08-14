@@ -51,19 +51,28 @@ import (
 )
 
 func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
+	// 初始化数据库连接
+	_, _, err := database.InitDB()
+	if err != nil {
+		fmt.Println("数据库连接失败: %v", err)
+
+	}
 	// 加载配置,默认使用.config.yaml
-	config, configPath, err := configs.LoadConfig()
+	config, configPath, err := configs.LoadConfig(database.GetServerConfigDB())
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// 初始化日志系统
-	logger, err := utils.NewLogger(config)
+	logger, err := utils.NewLogger((*utils.LogCfg)(&config.Log))
 	if err != nil {
 		return nil, nil, err
 	}
 	logger.Info("日志系统初始化成功, 配置文件路径: %s", configPath)
 	utils.DefaultLogger = logger
+
+	database.SetLogger(logger)
+
 	return config, logger, nil
 }
 
@@ -191,11 +200,13 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
 		logger.Error("Vision 服务初始化失败 %v", err)
-		return nil, err
+		//return nil, err
 	}
-	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("Vision 服务启动失败 %v", err)
-		return nil, err
+	if visionService != nil {
+		if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
+			logger.Error("Vision 服务启动失败 %v", err)
+			//return nil, err
+		}
 	}
 
 	cfgServer, err := cfg.NewDefaultCfgService(config, logger)
@@ -305,14 +316,6 @@ func main() {
 	if err != nil {
 		fmt.Println("加载配置或初始化日志系统失败:", err)
 		os.Exit(1)
-	}
-
-	// 初始化数据库连接
-	db, dbType, err := database.InitDB(logger, config)
-	_, _ = db, dbType // 避免未使用变量警告
-	if err != nil {
-		logger.Error("数据库连接失败: %v", err)
-		return
 	}
 
 	// 初始化认证管理器

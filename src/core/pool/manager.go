@@ -41,11 +41,15 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		return nil, fmt.Errorf("资源连通性检查失败: %v", err)
 	}
 
+	interval := config.PoolConfig.PoolCheckInterval
+	if interval <= 0 {
+		interval = 30
+	}
 	poolConfig := PoolConfig{
 		MinSize:       config.PoolConfig.PoolMinSize,
 		MaxSize:       config.PoolConfig.PoolMaxSize,
 		RefillSize:    config.PoolConfig.PoolRefillSize,
-		CheckInterval: time.Duration(config.PoolConfig.PoolCheckInterval) * time.Second,
+		CheckInterval: time.Duration(interval) * time.Second,
 	}
 
 	// 检查配置是否包含所需的模块

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -106,6 +107,12 @@ func handleOtaPost(c *gin.Context, updateURL string) {
 	resp.Firmware.Version = version
 	resp.Firmware.URL = firmwareURL
 	resp.Websocket.URL = updateURL
+	if resp.Websocket.URL == "" {
+		utils.DefaultLogger.Warn("===========================================================")
+		utils.DefaultLogger.Warn("=====  WebSocket URL 未配置，OTA 服务可能无法正常工作 =====")
+		utils.DefaultLogger.Warn("=====  请尽快修改配置并重启服务                       =====")
+		utils.DefaultLogger.Warn("===========================================================")
+	}
 
 	c.JSON(http.StatusOK, resp)
 }

@@ -114,6 +114,11 @@ func (p *ResourcePool) initializePool() error {
 
 // maintain 维护资源池
 func (p *ResourcePool) maintain(refillSize int, checkInterval time.Duration) {
+	if checkInterval <= 0 {
+		checkInterval = 30 * time.Second
+	}
+	p.logger.Info("%s 资源池维护协程已启动，检查间隔: %s", p.poolName, checkInterval)
+
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 

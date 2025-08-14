@@ -49,3 +49,8 @@ type ModuleConfig struct {
 	Description string
 	Enabled     bool
 }
+
+type ServerConfig struct {
+	ID     uint   `gorm:"primaryKey"`
+	CfgStr string `gorm:"type:text"`
+}

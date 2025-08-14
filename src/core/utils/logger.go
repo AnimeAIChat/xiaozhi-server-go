@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"xiaozhi-server-go/src/configs"
 )
 
 // LogLevel 日志级别
@@ -29,9 +27,16 @@ const (
 
 var DefaultLogger *Logger
 
+type LogCfg struct {
+	LogFormat string `yaml:"log_format" json:"log_format"`
+	LogLevel  string `yaml:"log_level" json:"log_level"`
+	LogDir    string `yaml:"log_dir" json:"log_dir"`
+	LogFile   string `yaml:"log_file" json:"log_file"`
+}
+
 // Logger 日志接口实现
 type Logger struct {
-	config      *configs.Config
+	config      *LogCfg
 	jsonLogger  *slog.Logger // 文件JSON输出
 	textLogger  *slog.Logger // 控制台文本输出
 	logFile     *os.File
@@ -58,21 +63,21 @@ func configLogLevelToSlogLevel(configLevel string) slog.Level {
 }
 
 // NewLogger 创建新的日志记录器
-func NewLogger(config *configs.Config) (*Logger, error) {
+func NewLogger(config *LogCfg) (*Logger, error) {
 	// 确保日志目录存在
-	if err := os.MkdirAll(config.Log.LogDir, 0o755); err != nil {
+	if err := os.MkdirAll(config.LogDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建日志目录失败: %v", err)
 	}
 
 	// 打开或创建日志文件
-	logPath := filepath.Join(config.Log.LogDir, config.Log.LogFile)
+	logPath := filepath.Join(config.LogDir, config.LogFile)
 	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("打开日志文件失败: %v", err)
 	}
 
 	// 设置slog级别
-	slogLevel := configLogLevelToSlogLevel(config.Log.LogLevel)
+	slogLevel := configLogLevelToSlogLevel(config.LogLevel)
 
 	// 创建JSON处理器（用于文件输出）
 	jsonHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
@@ -141,12 +146,12 @@ func (l *Logger) rotateLogFile(newDate string) {
 	}
 
 	// 构建旧文件名和新文件名
-	logDir := l.config.Log.LogDir
-	currentLogPath := filepath.Join(logDir, l.config.Log.LogFile)
+	logDir := l.config.LogDir
+	currentLogPath := filepath.Join(logDir, l.config.LogFile)
 
 	// 生成带日期的文件名
-	baseFileName := strings.TrimSuffix(l.config.Log.LogFile, filepath.Ext(l.config.Log.LogFile))
-	ext := filepath.Ext(l.config.Log.LogFile)
+	baseFileName := strings.TrimSuffix(l.config.LogFile, filepath.Ext(l.config.LogFile))
+	ext := filepath.Ext(l.config.LogFile)
 	archivedLogPath := filepath.Join(logDir, fmt.Sprintf("%s-%s%s", baseFileName, l.currentDate, ext))
 
 	// 重命名当前日志文件为带日期的文件
@@ -169,7 +174,7 @@ func (l *Logger) rotateLogFile(newDate string) {
 	l.currentDate = newDate
 
 	// 重新创建JSON处理器
-	slogLevel := configLogLevelToSlogLevel(l.config.Log.LogLevel)
+	slogLevel := configLogLevelToSlogLevel(l.config.LogLevel)
 	jsonHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
 		Level: slogLevel,
 	})
@@ -181,7 +186,7 @@ func (l *Logger) rotateLogFile(newDate string) {
 
 // cleanOldLogs 清理旧日志文件
 func (l *Logger) cleanOldLogs() {
-	logDir := l.config.Log.LogDir
+	logDir := l.config.LogDir
 
 	// 读取日志目录
 	entries, err := os.ReadDir(logDir)
@@ -192,8 +197,8 @@ func (l *Logger) cleanOldLogs() {
 
 	// 计算保留截止日期
 	cutoffDate := time.Now().AddDate(0, 0, -LogRetentionDays)
-	baseFileName := strings.TrimSuffix(l.config.Log.LogFile, filepath.Ext(l.config.Log.LogFile))
-	ext := filepath.Ext(l.config.Log.LogFile)
+	baseFileName := strings.TrimSuffix(l.config.LogFile, filepath.Ext(l.config.LogFile))
+	ext := filepath.Ext(l.config.LogFile)
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -273,7 +278,7 @@ func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
 
 // Debug 记录调试级别日志
 func (l *Logger) Debug(msg string, args ...interface{}) {
-	if l.config.Log.LogLevel == "DEBUG" {
+	if l.config.LogLevel == "DEBUG" {
 		if len(args) > 0 && containsFormatPlaceholders(msg) {
 			formattedMsg := fmt.Sprintf(msg, args...)
 			l.log(slog.LevelDebug, formattedMsg)

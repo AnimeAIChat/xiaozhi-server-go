@@ -3,17 +3,14 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/models"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"xiaozhi-server-go/src/core/utils"
 	xiaozhi_utils "xiaozhi-server-go/src/core/utils"
 
 	gorm_logger "gorm.io/gorm/logger"
@@ -22,6 +19,7 @@ import (
 const (
 	SystemConfigID = 1 // 系统配置的唯一ID
 	ModuleConfigID = 1 // 模块配置的唯一ID
+	ServerConfigID = 1 // 服务器配置的唯一ID
 )
 
 type DBLogger struct {
@@ -76,7 +74,7 @@ func (l *DBLogger) Trace(
 
 var (
 	DB       *gorm.DB
-	dbLogger *utils.Logger
+	dbLogger *xiaozhi_utils.Logger
 )
 
 func GetDB() *gorm.DB {
@@ -95,21 +93,16 @@ func GetTxDB() *gorm.DB {
 }
 
 // InitDB 初始化数据库类型并连接
-func InitDB(logger *xiaozhi_utils.Logger, config *configs.Config) (*gorm.DB, string, error) {
+func InitDB() (*gorm.DB, string, error) {
 	var (
 		db     *gorm.DB
 		err    error
 		dbType string
-		lg     DBLogger
 	)
-	lg.logger = logger
-	dbLogger = logger
 
 	dbType = "sqlite"
 	path := "./config.db"
-	db, err = gorm.Open(sqlite.Open(path), &gorm.Config{
-		Logger: &lg,
-	})
+	db, err = gorm.Open(sqlite.Open(path))
 
 	if err != nil {
 		return nil, "", fmt.Errorf("连接数据库失败: %w", err)
@@ -121,17 +114,24 @@ func InitDB(logger *xiaozhi_utils.Logger, config *configs.Config) (*gorm.DB, str
 	}
 
 	// 插入默认配置
-	if err := InsertDefaultConfigIfNeeded(db, config); err != nil {
-		log.Printf("⚠️ 插入默认配置失败: %v", err)
+	if err := InsertDefaultConfigIfNeeded(db); err != nil {
+		fmt.Println("⚠️ 插入默认配置失败: %v", err)
 	}
 
 	DB = db
 
-	var version string
-	db.Raw("SELECT sqlite_version()").Scan(&version)
-	logger.Info("SQLite 数据库连接成功，版本: %s", version)
+	NewServerConfigDB(db)
 
 	return db, dbType, nil
+}
+
+func SetLogger(logger *xiaozhi_utils.Logger) {
+	dbLogger = logger
+	DB.Logger = &DBLogger{logger: logger}
+
+	var version string
+	DB.Raw("SELECT sqlite_version()").Scan(&version)
+	logger.Info("SQLite 数据库连接成功，版本: %s", version)
 }
 
 // migrateTables 自动迁移模型表结构
@@ -145,9 +145,7 @@ func migrateTables(db *gorm.DB) error {
 }
 
 // InsertDefaultConfigIfNeeded 首次启动插入默认配置
-func InsertDefaultConfigIfNeeded(db *gorm.DB, config *configs.Config) error {
-	if err := InitSystemConfig(db, config); err != nil {
-		return fmt.Errorf("初始化系统配置失败: %v", err)
-	}
+func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
+
 	return nil
 }
