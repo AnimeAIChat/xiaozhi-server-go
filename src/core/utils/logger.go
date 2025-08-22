@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -32,6 +33,37 @@ type LogCfg struct {
 	LogLevel  string `yaml:"log_level" json:"log_level"`
 	LogDir    string `yaml:"log_dir" json:"log_dir"`
 	LogFile   string `yaml:"log_file" json:"log_file"`
+}
+
+type colorWriter struct {
+	w  io.Writer
+	mu sync.Mutex
+}
+
+var (
+	colorReset = "\x1b[0m"
+	colorTime  = "\x1b[93m" // 时间：浅黄色 (Bright Yellow)
+	colorDebug = "\x1b[36m" // 青色
+	colorInfo  = "\x1b[32m" // 绿色
+	colorWarn  = "\x1b[33m" // 黄色
+	colorError = "\x1b[31m" // 红色
+)
+
+func (cw *colorWriter) Write(p []byte) (int, error) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	s := string(p)
+	if strings.Contains(s, "ERROR") {
+		s = colorError + s
+	} else {
+		s = colorTime + s
+		// 根据需要可以调整匹配规则，当前为简单的全字匹配/替换，可能会同时替换消息文本中的相同单词
+		s = strings.ReplaceAll(s, "DEBUG", colorDebug+"DEBUG"+colorReset)
+		s = strings.ReplaceAll(s, "INFO", colorInfo+"INFO"+colorReset)
+		s = strings.ReplaceAll(s, "WARN", colorWarn+"WARN"+colorReset)
+	}
+
+	return cw.w.Write([]byte(s))
 }
 
 // Logger 日志接口实现
@@ -85,7 +117,7 @@ func NewLogger(config *LogCfg) (*Logger, error) {
 	})
 
 	// 创建文本处理器（用于控制台输出）
-	textHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	textHandler := slog.NewTextHandler(&colorWriter{w: os.Stdout}, &slog.HandlerOptions{
 		Level: slogLevel,
 	})
 
