@@ -713,6 +713,42 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	return nil
 }
 
+func (h *ConnectionHandler) addToolCallMessage(toolResultText string, functionCallData map[string]interface{}) {
+
+	functionID := functionCallData["id"].(string)
+	functionName := functionCallData["name"].(string)
+	functionArguments := functionCallData["arguments"].(string)
+	h.LogInfo(fmt.Sprintf("函数调用结果: %s", toolResultText))
+	h.LogInfo(fmt.Sprintf("函数调用参数: %s", functionArguments))
+	h.LogInfo(fmt.Sprintf("函数调用名称: %s", functionName))
+	h.LogInfo(fmt.Sprintf("函数调用ID: %s", functionID))
+
+	// 添加 assistant 消息，包含 tool_calls
+	h.dialogueManager.Put(chat.Message{
+		Role: "assistant",
+		ToolCalls: []types.ToolCall{{
+			ID: functionID,
+			Function: types.FunctionCall{
+				Arguments: functionArguments,
+				Name:      functionName,
+			},
+			Type:  "function",
+			Index: 0,
+		}},
+	})
+
+	// 添加 tool 消息
+	toolCallID := functionID
+	if toolCallID == "" {
+		toolCallID = uuid.New().String()
+	}
+	h.dialogueManager.Put(chat.Message{
+		Role:       "tool",
+		ToolCallID: toolCallID,
+		Content:    toolResultText,
+	})
+}
+
 func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, functionCallData map[string]interface{}, textIndex int) {
 	switch result.Action {
 	case types.ActionTypeError:
@@ -725,43 +761,13 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 		h.LogInfo(fmt.Sprintf("函数调用直接回复: %v", result.Response))
 		h.SystemSpeak(result.Response.(string))
 	case types.ActionTypeCallHandler:
-		h.handleMCPResultCall(result)
+		resultStr := h.handleMCPResultCall(result)
+		h.addToolCallMessage(resultStr, functionCallData)
 	case types.ActionTypeReqLLM:
 		h.LogInfo(fmt.Sprintf("函数调用后请求LLM: %v", result.Result))
 		text, ok := result.Result.(string)
 		if ok && len(text) > 0 {
-			functionID := functionCallData["id"].(string)
-			functionName := functionCallData["name"].(string)
-			functionArguments := functionCallData["arguments"].(string)
-			h.LogInfo(fmt.Sprintf("函数调用结果: %s", text))
-			h.LogInfo(fmt.Sprintf("函数调用参数: %s", functionArguments))
-			h.LogInfo(fmt.Sprintf("函数调用名称: %s", functionName))
-			h.LogInfo(fmt.Sprintf("函数调用ID: %s", functionID))
-
-			// 添加 assistant 消息，包含 tool_calls
-			h.dialogueManager.Put(chat.Message{
-				Role: "assistant",
-				ToolCalls: []types.ToolCall{{
-					ID: functionID,
-					Function: types.FunctionCall{
-						Arguments: functionArguments,
-						Name:      functionName,
-					},
-					Type:  "function",
-					Index: 0,
-				}},
-			})
-
-			// 添加 tool 消息
-			toolCallID := functionID
-			if toolCallID == "" {
-				toolCallID = uuid.New().String()
-			}
-			h.dialogueManager.Put(chat.Message{
-				Role:       "tool",
-				ToolCallID: toolCallID,
-				Content:    text,
-			})
+			h.addToolCallMessage(text, functionCallData)
 			h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
 
 		} else {
