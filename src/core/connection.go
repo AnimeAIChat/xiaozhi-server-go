@@ -586,7 +586,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		if content != "" {
 			if strings.Contains(content, "服务响应异常") {
 				h.LogError(fmt.Sprintf("检测到LLM服务异常: %s", content))
-				errorMsg := "抱歉，服务暂时不可用，请稍后再试"
+				errorMsg := "抱歉，LLM服务暂时不可用，请稍后再试"
 				h.tts_last_text_index = 1 // 重置文本索引
 				h.SpeakAndPlay(errorMsg, 1, round)
 				return fmt.Errorf("LLM服务异常")
@@ -606,8 +606,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			currentText := fullText[processedChars:]
 
 			// 按标点符号分割
-			if segment, chars := utils.SplitAtLastPunctuation(currentText); chars > 0 {
+			if segment, charsCnt := utils.SplitAtLastPunctuation(currentText); charsCnt > 0 {
 				textIndex++
+				segment = strings.TrimSpace(segment)
 				if textIndex == 1 {
 					now := time.Now()
 					llmSpentTime := now.Sub(llmStartTime)
@@ -620,7 +621,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				if err != nil {
 					h.LogError(fmt.Sprintf("播放LLM回复分段失败: %v", err))
 				}
-				processedChars += chars
+				processedChars += charsCnt
 			}
 		}
 	}

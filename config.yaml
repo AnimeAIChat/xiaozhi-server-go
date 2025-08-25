@@ -92,6 +92,8 @@ selected_module:
 # ASR配置
 ASR:
   DoubaoASR:
+    # 火山 流式语音识别大模型-小时版， https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechRecognition
+    # 开通功能，有20小时免费额度
     type: doubao
     appid: "你的appid"
     access_token: 你的access_token
@@ -176,6 +178,7 @@ TTS:
      ]
 
   DoubaoTTS:
+    # 火山语音合成大模型 https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechSynthesis
     type: doubao
     voice: zh_female_wanwanxiaohe_moon_bigtts           # 湾湾小何
     output_dir: "tmp/"

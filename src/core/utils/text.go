@@ -18,16 +18,100 @@ var (
 	reWakeUpWord = regexp.MustCompile(`^你好.+`)
 )
 
-// splitAtLastPunctuation 在最后一个标点符号处分割文本
+// splitAtLastPunctuation 在最后一个标点符号处分割文本，优化聊天场景下的分句逻辑
 func SplitAtLastPunctuation(text string) (string, int) {
-	punctuations := []string{"。", "？", "！", "；", "：", ".", "?", "!", ";", ":"}
+	if len(text) == 0 {
+		return "", 0
+	}
+
+	// 定义不同优先级的分句标点符号
+	// 优先级1：强制停顿的标点（句号、问号、感叹号等）
+	strongPunctuations := []string{"。", "？", "！", "；", ".", "?", "!", ";"}
+
+	// 优先级2：中等停顿的标点（逗号、冒号等）
+	mediumPunctuations := []string{"，", "：", ",", ":"}
+
+	// 优先级3：轻微停顿的标点（顿号、括号等）
+	lightPunctuations := []string{"、", "）", ")", "】", "]", "》", ">", "`", "'"}
+
+	// 动态调整最小分句长度，避免超出文本长度
+	minLength := 2
+	if len(text) < minLength {
+		minLength = 1
+	}
+
+	// 优先查找强停顿标点
+	if segment, pos := findLastPunctuationWithMinLength(text, strongPunctuations, minLength); pos > 0 {
+		return segment, pos
+	}
+
+	// 如果文本较长（超过30字符），考虑中等停顿标点
+	if len(text) > 30 {
+		minLength = 8
+		if len(text) < minLength {
+			minLength = len(text) / 2
+		}
+		if segment, pos := findLastPunctuationWithMinLength(text, mediumPunctuations, minLength); pos > 0 {
+			return segment, pos
+		}
+	}
+
+	// 如果文本很长（超过50字符），考虑轻微停顿标点
+	if len(text) > 50 {
+		minLength = 8
+		if len(text) < minLength {
+			minLength = len(text) / 2
+		}
+		if segment, pos := findLastPunctuationWithMinLength(text, lightPunctuations, minLength); pos > 0 {
+			return segment, pos
+		}
+	}
+
+	// 如果没有找到合适的标点，且文本过长（超过80字符），强制在空格处分割
+	if len(text) > 80 {
+		minLength = 8
+		if len(text) < minLength {
+			minLength = len(text) / 2
+		}
+		if segment, pos := findLastSpaceWithMinLength(text, minLength); pos > 0 {
+			return segment, pos
+		}
+	}
+
+	// 如果文本过长（超过100字符），强制分割
+	if len(text) > 100 {
+		cutPos := 80
+		if len(text) < cutPos {
+			cutPos = len(text) / 2
+		}
+		return text[:cutPos], cutPos
+	}
+
+	return "", 0
+}
+
+// findLastPunctuationWithMinLength 查找最后一个标点符号位置，确保最小长度
+func findLastPunctuationWithMinLength(text string, punctuations []string, minLength int) (string, int) {
+	// 安全检查：确保 minLength 不超过文本长度
+	if minLength >= len(text) {
+		minLength = len(text) - 1
+		if minLength < 0 {
+			return "", 0
+		}
+	}
+
 	lastIndex := -1
 	foundPunctuation := ""
 
 	for _, punct := range punctuations {
-		if idx := strings.LastIndex(text, punct); idx > lastIndex {
-			lastIndex = idx
-			foundPunctuation = punct
+		// 从最小长度位置开始查找
+		searchText := text[minLength:]
+		if idx := strings.LastIndex(searchText, punct); idx != -1 {
+			actualIdx := idx + minLength
+			if actualIdx > lastIndex {
+				lastIndex = actualIdx
+				foundPunctuation = punct
+			}
 		}
 	}
 
@@ -36,9 +120,33 @@ func SplitAtLastPunctuation(text string) (string, int) {
 	}
 
 	endPos := lastIndex + len(foundPunctuation)
+	// 确保不超出文本长度
+	if endPos > len(text) {
+		endPos = len(text)
+	}
 	return text[:endPos], endPos
 }
 
+// findLastSpaceWithMinLength 查找最后一个空格位置，确保最小长度
+func findLastSpaceWithMinLength(text string, minLength int) (string, int) {
+	// 安全检查：确保 minLength 不超过文本长度
+	if minLength >= len(text) {
+		minLength = len(text) - 1
+		if minLength < 0 {
+			return "", 0
+		}
+	}
+
+	// 从最小长度位置开始查找空格
+	searchText := text[minLength:]
+	if idx := strings.LastIndex(searchText, " "); idx != -1 {
+		actualIdx := idx + minLength
+		return text[:actualIdx], actualIdx
+	}
+	return "", 0
+}
+
+// SplitByPunctuation 使用正则表达式分割文本
 func SplitByPunctuation(text string) []string {
 	// 使用正则表达式分割文本
 	parts := reSplitString.Split(text, -1)

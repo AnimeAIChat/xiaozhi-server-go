@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -124,5 +125,30 @@ func BenchmarkRemoveAllPunctuation_Short(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		RemoveAllPunctuation(testString)
+	}
+}
+
+func TestSplitAtLastPunctuation(t *testing.T) {
+	msg := ""
+	cnt := 0
+	strings := []string{}
+	for len(msg) > 20 {
+		text, n := SplitAtLastPunctuation(msg)
+		// 检查是否找到分割点
+		if n == 0 || len(text) == 0 {
+			fmt.Println("没有找到分割点，结束分割")
+			break
+		}
+		strings = append(strings, msg[n:])
+		msg = text[:len(text)-1]
+		cnt++
+		if cnt > 210 {
+			fmt.Println("... 结束 ...")
+			break
+		}
+	}
+	// 倒序打印
+	for i := len(strings) - 1; i >= 0; i-- {
+		fmt.Printf("第 %d 段: %s\n", i+1, strings[i])
 	}
 }
