@@ -55,7 +55,14 @@ func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
 			h.SystemSpeak("没有找到名为" + songName + "的歌曲")
 		} else {
 			//h.SystemSpeak("这就为您播放音乐: " + songName)
-			h.sendAudioMessage(path, name, h.tts_last_text_index, h.talkRound)
+			h.tts_last_text_index = h.tts_last_text_index + 1
+
+			h.ttsQueue <- struct {
+				text      string
+				round     int
+				textIndex int
+				filepath  string
+			}{name, h.talkRound, h.tts_last_text_index, path}
 		}
 	} else {
 		h.logger.Error("mcp_handler_play_music: args is not a string")

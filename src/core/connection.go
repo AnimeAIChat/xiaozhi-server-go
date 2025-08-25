@@ -117,6 +117,7 @@ type ConnectionHandler struct {
 		text      string
 		round     int // 轮次
 		textIndex int
+		filepath  string // 如果有path，就直接使用
 	}
 
 	audioMessagesQueue chan struct {
@@ -155,6 +156,7 @@ func NewConnectionHandler(
 			text      string
 			round     int // 轮次
 			textIndex int
+			filepath  string
 		}, 100),
 		audioMessagesQueue: make(chan struct {
 			filepath  string
@@ -786,21 +788,13 @@ func (h *ConnectionHandler) SystemSpeak(text string) error {
 		return errors.New("收到空文本，无法合成语音")
 	}
 	texts := utils.SplitByPunctuation(text)
-	index := 0
+	index := h.tts_last_text_index
 	for _, item := range texts {
 		index++
 		h.tts_last_text_index = index // 重置文本索引
 		h.SpeakAndPlay(item, index, h.talkRound)
 	}
 	return nil
-}
-
-// isNeedAuth 判断是否需要验证
-func (h *ConnectionHandler) isNeedAuth() bool {
-	if !h.config.Server.Auth.Enabled {
-		return false
-	}
-	return !h.isDeviceVerified
 }
 
 // processTTSQueueCoroutine 处理TTS队列
@@ -810,7 +804,7 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 		case <-h.stopChan:
 			return
 		case task := <-h.ttsQueue:
-			h.processTTSTask(task.text, task.textIndex, task.round)
+			h.processTTSTask(task.text, task.textIndex, task.round, task.filepath)
 		}
 	}
 }
@@ -848,8 +842,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 }
 
 // processTTSTask 处理单个TTS任务
-func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
-	filepath := ""
+func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int, filepath string) {
 	defer func() {
 		h.audioMessagesQueue <- struct {
 			filepath  string
@@ -858,6 +851,9 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 			textIndex int
 		}{filepath, text, round, textIndex}
 	}()
+	if filepath != "" {
+		return
+	}
 
 	if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 		// 尝试从缓存查找音频文件
@@ -904,7 +900,6 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		ttsSpentTime := now.Sub(ttsStartTime)
 		h.logger.Debug(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
-
 }
 
 // speakAndPlay 合成并播放语音
@@ -915,7 +910,8 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 			text      string
 			round     int
 			textIndex int
-		}{text, round, textIndex}
+			filepath  string
+		}{text, round, textIndex, ""}
 	}()
 
 	originText := text // 保存原始文本用于日志
