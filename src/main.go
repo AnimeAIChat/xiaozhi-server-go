@@ -12,12 +12,12 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
-	cfg "xiaozhi-server-go/src/configs/server"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/auth/store"
 	"xiaozhi-server-go/src/core/pool"
@@ -25,10 +25,16 @@ import (
 	"xiaozhi-server-go/src/core/transport/websocket"
 	"xiaozhi-server-go/src/core/utils"
 	_ "xiaozhi-server-go/src/docs"
-	"xiaozhi-server-go/src/ota"
+	"xiaozhi-server-go/src/httpsvr/ota"
+	"xiaozhi-server-go/src/httpsvr/vision"
 	"xiaozhi-server-go/src/task"
-	"xiaozhi-server-go/src/vision"
 
+	_ "xiaozhi-server-go/src/docs"
+
+	cfg "xiaozhi-server-go/src/httpsvr/webapi"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/static"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -72,6 +78,7 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	utils.DefaultLogger = logger
 
 	database.SetLogger(logger)
+	database.InsertDefaultConfigIfNeeded(database.GetDB())
 
 	return config, logger, nil
 }
@@ -177,7 +184,12 @@ func StartTransportServer(
 	return transportManager, nil
 }
 
-func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.Group, groupCtx context.Context) (*http.Server, error) {
+func StartHttpServer(
+	config *configs.Config,
+	logger *utils.Logger,
+	g *errgroup.Group,
+	groupCtx context.Context,
+) (*http.Server, error) {
 	// 初始化Gin引擎
 	if config.Log.LogLevel == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -187,8 +199,45 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	router := gin.Default()
 	router.SetTrustedProxies([]string{"0.0.0.0"})
 
+	// 配置全局CORS中间件
+	corsConfig := cors.Config{
+		AllowOrigins: []string{"*"}, // 生产环境应指定具体域名
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Accept",
+			"Authorization",
+			"X-Requested-With",
+			"Cache-Control",
+			"X-File-Name",
+		},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+	// 应用全局CORS中间件
+	router.Use(cors.New(corsConfig))
+
+	logger.Debug("全局CORS中间件已配置，支持OPTIONS预检请求")
+
 	// API路由全部挂载到/api前缀下
 	apiGroup := router.Group("/api")
+
+	// 静态资源服务，前端访问 /web/xxx
+	router.Use(static.Serve("/", static.LocalFile("./web", true)))
+
+	// history 路由兜底，只处理 /web 下的 GET 请求
+	router.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api") {
+			c.JSON(404, gin.H{"error": "api Not found"})
+			return
+		}
+
+		c.File("./web/index.html")
+	})
+
 	// 启动OTA服务
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
@@ -208,14 +257,13 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 			//return nil, err
 		}
 	}
-
-	cfgServer, err := cfg.NewDefaultCfgService(config, logger)
+	userServer, err := cfg.NewDefaultUserService(config, logger)
 	if err != nil {
-		logger.Error("配置服务初始化失败 %v", err)
+		logger.Error("用户服务初始化失败 %v", err)
 		return nil, err
 	}
-	if err := cfgServer.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("配置服务启动失败", err)
+	if err := userServer.Start(groupCtx, router, apiGroup); err != nil {
+		logger.Error("用户服务启动失败 %v", err)
 		return nil, err
 	}
 
@@ -229,12 +277,11 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	g.Go(func() error {
-		logger.Info(fmt.Sprintf("Gin 服务已启动，访问地址: http://0.0.0.0:%d", config.Web.Port))
+		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {
 			<-groupCtx.Done()
-			logger.Info("收到关闭信号，开始关闭HTTP服务...")
 
 			// 创建关闭超时上下文
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

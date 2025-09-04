@@ -37,7 +37,7 @@ func NewWebSocketTransport(config *configs.Config, logger *utils.Logger) *WebSoc
 
 // Start 启动WebSocket传输层
 func (t *WebSocketTransport) Start(ctx context.Context) error {
-	addr := fmt.Sprintf("%s:%d", t.config.Transport.WebSocket.IP, t.config.Transport.WebSocket.Port)
+	addr := fmt.Sprintf("%s:%d", t.config.Server.IP, t.config.Server.Port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", t.handleWebSocket)
@@ -87,13 +87,13 @@ func (t *WebSocketTransport) SetConnectionHandler(handler transport.ConnectionHa
 }
 
 // GetActiveConnectionCount 获取活跃连接数
-func (t *WebSocketTransport) GetActiveConnectionCount() int {
+func (t *WebSocketTransport) GetActiveConnectionCount() (int, int) {
 	count := 0
 	t.activeConnections.Range(func(key, value interface{}) bool {
 		count++
 		return true
 	})
-	return count
+	return count, count
 }
 
 // GetType 获取传输类型

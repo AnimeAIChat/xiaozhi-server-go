@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/image"
@@ -33,7 +32,10 @@ type DefaultVisionService struct {
 }
 
 // NewDefaultVisionService 构造函数
-func NewDefaultVisionService(config *configs.Config, logger *utils.Logger) (*DefaultVisionService, error) {
+func NewDefaultVisionService(
+	config *configs.Config,
+	logger *utils.Logger,
+) (*DefaultVisionService, error) {
 	service := &DefaultVisionService{
 		logger:   logger,
 		config:   config,
@@ -77,13 +79,11 @@ func (s *DefaultVisionService) initVLLMProviders() error {
 	provider, err := vlllm.NewProvider(providerConfig, s.logger)
 	if err != nil {
 		s.logger.Warn(fmt.Sprintf("创建VLLLM provider 失败: %v", err))
-
 	}
 
 	// 初始化provider
 	if err := provider.Initialize(); err != nil {
 		s.logger.Warn(fmt.Sprintf("初始化VLLLM provider失败: %v", err))
-
 	}
 
 	s.vlllmMap[selected_vlllm] = provider
@@ -98,7 +98,11 @@ func (s *DefaultVisionService) initVLLMProviders() error {
 }
 
 // Start 实现 VisionService 接口，注册所有 Vision 相关路由
-func (s *DefaultVisionService) Start(ctx context.Context, engine *gin.Engine, apiGroup *gin.RouterGroup) error {
+func (s *DefaultVisionService) Start(
+	ctx context.Context,
+	engine *gin.Engine,
+	apiGroup *gin.RouterGroup,
+) error {
 	// Vision 主接口（GET用于状态检查，POST用于图片分析）
 	apiGroup.GET("/vision", s.handleGet)
 	apiGroup.POST("/vision", s.handlePost)
@@ -116,6 +120,12 @@ func (s *DefaultVisionService) handleOptions(c *gin.Context) {
 }
 
 // handleGet 处理GET请求（状态检查）
+// @Summary Vision服务状态检查
+// @Description 检查Vision服务是否正常运行
+// @Tags Vision
+// @Produce plain
+// @Success 200 {string} string "服务状态信息"
+// @Router /vision [get]
 func (s *DefaultVisionService) handleGet(c *gin.Context) {
 	s.logger.Info("收到Vision状态检查请求 get")
 	s.addCORSHeaders(c)
@@ -132,6 +142,20 @@ func (s *DefaultVisionService) handleGet(c *gin.Context) {
 }
 
 // handlePost 处理POST请求（图片分析）
+// @Summary 图片分析
+// @Description 上传图片并进行视觉分析，返回分析结果
+// @Tags Vision
+// @Accept multipart/form-data
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param Device-Id header string true "设备ID"
+// @Param question formData string true "问题文本"
+// @Param image formData file true "图片文件"
+// @Success 200 {object} VisionResponse
+// @Failure 400 {object} VisionResponse
+// @Failure 401 {object} VisionResponse
+// @Failure 500 {object} VisionResponse
+// @Router /vision [post]
 func (s *DefaultVisionService) handlePost(c *gin.Context) {
 	s.addCORSHeaders(c)
 
@@ -212,7 +236,9 @@ func (s *DefaultVisionService) verifyAuth(c *gin.Context) (*AuthVerifyResult, er
 	// 检查设备ID匹配
 	requestDeviceID := c.GetHeader("Device-Id")
 	if requestDeviceID != deviceID {
-		s.logger.Warn(fmt.Sprintf("设备ID与token不匹配: 请求设备ID=%s, token设备ID=%s", requestDeviceID, deviceID))
+		s.logger.Warn(
+			fmt.Sprintf("设备ID与token不匹配: 请求设备ID=%s, token设备ID=%s", requestDeviceID, deviceID),
+		)
 		return nil, fmt.Errorf("设备ID与token不匹配")
 	}
 
@@ -223,7 +249,10 @@ func (s *DefaultVisionService) verifyAuth(c *gin.Context) (*AuthVerifyResult, er
 }
 
 // parseMultipartRequest 解析multipart表单请求
-func (s *DefaultVisionService) parseMultipartRequest(c *gin.Context, deviceID string) (*VisionRequest, error) {
+func (s *DefaultVisionService) parseMultipartRequest(
+	c *gin.Context,
+	deviceID string,
+) (*VisionRequest, error) {
 	// 解析multipart表单
 	err := c.Request.ParseMultipartForm(MAX_FILE_SIZE)
 	if err != nil {
@@ -241,7 +270,9 @@ func (s *DefaultVisionService) parseMultipartRequest(c *gin.Context, deviceID st
 		for key, files := range c.Request.MultipartForm.File {
 			s.logger.Info(fmt.Sprintf("文件字段 %s: 共%d个文件", key, len(files)))
 			for i, file := range files {
-				s.logger.Info(fmt.Sprintf("  文件%d: %s (大小: %d bytes)", i+1, file.Filename, file.Size))
+				s.logger.Info(
+					fmt.Sprintf("  文件%d: %s (大小: %d bytes)", i+1, file.Filename, file.Size),
+				)
 			}
 		}
 	}
@@ -297,7 +328,12 @@ func (s *DefaultVisionService) parseMultipartRequest(c *gin.Context, deviceID st
 func (s *DefaultVisionService) saveImageToFile(imageData []byte, deviceID string) (string, error) {
 	// 生成唯一的文件名
 	device_id_format := strings.ReplaceAll(deviceID, ":", "_")
-	filename := fmt.Sprintf("%s_%d.%s", device_id_format, time.Now().Unix(), s.detectImageFormat(imageData))
+	filename := fmt.Sprintf(
+		"%s_%d.%s",
+		device_id_format,
+		time.Now().Unix(),
+		s.detectImageFormat(imageData),
+	)
 	filepath := fmt.Sprintf("uploads/%s", filename)
 
 	// 确保uploads目录存在
@@ -306,7 +342,7 @@ func (s *DefaultVisionService) saveImageToFile(imageData []byte, deviceID string
 	}
 
 	// 保存图片文件
-	if err := os.WriteFile(filepath, imageData, 0644); err != nil {
+	if err := os.WriteFile(filepath, imageData, 0o644); err != nil {
 		return "", fmt.Errorf("保存图片文件失败: %v", err)
 	}
 
@@ -333,7 +369,13 @@ func (s *DefaultVisionService) processVisionRequest(req *VisionRequest) (string,
 	s.logger.Debug("处理图片数据: %s, 格式: %s", req.ClientID, imageData.Format)
 	// 调用VLLLM provider
 	messages := []providers.Message{} // 空的历史消息
-	responseChan, err := provider.ResponseWithImage(context.Background(), "", messages, imageData, req.Question)
+	responseChan, err := provider.ResponseWithImage(
+		context.Background(),
+		"",
+		messages,
+		imageData,
+		req.Question,
+	)
 	if err != nil {
 		return "", fmt.Errorf("调用VLLLM失败: %v", err)
 	}
