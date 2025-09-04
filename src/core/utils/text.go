@@ -45,8 +45,8 @@ func SplitAtLastPunctuation(text string) (string, int) {
 		return segment, pos
 	}
 
-	// 如果文本较长（超过30字符），考虑中等停顿标点
-	if len(text) > 30 {
+	// 如果文本较长（超过50字符），考虑中等停顿标点
+	if len(text) > 50 {
 		minLength = 8
 		if len(text) < minLength {
 			minLength = len(text) / 2
@@ -56,8 +56,8 @@ func SplitAtLastPunctuation(text string) (string, int) {
 		}
 	}
 
-	// 如果文本很长（超过50字符），考虑轻微停顿标点
-	if len(text) > 50 {
+	// 如果文本很长（超过80字符），考虑轻微停顿标点
+	if len(text) > 80 {
 		minLength = 8
 		if len(text) < minLength {
 			minLength = len(text) / 2
@@ -67,8 +67,8 @@ func SplitAtLastPunctuation(text string) (string, int) {
 		}
 	}
 
-	// 如果没有找到合适的标点，且文本过长（超过80字符），强制在空格处分割
-	if len(text) > 80 {
+	// 如果没有找到合适的标点，且文本过长（超过100字符），强制在空格处分割
+	if len(text) > 100 {
 		minLength = 8
 		if len(text) < minLength {
 			minLength = len(text) / 2
@@ -78,8 +78,8 @@ func SplitAtLastPunctuation(text string) (string, int) {
 		}
 	}
 
-	// 如果文本过长（超过100字符），强制分割
-	if len(text) > 100 {
+	// 如果文本过长（超过120字符），强制分割
+	if len(text) > 120 {
 		cutPos := 80
 		if len(text) < cutPos {
 			cutPos = len(text) / 2
@@ -120,11 +120,52 @@ func findLastPunctuationWithMinLength(text string, punctuations []string, minLen
 	}
 
 	endPos := lastIndex + len(foundPunctuation)
+
+	// 检查标点符号后是否有需要一起保留的引号或括号
+	endPos = adjustForClosingQuotes(text, endPos)
+
 	// 确保不超出文本长度
 	if endPos > len(text) {
 		endPos = len(text)
 	}
 	return text[:endPos], endPos
+}
+
+// adjustForClosingQuotes 调整结束位置，确保配对的引号和括号一起保留
+func adjustForClosingQuotes(text string, pos int) int {
+	if pos >= len(text) {
+		return pos
+	}
+
+	// 转换为rune切片以正确处理UTF-8字符
+	runes := []rune(text)
+	if pos >= len(runes) {
+		return pos
+	}
+
+	// 只处理中文下引号的情况
+	chineseClosingQuotes := map[rune]bool{
+		'”': true, // 中文右双引号
+		'’': true, // 中文右单引号
+	}
+
+	// 最多向前查找2个字符（只考虑紧邻的引号）
+	maxLookAhead := 2
+
+	for i := 0; i < maxLookAhead && pos < len(runes); i++ {
+		char := runes[pos]
+
+		// 如果是中文下引号，包含它
+		if chineseClosingQuotes[char] {
+			pos++
+			continue
+		}
+
+		// 遇到其他字符（包括空格、英文引号、上引号等），停止查找
+		break
+	}
+
+	return pos
 }
 
 // findLastSpaceWithMinLength 查找最后一个空格位置，确保最小长度
@@ -146,7 +187,6 @@ func findLastSpaceWithMinLength(text string, minLength int) (string, int) {
 	return "", 0
 }
 
-// SplitByPunctuation 使用正则表达式分割文本
 func SplitByPunctuation(text string) []string {
 	// 使用正则表达式分割文本
 	parts := reSplitString.Split(text, -1)

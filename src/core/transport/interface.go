@@ -15,7 +15,7 @@ type Transport interface {
 	// 设置连接处理器工厂
 	SetConnectionHandler(handler ConnectionHandlerFactory)
 	// 获取活跃连接数
-	GetActiveConnectionCount() int
+	GetActiveConnectionCount() (int, int)
 	// 获取传输类型
 	GetType() string
 }

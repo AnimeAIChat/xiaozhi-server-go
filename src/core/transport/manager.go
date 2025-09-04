@@ -47,6 +47,7 @@ func (m *TransportManager) StartAll(ctx context.Context) error {
 			}
 		}(name, transport)
 	}
+
 	return nil
 }
 
@@ -65,31 +66,9 @@ func (m *TransportManager) StopAll() error {
 	return lastErr
 }
 
-// GetStats 获取所有传输层的统计信息
-func (m *TransportManager) GetStats() map[string]int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	stats := make(map[string]int)
-	for name, transport := range m.transports {
-		stats[name] = transport.GetActiveConnectionCount()
-	}
-	return stats
-}
-
 // GetTransport 获取指定名称的传输层
 func (m *TransportManager) GetTransport(name string) Transport {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.transports[name]
-}
-
-// GetTotalConnections 获取所有传输层的总连接数
-func (m *TransportManager) GetTotalConnections() int {
-	stats := m.GetStats()
-	total := 0
-	for _, count := range stats {
-		total += count
-	}
-	return total
 }

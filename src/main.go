@@ -29,6 +29,7 @@ import (
 	"xiaozhi-server-go/src/task"
 	"xiaozhi-server-go/src/vision"
 
+	"github.com/gin-contrib/cors"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -187,6 +188,29 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	router := gin.Default()
 	router.SetTrustedProxies([]string{"0.0.0.0"})
 
+	// 配置全局CORS中间件
+	corsConfig := cors.Config{
+		AllowOrigins: []string{"*"}, // 生产环境应指定具体域名
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Accept",
+			"Authorization",
+			"X-Requested-With",
+			"Cache-Control",
+			"X-File-Name",
+			"client-id",
+			"device-id",
+		},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+	// 应用全局CORS中间件
+	router.Use(cors.New(corsConfig))
+
+	logger.Debug("全局CORS中间件已配置，支持OPTIONS预检请求")
 	// API路由全部挂载到/api前缀下
 	apiGroup := router.Group("/api")
 	// 启动OTA服务

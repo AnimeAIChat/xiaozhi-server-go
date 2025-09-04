@@ -87,13 +87,13 @@ func (t *WebSocketTransport) SetConnectionHandler(handler transport.ConnectionHa
 }
 
 // GetActiveConnectionCount 获取活跃连接数
-func (t *WebSocketTransport) GetActiveConnectionCount() int {
+func (t *WebSocketTransport) GetActiveConnectionCount() (int, int) {
 	count := 0
 	t.activeConnections.Range(func(key, value interface{}) bool {
 		count++
 		return true
 	})
-	return count
+	return count, count
 }
 
 // GetType 获取传输类型
@@ -109,8 +109,23 @@ func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	clientID := fmt.Sprintf("%p", conn)
-	t.logger.Info("收到WebSocket连接请求: %s", r.Header.Get("Device-Id"))
+	deviceID := r.Header.Get("Device-Id")
+	clientID := r.Header.Get("Client-Id")
+	if deviceID == "" {
+		// 尝试从url中获取
+		deviceID = r.URL.Query().Get("device-id")
+		r.Header.Set("Device-Id", deviceID)
+		t.logger.Info("尝试从URL获取Device-Id: %v", r.URL)
+	}
+	if clientID == "" {
+		// 尝试从url中获取
+		clientID = r.URL.Query().Get("client-id")
+		r.Header.Set("Client-Id", clientID)
+	}
+	if clientID == "" {
+		clientID = fmt.Sprintf("%p", conn)
+	}
+	t.logger.Info("收到WebSocket连接请求: %s， clientID: %s", deviceID, clientID)
 	wsConn := NewWebSocketConnection(clientID, conn)
 
 	if t.connHandler == nil {
