@@ -186,7 +186,7 @@ func SaveAudioToWavFile(data []byte, fileName string, sampleRate int, channels i
 	}
 
 	// 打开现有文件进行追加
-	file, err = os.OpenFile(fileName, os.O_WRONLY, 0644)
+	file, err = os.OpenFile(fileName, os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("打开文件失败: %v", err)
 	}
@@ -328,7 +328,7 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 	}
 
 	mp3SampleRate := decoder.SampleRate()
-	//fmt.Println("AudioToPCMData 原始MP3采样率:", mp3SampleRate)
+	// fmt.Println("AudioToPCMData 原始MP3采样率:", mp3SampleRate)
 	// 目标采样率设为24kHz
 	targetSampleRate := 24000
 
@@ -385,7 +385,7 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 		monoPcmDataBytes[i*2+1] = byte(sample >> 8) // 高字节 (MSB)
 	}
 
-	//音频播放时长（基于重采样后的数据）
+	// 音频播放时长（基于重采样后的数据）
 	duration := float64(len(resampledPcmInt16)) / float64(finalSampleRate) // 单声道PCM数据的时长 (秒)
 
 	// 函数签名要求返回 [][]byte.
@@ -395,7 +395,6 @@ func AudioToPCMData(audioFile string) ([][]byte, float64, error) {
 
 // AudioToOpusData 将音频文件转换为Opus数据块
 func AudioToOpusData(audioFile string) ([][]byte, float64, error) {
-
 	var pcmData [][]byte
 	var err error
 	var duration float64
@@ -452,7 +451,7 @@ func CopyAudioFile(src, dst string) error {
 // SaveAudioFile 保存音频数据到文件
 func SaveAudioFile(data []byte, filename string) error {
 	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %v", err)
 	}
 
