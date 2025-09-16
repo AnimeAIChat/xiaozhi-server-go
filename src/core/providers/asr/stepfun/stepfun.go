@@ -29,6 +29,7 @@ type Provider struct {
 	voice  string
 	wsURL  string
 	logger *utils.Logger
+	prompt string
 
 	// 流式识别相关字段
 	conn        *websocket.Conn
@@ -56,6 +57,11 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 		return nil, fmt.Errorf("缺少voice配置")
 	}
 
+	prompt, ok := config.Data["prompt"].(string)
+	if !ok {
+		prompt = "你是由阶跃星辰提供的AI聊天助手，你擅长中文、英文及多语种对话。"
+	}
+
 	provider := &Provider{
 		BaseProvider: base,
 		apiKey:       apiKey,
@@ -63,6 +69,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 		voice:        voice,
 		wsURL:        fmt.Sprintf("wss://api.stepfun.com/v1/realtime?model=%s", model),
 		logger:       logger,
+		prompt:       prompt,
 	}
 
 	provider.InitAudioProcessing()
@@ -160,7 +167,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 		"type":     "session.update",
 		"session": map[string]interface{}{
 			"modalities":          []string{"text", "audio"},
-			"instructions":        "你是由阶跃星辰提供的AI聊天助手，你擅长中文、英文及多语种对话。",
+			"instructions":        p.prompt,
 			"voice":               p.voice,
 			"input_audio_format":  "pcm16",
 			"output_audio_format": "pcm16",

@@ -114,6 +114,7 @@ ASR:
     api_key: 你的api_key
     model: "step-audio-2-mini"
     voice: "qingchunshaonv"
+    prompt: 你是由阶跃星辰提供的AI聊天助手，你擅长中文、英文及多语种对话。
 
 # TTS配置
 TTS:
