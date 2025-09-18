@@ -154,6 +154,13 @@ go run ./src/main.go
 go build -o xiaozhi-server.exe src/main.go
 ```
 
+### 测试
+* 推荐使用ESP32硬件设备测试，可以最大程度避免兼容问题
+* 推荐使用玄凤小智Android客户端，在设置界面增加本地服务的ota地址即可。安卓版本在Release页面发布，可选择最新版本
+  <img width="221" height="470" alt="image" src="https://github.com/user-attachments/assets/145a6612-8397-439b-9429-325855a99101" />
+
+  [xiaozhi-0.0.6.apk](https://github.com/AnimeAIChat/xiaozhi-server-go/releases/download/v0.1.0/xiaozhi-0.0.6.apk)
+* 可使用其他兼容小智协议的客户端进行测试
 ---
 
 ## 📚 Swagger 文档
