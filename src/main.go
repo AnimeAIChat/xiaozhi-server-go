@@ -37,6 +37,7 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
 	_ "xiaozhi-server-go/src/core/providers/asr/gosherpa"
+	_ "xiaozhi-server-go/src/core/providers/asr/stepfun"
 	_ "xiaozhi-server-go/src/core/providers/llm/coze"
 	_ "xiaozhi-server-go/src/core/providers/llm/ollama"
 	_ "xiaozhi-server-go/src/core/providers/llm/openai"
@@ -56,7 +57,6 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	_, _, err := database.InitDB()
 	if err != nil {
 		fmt.Println("数据库连接失败: %v", err)
-
 	}
 	// 加载配置,默认使用.config.yaml
 	config, configPath, err := configs.LoadConfig(database.GetServerConfigDB())
@@ -224,12 +224,12 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
 		logger.Error("Vision 服务初始化失败 %v", err)
-		//return nil, err
+		// return nil, err
 	}
 	if visionService != nil {
 		if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
 			logger.Error("Vision 服务启动失败 %v", err)
-			//return nil, err
+			// return nil, err
 		}
 	}
 
