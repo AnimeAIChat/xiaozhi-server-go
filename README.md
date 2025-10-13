@@ -201,8 +201,7 @@ swag init -g main.go
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/aac00312-f995-4006-a62e-3d24e803a9a7" width="450" alt="微信群二维码">
-
+<img src="https://github.com/user-attachments/assets/58b2f34c-a6ec-494f-a231-5f5f71cf6343" width="450" alt="微信群二维码">
 
 ---
 
