@@ -221,9 +221,9 @@ LLM:
   DoubaoLLM:
     # 定义LLM API类型
     type: doubao
-    # doubao-seed-1.6-250615 是豆包深度思考模型
+    # doubao-seed-1.6-251015 是豆包深度思考模型 deepseek-v3-1-terminus效果比较好
     # 可在这里找到你的api key https://console.volcengine.com/ark
-    model_name: doubao-seed-1.6-250615
+    model_name: doubao-seed-1.6-251015
     url: https://ark.cn-beijing.volces.com/api/v3
     api_key: 你的api_key
     thinking: disabled # 思考模式: disabled(关闭思考) 或 enabled(启用思考)

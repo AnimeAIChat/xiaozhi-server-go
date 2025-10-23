@@ -72,7 +72,10 @@ func (m *Manager) preInitializeServers() error {
 
 	config := m.LoadConfig()
 	if config == nil {
-		return fmt.Errorf("no valid MCP server configuration found")
+		// 没有MCP配置文件，跳过外部服务器初始化
+		m.logger.Info("未找到MCP服务器配置文件，跳过外部MCP服务器初始化")
+		m.isInitialized = true
+		return nil
 	}
 
 	for name, srvConfig := range config {

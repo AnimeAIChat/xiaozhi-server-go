@@ -92,12 +92,13 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 }
 
 func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
-	bFinishSuccess := false
+	startTime := time.Now() // 记录发送任务开始时间
 	defer func() {
 		// 音频发送完成后，根据配置决定是否删除文件
 		h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
 
-		h.LogInfo(fmt.Sprintf("[TTS] [发送任务] 结束 success=%t text=%s index=%d/%d", bFinishSuccess, text, textIndex, h.tts_last_text_index))
+		spentTime := time.Since(startTime).Milliseconds()
+		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, text))
 		h.providers.asr.ResetStartListenTime()
 		if textIndex == h.tts_last_text_index {
 			h.sendTTSMessage("stop", "", textIndex)
@@ -172,8 +173,6 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.LogError(fmt.Sprintf("发送TTS结束状态失败: %v", err))
 		return
 	}
-
-	bFinishSuccess = true
 }
 
 // sendAudioFrames 分时发送音频帧，避免撑爆客户端缓冲区
