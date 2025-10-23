@@ -96,6 +96,7 @@ ASR:
     appid: "你的appid"
     access_token: 你的access_token
     output_dir: tmp/
+    end_window_size: 300  # 结束窗口大小，单位毫秒，默认400ms，最小200ms
 
   GoSherpaASR:
     type: gosherpa
