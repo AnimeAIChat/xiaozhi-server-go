@@ -866,6 +866,8 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	ttsStartTime := time.Now()
 	// 过滤表情
 	text = utils.RemoveAllEmoji(text)
+	// 移除括号及括号内的内容（如：（语速起飞）、（突然用气声）等）
+	text = utils.RemoveParentheses(text)
 
 	if text == "" {
 		h.logger.Warn(fmt.Sprintf("收到空文本，无法合成语音, 索引: %d", textIndex))
