@@ -35,35 +35,111 @@ type LogCfg struct {
 	LogFile   string `yaml:"log_file" json:"log_file"`
 }
 
-type colorWriter struct {
-	w  io.Writer
-	mu sync.Mutex
+// CustomTextHandler 自定义文本处理器，支持彩色输出和格式化
+type CustomTextHandler struct {
+	writer io.Writer
+	level  slog.Level
+	mu     sync.Mutex
 }
 
 var (
-	colorReset = "\x1b[0m"
-	colorTime  = "\x1b[93m" // 时间：浅黄色 (Bright Yellow)
-	colorDebug = "\x1b[36m" // 青色
-	colorInfo  = "\x1b[32m" // 绿色
-	colorWarn  = "\x1b[33m" // 黄色
-	colorError = "\x1b[31m" // 红色
+	colorReset  = "\x1b[0m"
+	colorTime   = "\x1b[93m" // 时间：浅黄色 (Bright Yellow)
+	colorDebug  = "\x1b[36m" // DEBUG：青色
+	colorInfo   = "\x1b[32m" // INFO：绿色
+	colorWarn   = "\x1b[33m" // WARN：黄色
+	colorError  = "\x1b[31m" // ERROR：红色
+	colorASR    = "\x1b[35m" // ASR：品红
+	colorLLM    = "\x1b[34m" // LLM：蓝色
+	colorTTS    = "\x1b[95m" // TTS：亮品红
+	colorTiming = "\x1b[92m" // Timing：亮绿色
 )
 
-func (cw *colorWriter) Write(p []byte) (int, error) {
-	cw.mu.Lock()
-	defer cw.mu.Unlock()
-	s := string(p)
-	if strings.Contains(s, "ERROR") {
-		s = colorError + s
-	} else {
-		s = colorTime + s
-		// 根据需要可以调整匹配规则，当前为简单的全字匹配/替换，可能会同时替换消息文本中的相同单词
-		s = strings.ReplaceAll(s, "DEBUG", colorDebug+"DEBUG"+colorReset)
-		s = strings.ReplaceAll(s, "INFO", colorInfo+"INFO"+colorReset)
-		s = strings.ReplaceAll(s, "WARN", colorWarn+"WARN"+colorReset)
+func (h *CustomTextHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= h.level
+}
+
+func (h *CustomTextHandler) Handle(ctx context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// 获取时间戳
+	timeStr := r.Time.Format("2006-01-02 15:04:05.000")
+
+	// 获取日志级别
+	levelStr := r.Level.String()
+
+	// 应用颜色
+	var levelColor string
+	switch r.Level {
+	case slog.LevelDebug:
+		levelColor = colorDebug
+	case slog.LevelInfo:
+		levelColor = colorInfo
+	case slog.LevelWarn:
+		levelColor = colorWarn
+	case slog.LevelError:
+		levelColor = colorError
+	default:
+		levelColor = colorReset
 	}
 
-	return cw.w.Write([]byte(s))
+	// 检查是否是特殊阶段日志
+	var stageColor string
+	var isStageLog bool
+	msg := r.Message
+
+	if strings.HasPrefix(msg, "[ASR]") {
+		stageColor = colorASR
+		isStageLog = true
+	} else if strings.HasPrefix(msg, "[LLM]") {
+		stageColor = colorLLM
+		isStageLog = true
+	} else if strings.HasPrefix(msg, "[TTS]") {
+		stageColor = colorTTS
+		isStageLog = true
+	} else if strings.HasPrefix(msg, "[TIMING]") {
+		stageColor = colorTiming
+		isStageLog = true
+	}
+
+	// 构建输出
+	var output string
+	if isStageLog {
+		// 阶段日志格式: [时间] [阶段] 消息
+		output = fmt.Sprintf("%s[%s]%s %s%s%s %s\n",
+			colorTime, timeStr, colorReset,
+			stageColor, msg, colorReset,
+			r.Message)
+	} else {
+		// 普通日志格式: [时间] [级别] 消息
+		output = fmt.Sprintf("%s[%s]%s %s[%s]%s %s",
+			colorTime, timeStr, colorReset,
+			levelColor, levelStr, colorReset,
+			msg)
+	}
+
+	// 添加属性（如果有）
+	if r.NumAttrs() > 0 {
+		output += " {"
+		r.Attrs(func(a slog.Attr) bool {
+			output += fmt.Sprintf(" %s=%v", a.Key, a.Value)
+			return true
+		})
+		output += " }"
+	}
+	output += "\n"
+
+	_, err := h.writer.Write([]byte(output))
+	return err
+}
+
+func (h *CustomTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h // 简化实现
+}
+
+func (h *CustomTextHandler) WithGroup(name string) slog.Handler {
+	return h // 简化实现
 }
 
 // Logger 日志接口实现
@@ -116,14 +192,15 @@ func NewLogger(config *LogCfg) (*Logger, error) {
 		Level: slogLevel,
 	})
 
-	// 创建文本处理器（用于控制台输出）
-	textHandler := slog.NewTextHandler(&colorWriter{w: os.Stdout}, &slog.HandlerOptions{
-		Level: slogLevel,
-	})
+	// 创建自定义文本处理器（用于控制台输出）
+	customHandler := &CustomTextHandler{
+		writer: os.Stdout,
+		level:  slogLevel,
+	}
 
 	// 创建logger实例
 	jsonLogger := slog.New(jsonHandler)
-	textLogger := slog.New(textHandler)
+	textLogger := slog.New(customHandler)
 
 	logger := &Logger{
 		config:      config,
@@ -355,4 +432,28 @@ func (l *Logger) Error(msg string, args ...interface{}) {
 	} else {
 		l.log(slog.LevelError, msg, args...)
 	}
+}
+
+// InfoASR 记录ASR阶段信息日志
+func (l *Logger) InfoASR(msg string, args ...interface{}) {
+	prefixedMsg := "[ASR] " + msg
+	l.Info(prefixedMsg, args...)
+}
+
+// InfoLLM 记录LLM阶段信息日志
+func (l *Logger) InfoLLM(msg string, args ...interface{}) {
+	prefixedMsg := "[LLM] " + msg
+	l.Info(prefixedMsg, args...)
+}
+
+// InfoTTS 记录TTS阶段信息日志
+func (l *Logger) InfoTTS(msg string, args ...interface{}) {
+	prefixedMsg := "[TTS] " + msg
+	l.Info(prefixedMsg, args...)
+}
+
+// InfoTiming 记录计时信息日志
+func (l *Logger) InfoTiming(msg string, args ...interface{}) {
+	prefixedMsg := "[TIMING] " + msg
+	l.Info(prefixedMsg, args...)
 }
