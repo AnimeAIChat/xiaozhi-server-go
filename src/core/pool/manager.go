@@ -67,7 +67,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.asrPool = asrPool
 		_, cnt := asrPool.GetStats()
-		logger.Info("ASR资源池初始化成功，类型: %s, 数量：%d", asrType, cnt)
+		logger.Info("[资源池] [ASR %s/%d] 初始化成功", asrType, cnt)
 	}
 
 	// 初始化LLM池
@@ -82,7 +82,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.llmPool = llmPool
 		_, cnt := llmPool.GetStats()
-		logger.Info("LLM资源池初始化成功，类型: %s, 数量：%d", llmType, cnt)
+		logger.Info("[资源池] [LLM %s/%d] 初始化成功", llmType, cnt)
 	}
 
 	// 初始化TTS池
@@ -97,7 +97,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.ttsPool = ttsPool
 		_, cnt := ttsPool.GetStats()
-		logger.Info("TTS资源池初始化成功，类型: %s, 数量：%d", ttsType, cnt)
+		logger.Info("[资源池] [TTS %s/%d] 初始化成功", ttsType, cnt)
 	}
 
 	// 初始化VLLLM池（可选）
@@ -115,7 +115,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		if pm.vlllmPool != nil {
 			_, cnt := pm.vlllmPool.GetStats()
-			logger.Info("VLLLM资源池初始化成功，类型: %s, 数量：%d", vlllmType, cnt)
+			logger.Info("[资源池] [VLLLM %s/%d] 初始化成功", vlllmType, cnt)
 		} else {
 			logger.Warn("VLLLM资源池未初始化，将使用普通LLM")
 		}
@@ -138,7 +138,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.mcpPool = mcpPool
 		_, cnt := mcpPool.GetStats()
-		logger.Info("MCP资源池初始化成功，数量：%d", cnt)
+		logger.Info("[资源池] [MCP %d] 初始化成功", cnt)
 	} else {
 		logger.Warn("创建MCP工厂失败，MCP功能将不可用")
 	}

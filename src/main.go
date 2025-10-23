@@ -70,7 +70,7 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger.Info("日志系统初始化成功, 配置文件路径: %s", configPath)
+	logger.Info("[日志] [初始化 %s] 成功", configPath)
 	utils.DefaultLogger = logger
 
 	database.SetLogger(logger)
@@ -81,7 +81,7 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 // initAuthManager 初始化认证管理器
 func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthManager, error) {
 	if !config.Server.Auth.Enabled {
-		logger.Info("认证功能未启用")
+		logger.Info("[认证] [状态] 未启用")
 		return nil, nil
 	}
 
@@ -149,7 +149,7 @@ func StartTransportServer(
 		return nil, fmt.Errorf("没有启用任何传输层")
 	}
 
-	logger.Info("启用的传输层: %v", enabledTransports)
+	logger.Info("[传输层] [启用 %v]", enabledTransports)
 
 	// 启动传输层服务
 	g.Go(func() error {
@@ -254,7 +254,7 @@ func StartHttpServer(config *configs.Config, logger *utils.Logger, g *errgroup.G
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	g.Go(func() error {
-		logger.Info(fmt.Sprintf("Gin 服务已启动，访问地址: http://0.0.0.0:%d", config.Web.Port))
+		logger.Info(fmt.Sprintf("[Gin] [服务 http://0.0.0.0:%d] 已启动", config.Web.Port))
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {

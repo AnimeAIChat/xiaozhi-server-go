@@ -107,10 +107,9 @@ func (h *CustomTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	var output string
 	if isStageLog {
 		// 阶段日志格式: [时间] [阶段] 消息
-		output = fmt.Sprintf("%s[%s]%s %s%s%s %s\n",
+		output = fmt.Sprintf("%s[%s]%s %s%s%s",
 			colorTime, timeStr, colorReset,
-			stageColor, msg, colorReset,
-			r.Message)
+			stageColor, msg, colorReset)
 	} else {
 		// 普通日志格式: [时间] [级别] 消息
 		output = fmt.Sprintf("%s[%s]%s %s[%s]%s %s",
