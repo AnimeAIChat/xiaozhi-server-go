@@ -354,10 +354,8 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 				// 提取内容和工具调用
 				if len(streamResp.Choices) > 0 {
 					delta := streamResp.Choices[0].Delta
-					chunk := types.Response{
-						Content: delta.Content,
-					}
 
+					// 处理工具调用
 					if len(delta.ToolCalls) > 0 {
 						toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
 						for i, tc := range delta.ToolCalls {
@@ -370,10 +368,19 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 								},
 							}
 						}
-						chunk.ToolCalls = toolCalls
+						responseChan <- types.Response{
+							ToolCalls: toolCalls,
+						}
+						continue
 					}
 
-					responseChan <- chunk
+					// 处理文本内容
+					if delta.Content != "" {
+						// 暂时输出原始内容，不进行过滤
+						responseChan <- types.Response{
+							Content: delta.Content,
+						}
+					}
 				}
 			}
 		}

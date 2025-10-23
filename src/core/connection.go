@@ -195,7 +195,7 @@ func NewConnectionHandler(
 		if key == "Transport-Type" {
 			handler.transportType = values[0] // 传输类型
 		}
-		logger.Info("[HTTP] [头部 %s] %s", key, values[0])
+		logger.Debug("[HTTP] [头部 %s] %s", key, values[0])
 	}
 
 	if handler.sessionID == "" {
@@ -268,6 +268,13 @@ func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, resul
 func (h *ConnectionHandler) LogInfo(msg string) {
 	if h.logger != nil {
 		h.logger.Info(msg, map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
+func (h *ConnectionHandler) LogDebug(msg string) {
+	if h.logger != nil {
+		h.logger.Debug(msg, map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
