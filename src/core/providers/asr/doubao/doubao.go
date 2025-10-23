@@ -107,6 +107,19 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 	// 创建连接ID
 	connectID := fmt.Sprintf("%d", time.Now().UnixNano())
 
+	// 从配置中读取end_window_size，如果没有设置则使用默认值400
+	endWindowSize := 400 // 默认值
+	if configEndWindowSize, ok := config.Data["end_window_size"]; ok {
+		switch v := configEndWindowSize.(type) {
+		case float64:
+			endWindowSize = int(v)
+		case int:
+			endWindowSize = v
+		case int64:
+			endWindowSize = int(v)
+		}
+	}
+
 	provider := &Provider{
 		BaseProvider:  base,
 		appID:         appID,
@@ -120,7 +133,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 
 		// 默认配置
 		modelName:     "bigmodel",
-		endWindowSize: 800,
+		endWindowSize: endWindowSize,
 		enablePunc:    true,
 		enableITN:     true,
 		enableDDC:     false,
@@ -428,6 +441,9 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("构造请求数据失败: %v", err)
 	}
+
+	// 调试: 输出请求内容
+	// p.logger.Info("[ASR] [请求内容] %s", string(requestBytes))
 
 	var buf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buf)
