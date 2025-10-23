@@ -218,6 +218,16 @@ LLM:
     type: ollama
     model_name: qwen3 #  使用的模型名称，需要预先使用ollama pull下载
     url: http://localhost:11434 # Ollama服务地址
+  DoubaoLLM:
+    # 定义LLM API类型
+    type: doubao
+    # doubao-seed-1.6-250615 是豆包深度思考模型
+    # 可在这里找到你的api key https://console.volcengine.com/ark
+    model_name: doubao-seed-1.6-250615
+    url: https://ark.cn-beijing.volces.com/api/v3
+    api_key: 你的api_key
+    thinking: disabled # 思考模式: disabled(关闭思考) 或 enabled(启用思考)
+    max_tokens: 4000
   CozeLLM:
     # 定义LLM API类型
     type: coze

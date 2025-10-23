@@ -15,7 +15,9 @@ var (
 	reRemoveAllPunctuation = regexp.MustCompile(
 		`[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`,
 	)
-	reWakeUpWord = regexp.MustCompile(`^你好.+`)
+	reWakeUpWord             = regexp.MustCompile(`^你好.+`)
+	reRemoveParenthesesCN    = regexp.MustCompile(`（[^）]*）`)  // 中文括号
+	reRemoveParenthesesEN    = regexp.MustCompile(`\([^)]*\)`)  // 英文括号
 )
 
 // splitAtLastPunctuation 在最后一个标点符号处分割文本，优化聊天场景下的分句逻辑
@@ -296,4 +298,14 @@ func GenerateSecurePassword(length int) string {
 		password[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(password)
+}
+
+// RemoveParentheses 移除括号及括号内的内容
+// 支持中文括号（）和英文括号()
+func RemoveParentheses(text string) string {
+	// 移除中文括号及其内容
+	text = reRemoveParenthesesCN.ReplaceAllString(text, "")
+	// 移除英文括号及其内容
+	text = reRemoveParenthesesEN.ReplaceAllString(text, "")
+	return text
 }
