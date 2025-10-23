@@ -113,7 +113,7 @@ func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) e
 // handleHelloMessage 处理欢迎消息
 // 客户端会上传语音格式和采样率等信息
 func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) error {
-	h.LogInfo("收到客户端欢迎消息: " + fmt.Sprintf("%v", msgMap))
+	h.LogInfo(fmt.Sprintf("[客户端] [hello 收到欢迎消息] %v", msgMap))
 	// 获取客户端编码格式
 	if audioParams, ok := msgMap["audio_params"].(map[string]interface{}); ok {
 		if format, ok := audioParams["format"].(string); ok {
@@ -132,7 +132,7 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 		if frameDuration, ok := audioParams["frame_duration"].(float64); ok {
 			h.clientAudioFrameDuration = int(frameDuration)
 		}
-		h.LogInfo(fmt.Sprintf("客户端音频参数: format=%s, sample_rate=%d, channels=%d, frame_duration=%d",
+		h.LogInfo(fmt.Sprintf("[客户端] [音频参数 %s/%d/%d/%d]",
 			h.clientAudioFormat, h.clientAudioSampleRate, h.clientAudioChannels, h.clientAudioFrameDuration))
 	}
 	h.sendHelloMessage()
@@ -146,7 +146,7 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 		h.logger.Error(fmt.Sprintf("初始化Opus解码器失败: %v", err))
 	} else {
 		h.opusDecoder = opusDecoder
-		h.LogInfo("Opus解码器初始化成功")
+		h.LogInfo("[Opus] [解码器] 初始化成功")
 	}
 
 	return nil
@@ -164,7 +164,7 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 	// 处理mode参数
 	if mode, ok := msgMap["mode"].(string); ok {
 		h.clientListenMode = mode
-		h.LogInfo(fmt.Sprintf("客户端拾音模式：%s， %s", h.clientListenMode, state))
+		h.LogInfo(fmt.Sprintf("[客户端] [拾音模式 %s/%s]", h.clientListenMode, state))
 		h.providers.asr.SetListener(h)
 	}
 
@@ -183,9 +183,7 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 
 		if hasText && text != "" {
 			// 只有文本，使用普通LLM处理
-			h.LogInfo(fmt.Sprintf("检测到纯文本消息，使用LLM处理 %v", map[string]interface{}{
-				"text": text,
-			}))
+			h.LogInfo(fmt.Sprintf("[检测] [纯文本消息 %s] 使用LLM处理", text))
 			return h.handleChatMessage(context.Background(), text)
 		} else {
 			// 既没有图片也没有文本

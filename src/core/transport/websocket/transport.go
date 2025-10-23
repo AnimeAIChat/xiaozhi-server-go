@@ -125,7 +125,7 @@ func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Requ
 	if clientID == "" {
 		clientID = fmt.Sprintf("%p", conn)
 	}
-	t.logger.Info("收到WebSocket连接请求: %s， clientID: %s", deviceID, clientID)
+	t.logger.Info("[WebSocket] [连接请求 %s/%s]", deviceID, clientID)
 	wsConn := NewWebSocketConnection(clientID, conn)
 
 	if t.connHandler == nil {
@@ -142,7 +142,7 @@ func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Requ
 	}
 
 	t.activeConnections.Store(clientID, handler)
-	t.logger.Info("WebSocket客户端 %s 连接已建立，资源已分配", clientID)
+	t.logger.Info("[WebSocket] [连接建立 %s] 资源已分配", clientID)
 
 	// 启动连接处理，并在结束时清理资源
 	go func() {
