@@ -173,10 +173,9 @@ func (h *ConnectionHandler) handleListenMessage(msgMap map[string]interface{}) e
 		if h.client_asr_text != "" && h.clientListenMode == "manual" {
 			h.clientAbortChat()
 		}
-		h.clientVoiceStop = false
 		h.client_asr_text = ""
 	case "stop":
-		h.clientVoiceStop = true
+		h.providers.asr.SendLastAudio([]byte{}) // 发送空数据标记结束
 		h.LogInfo("客户端停止语音识别")
 	case "detect":
 		text, hasText := msgMap["text"].(string)

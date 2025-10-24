@@ -295,7 +295,7 @@ func (p *Provider) readLoop() {
 				} else if text != "" {
 					p.BaseProvider.SilenceCount = 0
 				}
-				if finished := listener.OnAsrResult(text); finished {
+				if finished := listener.OnAsrResult(text, true); finished {
 					return
 				}
 			}
