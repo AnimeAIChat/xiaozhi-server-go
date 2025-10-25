@@ -74,9 +74,9 @@ func (c *LocalClient) AddToolChangeRole() error {
 		return nil
 	} else {
 		for _, role := range roles {
-			items := strings.Split(role, "@")
-			prompts[items[0]] = items[1]
-			roleNames += items[0] + ", "
+
+			prompts[role.Name] = role.Description
+			roleNames += role.Name + ", "
 		}
 	}
 

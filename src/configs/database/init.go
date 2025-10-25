@@ -140,6 +140,7 @@ func migrateTables(db *gorm.DB) error {
 		&models.User{},
 		&models.Agent{},
 		&models.AgentDialog{},
+		&models.Device{},
 		&models.AuthClient{},
 		&models.ServerStatus{},
 	)
@@ -149,10 +150,14 @@ func migrateTables(db *gorm.DB) error {
 // InsertDefaultConfigIfNeeded 首次启动插入默认配置
 func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
 	config := configs.Cfg
-
+	if err := InitSystemConfig(db, config); err != nil {
+		return fmt.Errorf("初始化系统配置失败: %v", err)
+	}
 	if err := InitProviders(db, config); err != nil {
 		return fmt.Errorf("初始化提供者配置失败: %v", err)
 	}
-
+	if err := InitAdminUser(db, config); err != nil {
+		return fmt.Errorf("初始化管理员用户失败: %v", err)
+	}
 	return nil
 }

@@ -35,6 +35,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/static"
+	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -57,10 +58,16 @@ import (
 )
 
 func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
-	// 初始化数据库连接
-	_, _, err := database.InitDB()
+	// 加载 .env 文件
+	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("数据库连接失败: %v", err)
+		fmt.Println("未找到 .env 文件，使用系统环境变量")
+	}
+
+	// 初始化数据库连接
+	_, _, err = database.InitDB()
+	if err != nil {
+		fmt.Printf("数据库连接失败: %v\n", err)
 
 	}
 	// 加载配置,默认使用.config.yaml
@@ -74,8 +81,9 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger.Info("日志系统初始化成功, 配置文件路径: %s", configPath)
+
 	utils.DefaultLogger = logger
+	logger.Info("日志系统初始化成功,level:%s 配置文件路径: %s", config.Log.LogLevel, configPath)
 
 	database.SetLogger(logger)
 	database.InsertDefaultConfigIfNeeded(database.GetDB())
@@ -85,10 +93,6 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 
 // initAuthManager 初始化认证管理器
 func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthManager, error) {
-	if !config.Server.Auth.Enabled {
-		logger.Info("认证功能未启用")
-		return nil, nil
-	}
 
 	// 创建存储配置
 	storeConfig := &store.StoreConfig{
@@ -211,6 +215,8 @@ func StartHttpServer(
 			"X-Requested-With",
 			"Cache-Control",
 			"X-File-Name",
+			"client-id",
+			"device-id",
 		},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
@@ -249,14 +255,23 @@ func StartHttpServer(
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
 		logger.Error("Vision 服务初始化失败 %v", err)
-		//return nil, err
+		return nil, err
 	}
-	if visionService != nil {
-		if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
-			logger.Error("Vision 服务启动失败 %v", err)
-			//return nil, err
-		}
+	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
+		logger.Error("Vision 服务启动失败 %v", err)
+		return nil, err
 	}
+
+	cfgServer, err := cfg.NewDefaultAdminService(config, logger)
+	if err != nil {
+		logger.Error("Admin 服务初始化失败 %v", err)
+		return nil, err
+	}
+	if err := cfgServer.Start(groupCtx, router, apiGroup); err != nil {
+		logger.Error("Admin 服务启动失败 %v", err)
+		return nil, err
+	}
+
 	userServer, err := cfg.NewDefaultUserService(config, logger)
 	if err != nil {
 		logger.Error("用户服务初始化失败 %v", err)
@@ -266,6 +281,10 @@ func StartHttpServer(
 		logger.Error("用户服务启动失败 %v", err)
 		return nil, err
 	}
+
+	// 启动系统配置服务
+	systemConfigService := cfg.NewSystemConfigService(logger, database.GetDB())
+	systemConfigService.RegisterRoutes(apiGroup)
 
 	// HTTP Server（支持优雅关机）
 	httpServer := &http.Server{

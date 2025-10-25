@@ -28,14 +28,7 @@ func InitProviders(db *gorm.DB, config *configs.Config) error {
 }
 
 func InitTTSProviders(db *gorm.DB, config *configs.Config) error {
-	if config == nil || config.LLM == nil {
-		return nil
-	}
-	var count int64
-	if err := db.Model(&models.TTSConfig{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
+	if config == nil || config.TTS == nil {
 		return nil
 	}
 
@@ -50,8 +43,8 @@ func InitTTSProviders(db *gorm.DB, config *configs.Config) error {
 			Data: datatypes.JSON(providerJson),
 		}
 
-		if err := db.Create(&ttsConfig).Error; err != nil {
-			return fmt.Errorf("插入TTS提供者 %s 失败: %v", name, err)
+		if err := db.Where("name = ?", name).FirstOrCreate(&ttsConfig).Error; err != nil {
+			return fmt.Errorf("插入或更新TTS提供者 %s 失败: %v", name, err)
 		}
 	}
 
@@ -60,13 +53,6 @@ func InitTTSProviders(db *gorm.DB, config *configs.Config) error {
 
 func InitLLMProviders(db *gorm.DB, config *configs.Config) error {
 	if config == nil || config.LLM == nil {
-		return nil
-	}
-	var count int64
-	if err := db.Model(&models.LLMConfig{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
 		return nil
 	}
 	for name, provider := range config.LLM {
@@ -80,7 +66,7 @@ func InitLLMProviders(db *gorm.DB, config *configs.Config) error {
 			Data: datatypes.JSON(providerJson),
 		}
 		// 比较，然后确认创建还是更新，name相同就更新
-		if err := db.Model(&models.LLMConfig{}).Where("name = ?", name).FirstOrCreate(&llmConfig).Error; err != nil {
+		if err := db.Where("name = ?", name).FirstOrCreate(&llmConfig).Error; err != nil {
 			return fmt.Errorf("插入或更新LLM提供者 %s 失败: %v", name, err)
 		}
 	}
@@ -89,16 +75,10 @@ func InitLLMProviders(db *gorm.DB, config *configs.Config) error {
 }
 
 func InitASRProviders(db *gorm.DB, config *configs.Config) error {
-	if config == nil || config.LLM == nil {
+	if config == nil || config.ASR == nil {
 		return nil
 	}
-	var count int64
-	if err := db.Model(&models.ASRConfig{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
+
 	for name, provider := range config.ASR {
 		providerJson, err := json.Marshal(provider)
 		if err != nil {
@@ -117,8 +97,8 @@ func InitASRProviders(db *gorm.DB, config *configs.Config) error {
 			Data: datatypes.JSON(providerJson),
 		}
 
-		if err := db.Create(&asrConfig).Error; err != nil {
-			return fmt.Errorf("插入ASR提供者 %s 失败: %v", name, err)
+		if err := db.Where("name = ?", name).FirstOrCreate(&asrConfig).Error; err != nil {
+			return fmt.Errorf("插入或更新ASR提供者 %s 失败: %v", name, err)
 		}
 	}
 
@@ -126,14 +106,7 @@ func InitASRProviders(db *gorm.DB, config *configs.Config) error {
 }
 
 func InitVLLLMProviders(db *gorm.DB, config *configs.Config) error {
-	if config == nil || config.LLM == nil {
-		return nil
-	}
-	var count int64
-	if err := db.Model(&models.VLLLMConfig{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
+	if config == nil || config.VLLLM == nil {
 		return nil
 	}
 	for name, provider := range config.VLLLM {
@@ -148,20 +121,20 @@ func InitVLLLMProviders(db *gorm.DB, config *configs.Config) error {
 			Data: datatypes.JSON(providerJson),
 		}
 
-		if err := db.Create(&vlllmConfig).Error; err != nil {
-			return fmt.Errorf("插入VLLLM提供者 %s 失败: %v", name, err)
+		if err := db.Where("name = ?", name).FirstOrCreate(&vlllmConfig).Error; err != nil {
+			return fmt.Errorf("插入或更新VLLLM提供者 %s 失败: %v", name, err)
 		}
 	}
 
 	return nil
 }
 
-func GetAllProviders() map[string]string {
+func GetAllProviders(userID uint) map[string]string {
 	providersMap := make(map[string]string)
-	asr, _ := GetProviderByType("ASR")
-	tts, _ := GetProviderByType("TTS")
-	llm, _ := GetProviderByType("LLM")
-	vlllm, _ := GetProviderByType("VLLLM")
+	asr, _ := GetProviderByType("ASR", userID)
+	tts, _ := GetProviderByType("TTS", userID)
+	llm, _ := GetProviderByType("LLM", userID)
+	vlllm, _ := GetProviderByType("VLLLM", userID)
 	for name, data := range asr {
 		providersMap["ASR:"+name] = data
 	}
@@ -197,11 +170,14 @@ func RemoveSensitiveFields(data datatypes.JSON) (string, error) {
 	return string(configJson), nil
 }
 
-func GetProviderNameList() (asrList, ttsList, llmList, vlllmList []string) {
+func GetProviderNameList(userID uint) (asrList, ttsList, llmList, vlllmList []string) {
 	asrList = make([]string, 0)
 	var asrConfigs []models.ASRConfig
 	if err := DB.Find(&asrConfigs).Error; err == nil {
 		for _, asr := range asrConfigs {
+			if asr.UserID != 0 && asr.UserID != AdminUserID && asr.UserID != userID {
+				continue
+			}
 			asrList = append(asrList, asr.Name)
 		}
 	}
@@ -210,6 +186,9 @@ func GetProviderNameList() (asrList, ttsList, llmList, vlllmList []string) {
 	var ttsConfigs []models.TTSConfig
 	if err := DB.Find(&ttsConfigs).Error; err == nil {
 		for _, tts := range ttsConfigs {
+			if tts.UserID != 0 && tts.UserID != AdminUserID && tts.UserID != userID {
+				continue
+			}
 			ttsList = append(ttsList, tts.Name)
 		}
 	}
@@ -218,6 +197,9 @@ func GetProviderNameList() (asrList, ttsList, llmList, vlllmList []string) {
 	var llmConfigs []models.LLMConfig
 	if err := DB.Find(&llmConfigs).Error; err == nil {
 		for _, llm := range llmConfigs {
+			if llm.UserID != 0 && llm.UserID != AdminUserID && llm.UserID != userID {
+				continue
+			}
 			llmList = append(llmList, llm.Name)
 		}
 	}
@@ -226,17 +208,20 @@ func GetProviderNameList() (asrList, ttsList, llmList, vlllmList []string) {
 	var vlllmConfigs []models.VLLLMConfig
 	if err := DB.Find(&vlllmConfigs).Error; err == nil {
 		for _, vlllm := range vlllmConfigs {
+			if vlllm.UserID != 0 && vlllm.UserID != AdminUserID && vlllm.UserID != userID {
+				continue
+			}
 			vlllmList = append(vlllmList, vlllm.Name)
 		}
 	}
 	return asrList, ttsList, llmList, vlllmList
 }
 
-func GetProviderByType(providerType string) (map[string]string, error) {
-	return GetProviderByTypeInternal(providerType, true)
+func GetProviderByType(providerType string, userID uint) (map[string]string, error) {
+	return GetProviderByTypeInternal(providerType, userID, true)
 }
 
-func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[string]string, error) {
+func GetProviderByTypeInternal(providerType string, userID uint, bRemoveSensitive bool) (map[string]string, error) {
 	// 根据提供者类型返回对应的提供者列表
 	switch providerType {
 	case "ASR":
@@ -247,6 +232,9 @@ func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[
 		}
 		asrs := make(map[string]string)
 		for _, config := range asrConfigs {
+			if config.UserID != 0 && config.UserID != AdminUserID && config.UserID != userID {
+				continue
+			}
 			if bRemoveSensitive {
 				asrs[config.Name], _ = RemoveSensitiveFields(config.Data)
 			} else {
@@ -262,6 +250,9 @@ func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[
 		}
 		tts := make(map[string]string)
 		for _, config := range ttsConfigs {
+			if config.UserID != 0 && config.UserID != AdminUserID && config.UserID != userID {
+				continue
+			}
 			if bRemoveSensitive {
 				tts[config.Name], _ = RemoveSensitiveFields(config.Data) // string(config.Data)
 			} else {
@@ -277,6 +268,9 @@ func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[
 		}
 		llms := make(map[string]string)
 		for _, config := range llmConfigs {
+			if config.UserID != 0 && config.UserID != AdminUserID && config.UserID != userID {
+				continue
+			}
 			if bRemoveSensitive {
 				llms[config.Name], _ = RemoveSensitiveFields(config.Data)
 			} else {
@@ -292,6 +286,9 @@ func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[
 		}
 		vlllms := make(map[string]string)
 		for _, config := range vlllmConfigs {
+			if config.UserID != 0 && config.UserID != AdminUserID && config.UserID != userID {
+				continue
+			}
 			if bRemoveSensitive {
 				vlllms[config.Name], _ = RemoveSensitiveFields(config.Data)
 			} else {
@@ -305,7 +302,7 @@ func GetProviderByTypeInternal(providerType string, bRemoveSensitive bool) (map[
 }
 
 // CreateProvider 创建新的提供者
-func CreateProvider(providerType, name string, data interface{}) error {
+func CreateProvider(providerType, name string, data interface{}, createUserID uint) error {
 	providerJson, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("序列化提供者数据失败: %v", err)
@@ -324,30 +321,34 @@ func CreateProvider(providerType, name string, data interface{}) error {
 	switch providerType {
 	case "ASR":
 		config := models.ASRConfig{
-			Name: name,
-			Type: providerSubType,
-			Data: datatypes.JSON(providerJson),
+			UserID: createUserID,
+			Name:   name,
+			Type:   providerSubType,
+			Data:   datatypes.JSON(providerJson),
 		}
 		return DB.Create(&config).Error
 	case "TTS":
 		config := models.TTSConfig{
-			Name: name,
-			Type: providerSubType,
-			Data: datatypes.JSON(providerJson),
+			UserID: createUserID,
+			Name:   name,
+			Type:   providerSubType,
+			Data:   datatypes.JSON(providerJson),
 		}
 		return DB.Create(&config).Error
 	case "LLM":
 		config := models.LLMConfig{
-			Name: name,
-			Type: providerSubType,
-			Data: datatypes.JSON(providerJson),
+			UserID: createUserID,
+			Name:   name,
+			Type:   providerSubType,
+			Data:   datatypes.JSON(providerJson),
 		}
 		return DB.Create(&config).Error
 	case "VLLLM":
 		config := models.VLLLMConfig{
-			Name: name,
-			Type: providerSubType,
-			Data: datatypes.JSON(providerJson),
+			UserID: createUserID,
+			Name:   name,
+			Type:   providerSubType,
+			Data:   datatypes.JSON(providerJson),
 		}
 		return DB.Create(&config).Error
 	default:
@@ -356,7 +357,7 @@ func CreateProvider(providerType, name string, data interface{}) error {
 }
 
 // UpdateProvider 更新提供者
-func UpdateProvider(providerType, name string, data interface{}) error {
+func UpdateProvider(providerType, name string, data interface{}, userID uint) error {
 	providerJson, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("序列化提供者数据失败: %v", err)
@@ -364,25 +365,53 @@ func UpdateProvider(providerType, name string, data interface{}) error {
 
 	switch providerType {
 	case "ASR":
-		return DB.Model(&models.ASRConfig{}).
-			Where(&models.ASRConfig{Name: name}).
-			Update("data", datatypes.JSON(providerJson)).
-			Error
+		result := DB.Model(&models.ASRConfig{}).
+			Where(&models.ASRConfig{Name: name, UserID: userID}).
+			Update("data", datatypes.JSON(providerJson))
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("ASR提供者 %s 不存在或无权限更新", name)
+		}
+		return nil
 	case "TTS":
-		return DB.Model(&models.TTSConfig{}).
-			Where(&models.TTSConfig{Name: name}).
-			Update("data", datatypes.JSON(providerJson)).
-			Error
+		result := DB.Model(&models.TTSConfig{}).
+			Where(&models.TTSConfig{Name: name, UserID: userID}).
+			Update("data", datatypes.JSON(providerJson))
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("TTS提供者 %s 不存在或无权限更新", name)
+		}
+		return nil
 	case "LLM":
-		return DB.Model(&models.LLMConfig{}).
-			Where(&models.LLMConfig{Name: name}).
-			Update("data", datatypes.JSON(providerJson)).
-			Error
+		result := DB.Model(&models.LLMConfig{}).
+			Where(&models.LLMConfig{Name: name, UserID: userID}).
+			Update("data", datatypes.JSON(providerJson))
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("LLM提供者 %s 不存在或无权限更新", name)
+		}
+		return nil
 	case "VLLLM":
-		return DB.Model(&models.VLLLMConfig{}).
-			Where(&models.VLLLMConfig{Name: name}).
-			Update("data", datatypes.JSON(providerJson)).
-			Error
+		result := DB.Model(&models.VLLLMConfig{}).
+			Where(&models.VLLLMConfig{Name: name, UserID: userID}).
+			Update("data", datatypes.JSON(providerJson))
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("VLLLM提供者 %s 不存在或无权限更新", name)
+		}
+		return nil
 	default:
 		return fmt.Errorf("未知的提供者类型: %s", providerType)
 	}
@@ -391,7 +420,7 @@ func UpdateProvider(providerType, name string, data interface{}) error {
 // DeleteProvider 删除提供者
 var ErrNoPermission = errors.New("没有权限执行此操作")
 
-func DeleteProvider(providerType, name string) error {
+func DeleteProvider(providerType, name string, userID uint) error {
 	switch providerType {
 	case "ASR":
 		var cfg models.ASRConfig
@@ -400,6 +429,9 @@ func DeleteProvider(providerType, name string) error {
 				return gorm.ErrRecordNotFound
 			}
 			return err
+		}
+		if cfg.UserID != userID && userID != AdminUserID {
+			return ErrNoPermission
 		}
 		return DB.Delete(&cfg).Error
 	case "TTS":
@@ -410,6 +442,9 @@ func DeleteProvider(providerType, name string) error {
 			}
 			return err
 		}
+		if cfg.UserID != userID && userID != AdminUserID {
+			return ErrNoPermission
+		}
 		return DB.Delete(&cfg).Error
 	case "LLM":
 		var cfg models.LLMConfig
@@ -419,6 +454,9 @@ func DeleteProvider(providerType, name string) error {
 			}
 			return err
 		}
+		if cfg.UserID != userID && userID != AdminUserID {
+			return ErrNoPermission
+		}
 		return DB.Delete(&cfg).Error
 	case "VLLLM":
 		var cfg models.VLLLMConfig
@@ -427,6 +465,9 @@ func DeleteProvider(providerType, name string) error {
 				return gorm.ErrRecordNotFound
 			}
 			return err
+		}
+		if cfg.UserID != userID && userID != AdminUserID {
+			return ErrNoPermission
 		}
 		return DB.Delete(&cfg).Error
 	default:
