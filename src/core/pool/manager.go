@@ -1,7 +1,6 @@
 package pool
 
 import (
-	"context"
 	"fmt"
 	"time"
 	"xiaozhi-server-go/src/configs"
@@ -36,20 +35,11 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		logger: logger,
 	}
 
-	// 执行连通性检查
-	if err := pm.performConnectivityCheck(config, logger); err != nil {
-		return nil, fmt.Errorf("资源连通性检查失败: %v", err)
-	}
-
-	interval := config.PoolConfig.PoolCheckInterval
-	if interval <= 0 {
-		interval = 30
-	}
 	poolConfig := PoolConfig{
 		MinSize:       config.PoolConfig.PoolMinSize,
 		MaxSize:       config.PoolConfig.PoolMaxSize,
 		RefillSize:    config.PoolConfig.PoolRefillSize,
-		CheckInterval: time.Duration(interval) * time.Second,
+		CheckInterval: 30 * time.Second,
 	}
 
 	// 检查配置是否包含所需的模块
@@ -187,10 +177,35 @@ func (pm *PoolManager) GetProviderSet() (*ProviderSet, error) {
 		if err == nil {
 			// 直接转换，因为我们知道这是从 mcp 工厂创建的
 			set.MCP = mcpManager.(*mcp.Manager)
+			set.MCP.AutoReturnToPool = true
 		}
 	}
 
 	return set, nil
+}
+
+func (pm *PoolManager) GetMcpManager() (*mcp.Manager, error) {
+	if pm.mcpPool != nil {
+		mcpManager, err := pm.mcpPool.Get()
+		if err == nil {
+			return mcpManager.(*mcp.Manager), nil
+		}
+	}
+	return nil, fmt.Errorf("未能获取MCP管理器")
+}
+
+func (pm *PoolManager) ReturnMcpManager(m *mcp.Manager) error {
+	if pm.mcpPool != nil && m != nil {
+		// 重置资源状态
+		if err := pm.mcpPool.Reset(m); err != nil {
+			pm.logger.Warn("重置MCP资源状态失败: %v", err)
+		}
+		// 归还到池中
+		if err := pm.mcpPool.Put(m); err != nil {
+			pm.logger.Error("归还MCP提供者失败: %v", err)
+		}
+	}
+	return nil
 }
 
 // Close 关闭所有资源池
@@ -275,7 +290,7 @@ func (pm *PoolManager) ReturnProviderSet(set *ProviderSet) error {
 	}
 
 	// 归还MCP提供者
-	if set.MCP != nil && pm.mcpPool != nil {
+	if set.MCP != nil && pm.mcpPool != nil && set.MCP.AutoReturnToPool {
 		if err := pm.mcpPool.Reset(set.MCP); err != nil {
 			pm.logger.Warn("重置MCP资源状态失败: %v", err)
 		}
@@ -325,33 +340,6 @@ func (pm *PoolManager) GetStats() map[string]map[string]int {
 	}
 
 	return stats
-}
-
-// performConnectivityCheck 执行连通性检查
-func (pm *PoolManager) performConnectivityCheck(
-	config *configs.Config,
-	logger *utils.Logger,
-) error {
-	// 从配置创建连通性检查配置
-	connConfig, err := ConfigFromYAML(&config.ConnectivityCheck)
-	if err != nil {
-		logger.Warn("解析连通性检查配置失败，使用默认配置: %v", err)
-		connConfig = DefaultConnectivityConfig()
-	}
-
-	// 创建健康检查器
-	healthChecker := NewHealthChecker(config, connConfig, logger)
-
-	// 执行功能性连通性检查
-	ctx, cancel := context.WithTimeout(context.Background(), connConfig.Timeout*3) // 给功能性检查更多时间
-	defer cancel()
-
-	err = healthChecker.CheckAllProviders(ctx, FunctionalCheck)
-
-	// 打印检查报告
-	healthChecker.PrintReport()
-
-	return err
 }
 
 // GetDetailedStats 获取所有池的详细统计信息

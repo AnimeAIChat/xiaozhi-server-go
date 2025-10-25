@@ -3,14 +3,10 @@ package configs
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
-
-// TokenConfig Token配置
-type TokenConfig struct {
-	Token string `yaml:"token" json:"token"`
-}
 
 // Config 主配置结构
 type Config struct {
@@ -19,13 +15,10 @@ type Config struct {
 		Port  int    `yaml:"port" json:"port"`
 		Token string `json:"token"`
 		Auth  struct {
-			Enabled bool `yaml:"enabled" json:"enabled"`
-			Store   struct {
+			Store struct {
 				Type   string `yaml:"type" json:"type"`     // memory/file/redis
 				Expiry int    `yaml:"expiry" json:"expiry"` // 过期时间(小时)
 			} `yaml:"store" json:"store"`
-			AllowedDevices []string      `yaml:"allowed_devices" json:"allowed_devices"`
-			Tokens         []TokenConfig `yaml:"tokens" json:"tokens"`
 		} `yaml:"auth" json:"auth"`
 	} `yaml:"server" json:"server"`
 
@@ -36,17 +29,32 @@ type Config struct {
 			IP      string `yaml:"ip" json:"ip"`
 			Port    int    `yaml:"port" json:"port"`
 		} `yaml:"websocket" json:"websocket"`
+
+		MQTTUDP struct {
+			Enabled bool `yaml:"enabled" json:"enabled"`
+			MQTT    struct {
+				IP   string `yaml:"ip" json:"ip"`
+				Port int    `yaml:"port" json:"port"`
+				QoS  int    `yaml:"qos" json:"qos"`
+			} `yaml:"mqtt" json:"mqtt"`
+			UDP struct {
+				IP                string `yaml:"ip" json:"ip"`
+				ShowPort          int    `yaml:"show_port" json:"show_port"` // 显示端口
+				Port              int    `yaml:"port" json:"port"`
+				SessionTimeout    string `yaml:"session_timeout" json:"session_timeout"`
+				MaxPacketSize     int    `yaml:"max_packet_size" json:"max_packet_size"`
+				EnableReliability bool   `yaml:"enable_reliability" json:"enable_reliability"`
+			} `yaml:"udp" json:"udp"`
+		} `yaml:"mqtt_udp" json:"mqtt_udp"`
 	} `yaml:"transport" json:"transport"`
 
 	Log struct {
-		LogFormat string `yaml:"log_format" json:"log_format"`
-		LogLevel  string `yaml:"log_level" json:"log_level"`
-		LogDir    string `yaml:"log_dir" json:"log_dir"`
-		LogFile   string `yaml:"log_file" json:"log_file"`
+		LogLevel string `yaml:"log_level" json:"log_level"`
+		LogDir   string `yaml:"log_dir" json:"log_dir"`
+		LogFile  string `yaml:"log_file" json:"log_file"`
 	} `yaml:"log" json:"log"`
 
 	Web struct {
-		Enabled      bool   `yaml:"enabled" json:"enabled"`
 		Port         int    `yaml:"port" json:"port"`
 		StaticDir    string `yaml:"static_dir" json:"static_dir"`
 		Websocket    string `yaml:"websocket" json:"websocket"`
@@ -54,13 +62,14 @@ type Config struct {
 		ActivateText string `yaml:"activate_text" json:"activate_text"` // 发送激活码时携带的文本
 	} `yaml:"web" json:"web"`
 
-	DefaultPrompt    string   `yaml:"prompt"             json:"prompt"`
-	Roles            []string `yaml:"roles"              json:"roles"` // 角色列表
-	DeleteAudio      bool     `yaml:"delete_audio"       json:"delete_audio"`
-	QuickReply       bool     `yaml:"quick_reply"        json:"quick_reply"`
-	QuickReplyWords  []string `yaml:"quick_reply_words"  json:"quick_reply_words"`
-	UsePrivateConfig bool     `yaml:"use_private_config" json:"use_private_config"`
-	LocalMCPFun      []string `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
+	DefaultPrompt   string        `yaml:"prompt"             json:"prompt"`
+	Roles           []Role        `yaml:"roles"              json:"roles"` // 角色列表
+	DeleteAudio     bool          `yaml:"delete_audio"       json:"delete_audio"`
+	QuickReply      bool          `yaml:"quick_reply"        json:"quick_reply"`
+	QuickReplyWords []string      `yaml:"quick_reply_words"  json:"quick_reply_words"`
+	LocalMCPFun     []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
+	SaveTTSAudio    bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
+	SaveUserAudio   bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
 
 	SelectedModule map[string]string `yaml:"selected_module" json:"selected_module"`
 
@@ -73,9 +82,18 @@ type Config struct {
 	VLLLM map[string]VLLMConfig `yaml:"VLLLM" json:"VLLLM"`
 
 	CMDExit []string `yaml:"CMD_exit" json:"CMD_exit"`
+}
 
-	// 连通性检查配置
-	ConnectivityCheck ConnectivityCheckConfig `yaml:"connectivity_check" json:"connectivity_check"`
+type LocalMCPFun struct {
+	Name        string `yaml:"name"         json:"name"`        // 函数名称
+	Description string `yaml:"description"  json:"description"` // 函数描述
+	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
+}
+
+type Role struct {
+	Name        string `yaml:"name"         json:"name"`        // 角色名称
+	Description string `yaml:"description"  json:"description"` // 角色描述
+	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
 }
 
 type PoolConfig struct {
@@ -95,11 +113,12 @@ type McpPoolConfig struct {
 type ASRConfig map[string]interface{}
 
 type VoiceInfo struct {
-	Name        string `yaml:"name"         json:"name"`
-	DisplayName string `yaml:"display_name" json:"display_name"`
-	Sex         string `yaml:"sex"          json:"sex"`
-	Description string `yaml:"description"  json:"description"`
-	AudioURL    string `yaml:"audio_url"    json:"audio_url"`
+	Name        string `yaml:"name"         json:"name"`         // 语音名称，对应tts的音色字符串，如 zh_female_wanwanxiaohe_moon_bigtts
+	Language    string `yaml:"language"     json:"language"`     // 语言，标记语种，用于前端选择
+	DisplayName string `yaml:"display_name" json:"display_name"` // 显示名称，前端显示用，如湾湾小何
+	Sex         string `yaml:"sex"          json:"sex"`          // 性别，男/女
+	Description string `yaml:"description"  json:"description"`  // 音色的描述信息
+	AudioURL    string `yaml:"audio_url"    json:"audio_url"`    // 音频URL，用于试听
 }
 
 // TTSConfig TTS配置结构
@@ -137,19 +156,6 @@ type SecurityConfig struct {
 	ValidationTimeout string   `yaml:"validation_timeout" json:"validation_timeout"` // 验证超时时间
 }
 
-// ConnectivityCheckConfig 连通性检查配置结构
-type ConnectivityCheckConfig struct {
-	Enabled       bool   `yaml:"enabled"        json:"enabled"`        // 是否启用连通性检查
-	Timeout       string `yaml:"timeout"        json:"timeout"`        // 检查超时时间
-	RetryAttempts int    `yaml:"retry_attempts" json:"retry_attempts"` // 重试次数
-	RetryDelay    string `yaml:"retry_delay"    json:"retry_delay"`    // 重试延迟
-	TestModes     struct {
-		ASRTestAudio  string `yaml:"asr_test_audio" json:"asr_test_audio"`   // ASR测试音频文件
-		LLMTestPrompt string `yaml:"llm_test_prompt" json:"llm_test_prompt"` // LLM测试提示词
-		TTSTestText   string `yaml:"tts_test_text" json:"tts_test_text"`     // TTS测试文本
-	} `yaml:"test_modes"     json:"test_modes"`
-}
-
 // VLLMConfig VLLLM配置结构（视觉语言大模型）
 type VLLMConfig struct {
 	Type        string                 `yaml:"type"        json:"type"`        // API类型，复用LLM的类型
@@ -176,29 +182,13 @@ func (cfg *Config) FromString(data string) error {
 	return yaml.Unmarshal([]byte(data), cfg)
 }
 
-func (cfg *Config) setDefaults() {
-	cfg.Transport.WebSocket.Enabled = true
-	cfg.Transport.WebSocket.IP = "0.0.0.0"
-	cfg.Transport.WebSocket.Port = 8000
-
-	cfg.Web.Port = 8080
-
-	cfg.Server.Token = "your_token"
-
-	cfg.Log.LogDir = "logs"
-	cfg.Log.LogLevel = "INFO"
-	cfg.Log.LogFormat = "{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
-	cfg.Log.LogFile = "server.log"
-
-	cfg.PoolConfig.PoolMinSize = 0
-	cfg.PoolConfig.PoolMaxSize = 0
-	cfg.PoolConfig.PoolCheckInterval = 30
-
+func (cfg *Config) SaveToDB(dbi ConfigDBInterface) error {
+	data := cfg.ToString()
+	return dbi.UpdateServerConfig(data)
 }
 
 // LoadConfig 加载配置
-// 第一次从config.yaml加载，加载后存储到数据库加载
-// 如果数据库中已存在配置，则直接加载数据库中的配置
+// 完全从数据库加载配置，如果数据库为空则使用默认配置并初始化数据库
 func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 	bUseDatabaseCfg := false
 	// 尝试从数据库加载配置
@@ -242,4 +232,83 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 	}
 	Cfg = config
 	return config, path, nil
+}
+
+func CheckAndModifyConfig(cfg *Config) *Config {
+	// 检查Cfg.LocalMCPFun全部小写并去除空格
+	if cfg.LocalMCPFun == nil {
+		cfg.LocalMCPFun = []LocalMCPFun{}
+	}
+	fmt.Printf("检查配置: LocalMCPFun cnt %d\n", len(cfg.LocalMCPFun))
+	if len(cfg.LocalMCPFun) < 10 {
+		for i := 0; i < len(cfg.LocalMCPFun); i++ {
+			cfg.LocalMCPFun[i].Name = strings.ToLower(strings.TrimSpace(cfg.LocalMCPFun[i].Name))
+			cfg.LocalMCPFun[i].Description = strings.ToLower(strings.TrimSpace(cfg.LocalMCPFun[i].Description))
+		}
+	}
+	// 检查默认配置的ASR,LLM,TTS和VLLLM是否存在
+	if cfg.SelectedModule == nil {
+		cfg.SelectedModule = map[string]string{}
+	}
+	if cfg.LLM == nil {
+		cfg.LLM = map[string]LLMConfig{}
+	}
+	if cfg.VLLLM == nil {
+		cfg.VLLLM = map[string]VLLMConfig{}
+	}
+	if cfg.ASR == nil {
+		cfg.ASR = map[string]ASRConfig{}
+	}
+	if cfg.TTS == nil {
+		cfg.TTS = map[string]TTSConfig{}
+	}
+	fmt.Printf("检查配置: LLM:%d, VLLLM:%d, ASR:%d, TTS:%d\n", len(cfg.LLM), len(cfg.VLLLM), len(cfg.ASR), len(cfg.TTS))
+	fmt.Println("检查配置: SelectedModule", cfg.SelectedModule)
+	// 如果SelectedModule没有选择或者选择的不存在，则选择第一个
+	llmName, ok := cfg.SelectedModule["LLM"]
+	_, exists := cfg.LLM[llmName]
+	if !ok || llmName == "" || !exists {
+		// 选择LLM中有的作为默认
+		for name := range cfg.LLM {
+			cfg.SelectedModule["LLM"] = name
+			fmt.Println("未设置默认LLM或设置的LLM不存在，已设置为", name)
+			break
+		}
+	}
+
+	vlllmName, ok := cfg.SelectedModule["VLLLM"]
+	_, exists = cfg.VLLLM[vlllmName]
+	if !ok || vlllmName == "" || !exists {
+		// 选择VLLLM中有的作为默认
+		for name := range cfg.VLLLM {
+			cfg.SelectedModule["VLLLM"] = name
+			fmt.Println("未设置默认VLLLM或设置的VLLLM不存在，已设置为", name)
+			break
+		}
+	}
+
+	asrName, ok := cfg.SelectedModule["ASR"]
+	_, exists = cfg.ASR[asrName]
+	// ASRConfig 是 map[string]interface{}，只判断 key 是否存在和 name 非空
+	if !ok || asrName == "" || !exists {
+		// 选择ASR中有的作为默认
+		for name := range cfg.ASR {
+			cfg.SelectedModule["ASR"] = name
+			fmt.Println("未设置默认ASR或设置的ASR不存在，已设置为", name)
+			break
+		}
+	}
+
+	ttsName, ok := cfg.SelectedModule["TTS"]
+	_, exists = cfg.TTS[ttsName]
+	if !ok || ttsName == "" || !exists {
+		// 选择TTS中有的作为默认
+		for name := range cfg.TTS {
+			cfg.SelectedModule["TTS"] = name
+			fmt.Println("未设置默认TTS或设置的TTS不存在，已设置为", name)
+			break
+		}
+	}
+
+	return cfg
 }

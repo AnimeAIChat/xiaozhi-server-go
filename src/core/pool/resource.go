@@ -114,11 +114,6 @@ func (p *ResourcePool) initializePool() error {
 
 // maintain 维护资源池
 func (p *ResourcePool) maintain(refillSize int, checkInterval time.Duration) {
-	if checkInterval <= 0 {
-		checkInterval = 30 * time.Second
-	}
-	p.logger.Info("%s 资源池维护协程已启动，检查间隔: %s", p.poolName, checkInterval)
-
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -175,6 +170,7 @@ func (p *ResourcePool) Close() {
 
 	// 销毁剩余资源
 	for resource := range p.pool {
+		p.logger.Info("[Close] %s 资源池关闭，销毁资源", p.poolName)
 		p.factory.Destroy(resource)
 	}
 }
@@ -188,6 +184,7 @@ func (p *ResourcePool) Put(resource interface{}) error {
 	// 检查池是否已关闭
 	select {
 	case <-p.ctx.Done():
+		p.logger.Warn("[Put] %s 资源池已关闭，销毁归还的资源", p.poolName)
 		return p.factory.Destroy(resource)
 	default:
 	}
@@ -204,11 +201,11 @@ func (p *ResourcePool) Put(resource interface{}) error {
 		return nil
 	case <-timeout.C:
 		// 超时后销毁资源而不是阻塞
-		p.logger.Warn("%s 资源归还超时，销毁资源", p.poolName)
+		p.logger.Warn("[Put] %s 资源归还超时，销毁资源", p.poolName)
 		return p.factory.Destroy(resource)
 	default:
 		// 池已满，销毁多余的资源
-		p.logger.Debug("%s 资源池已满，销毁归还的资源", p.poolName)
+		p.logger.Info("[Put] %s 资源池已满，销毁归还的资源", p.poolName)
 		return p.factory.Destroy(resource)
 	}
 }

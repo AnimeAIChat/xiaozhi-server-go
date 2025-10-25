@@ -37,7 +37,7 @@ func NewWebSocketTransport(config *configs.Config, logger *utils.Logger) *WebSoc
 
 // Start 启动WebSocket传输层
 func (t *WebSocketTransport) Start(ctx context.Context) error {
-	addr := fmt.Sprintf("%s:%d", t.config.Server.IP, t.config.Server.Port)
+	addr := fmt.Sprintf("%s:%d", t.config.Transport.WebSocket.IP, t.config.Transport.WebSocket.Port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", t.handleWebSocket)

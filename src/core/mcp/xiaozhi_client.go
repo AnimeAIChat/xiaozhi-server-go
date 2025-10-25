@@ -195,6 +195,11 @@ func (c *XiaoZhiMCPClient) CallTool(
 	name string,
 	args map[string]interface{},
 ) (interface{}, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error(fmt.Sprintf("调用工具 %s 时发生Panic: %v", name, r))
+		}
+	}()
 	if !c.IsReady() {
 		return nil, fmt.Errorf("MCP客户端尚未准备就绪")
 	}
@@ -240,6 +245,14 @@ func (c *XiaoZhiMCPClient) CallTool(
 	}
 
 	c.logger.Info(fmt.Sprintf("发送客户端mcp工具调用请求: %s，参数: %s", originalName, string(data)))
+	if c.conn == nil {
+		// 清理资源
+		c.callResultsLock.Lock()
+		delete(c.callResults, id)
+		c.callResultsLock.Unlock()
+		return nil, fmt.Errorf("MCP客户端尚未连接")
+	}
+
 	err = c.conn.WriteMessage(msgTypeText, data)
 	if err != nil {
 		// 清理资源
@@ -315,6 +328,12 @@ func (c *XiaoZhiMCPClient) IsReady() bool {
 
 // SendMCPInitializeMessage 发送MCP初始化消息
 func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error(fmt.Sprintf("发送MCP初始化消息时发生Panic: %v", r))
+		}
+	}()
+
 	// 构造MCP初始化消息
 	mcpMessage := map[string]interface{}{
 		"type":       "mcp",
@@ -349,11 +368,20 @@ func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
 	}
 
 	c.logger.Info("发送MCP初始化消息")
+	if c.conn == nil {
+		return fmt.Errorf("MCP客户端尚未连接")
+	}
 	return c.conn.WriteMessage(msgTypeText, data)
 }
 
 // SendMCPToolsListRequest 发送MCP工具列表请求
 func (c *XiaoZhiMCPClient) SendMCPToolsListRequest() error {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error(fmt.Sprintf("发送MCP工具列表请求时发生Panic: %v", r))
+		}
+	}()
+
 	// 构造MCP工具列表请求
 	mcpMessage := map[string]interface{}{
 		"type":       "mcp",
@@ -371,11 +399,20 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListRequest() error {
 	}
 
 	c.logger.Debug("发送MCP工具列表请求")
+	if c.conn == nil {
+		return fmt.Errorf("MCP客户端尚未连接")
+	}
 	return c.conn.WriteMessage(msgTypeText, data)
 }
 
 // SendMCPToolsListContinueRequest 发送带有cursor的MCP工具列表请求
 func (c *XiaoZhiMCPClient) SendMCPToolsListContinueRequest(cursor string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error(fmt.Sprintf("发送带cursor的MCP工具列表请求时发生Panic: %v", r))
+		}
+	}()
+
 	// 构造MCP工具列表请求
 	mcpMessage := map[string]interface{}{
 		"type":       "mcp",
@@ -396,6 +433,9 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListContinueRequest(cursor string) error 
 	}
 
 	c.logger.Info(fmt.Sprintf("发送带cursor的MCP工具列表请求: %s", cursor))
+	if c.conn == nil {
+		return fmt.Errorf("MCP客户端尚未连接")
+	}
 	return c.conn.WriteMessage(msgTypeText, data)
 }
 

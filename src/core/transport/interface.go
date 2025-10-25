@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"xiaozhi-server-go/src/core"
+	"xiaozhi-server-go/src/core/mcp"
 )
 
 // Transport 传输层接口
@@ -36,4 +37,9 @@ type ConnectionHandler interface {
 type ConnectionHandlerFactory interface {
 	// 创建连接处理器
 	CreateHandler(conn Connection, req *http.Request) ConnectionHandler
+}
+
+type MCPManagerHolder interface {
+	GetMCPManager() *mcp.Manager
+	SetMCPManager(*mcp.Manager)
 }

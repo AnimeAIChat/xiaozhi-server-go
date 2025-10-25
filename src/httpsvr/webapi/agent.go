@@ -17,7 +17,8 @@ type AgentCreateRequest struct {
 	Name       string `json:"name"` // 智能体名称
 	LLM        string `json:"LLM"`
 	Language   string `json:"language"`   // 语言，默认为中文
-	Voice      string `json:"voice"`      // 语音，默认为湾湾小何
+	Voice      string `json:"voice"`      // 语音，默认为湾湾小何的音色id
+	VoiceName  string `json:"voiceName"`  // 语音名称，默认为湾湾小何
 	ASRSpeed   int    `json:"asrSpeed"`   // ASR 语音识别速度，1=耐心，2=正常，3=快速
 	SpeakSpeed int    `json:"speakSpeed"` // TTS 角色语速，1=慢速，2=正常，3=快速
 	Tone       int    `json:"tone"`       // TTS 角色音调，1-100，低音-高音
@@ -33,6 +34,7 @@ type AgentCreateRequest struct {
 // @Success 200 {object} models.Agent "创建成功返回Agent信息"
 // @Router /user/agent/create [post]
 func (s *DefaultUserService) handleAgentCreate(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	var req AgentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -44,9 +46,11 @@ func (s *DefaultUserService) handleAgentCreate(c *gin.Context) {
 		LLM:        req.LLM,
 		Language:   req.Language,
 		Voice:      req.Voice,
+		VoiceName:  req.VoiceName,
 		ASRSpeed:   req.ASRSpeed,
 		SpeakSpeed: req.SpeakSpeed,
 		Tone:       req.Tone,
+		UserID:     userID,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
@@ -73,7 +77,8 @@ type Agents struct {
 // @Router /user/agent/list [get]
 func (s *DefaultUserService) handleAgentList(c *gin.Context) {
 	WithTx(c, func(tx *gorm.DB) error {
-		agents, err := database.ListAgents(tx)
+		userID := c.GetUint("user_id")
+		agents, err := database.ListAgentsByUser(tx, userID)
 		if err != nil {
 			return err
 		}
@@ -134,7 +139,6 @@ func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	WithTx(c, func(tx *gorm.DB) error {
 		agent, err := database.GetAgentByID(tx, uint(id))
 		if err != nil {
@@ -147,6 +151,7 @@ func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
 		agent.LLM = req.LLM
 		agent.Language = req.Language
 		agent.Voice = req.Voice
+		agent.VoiceName = req.VoiceName
 		agent.ASRSpeed = req.ASRSpeed
 		agent.SpeakSpeed = req.SpeakSpeed
 		agent.Tone = req.Tone
@@ -172,6 +177,7 @@ func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "删除结果"
 // @Router /user/agent/{id} [delete]
 func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		s.logger.Error("无效的Agent ID: %v", err)
@@ -179,7 +185,7 @@ func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
 		return
 	}
 	WithTx(c, func(tx *gorm.DB) error {
-		if err := database.DeleteAgent(tx, uint(id)); err != nil {
+		if err := database.DeleteAgent(tx, uint(id), userID); err != nil {
 			s.logger.Error("删除Agent失败: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return err
@@ -198,6 +204,7 @@ func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "清空结果"
 // @Router /user/agent/clear_conversation/{id}  [post]
 func (s *DefaultUserService) handleAgentClearConversation(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		s.logger.Error("无效的Agent ID: %v", err)
@@ -205,7 +212,7 @@ func (s *DefaultUserService) handleAgentClearConversation(c *gin.Context) {
 		return
 	}
 	// 检查Agent是否属于当前用户
-	_, err = database.GetAgentByID(database.GetDB(), uint(id))
+	_, err = database.GetAgentByIDAndUser(database.GetDB(), uint(id), userID)
 	if err != nil {
 		s.logger.Error("清空会话id，获取Agent失败: %v", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})

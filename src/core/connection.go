@@ -797,9 +797,6 @@ func (h *ConnectionHandler) SystemSpeak(text string) error {
 
 // isNeedAuth 判断是否需要验证
 func (h *ConnectionHandler) isNeedAuth() bool {
-	if !h.config.Server.Auth.Enabled {
-		return false
-	}
 	return !h.isDeviceVerified
 }
 

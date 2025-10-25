@@ -50,19 +50,19 @@ func (c *LocalClient) RegisterTools() {
 	}
 
 	for _, funcName := range funcs {
-		if funcName == "exit" {
+		if funcName.Name == "exit" && funcName.Enabled {
 			c.AddToolExit()
 			c.logger.Info("RegisterTools: exit tool registered")
-		} else if funcName == "time" {
+		} else if funcName.Name == "time" && funcName.Enabled {
 			c.AddToolTime()
 			c.logger.Info("RegisterTools: time tool registered")
-		} else if funcName == "change_voice" {
+		} else if funcName.Name == "change_voice" && funcName.Enabled {
 			c.AddToolChangeVoice()
 			c.logger.Info("RegisterTools: change_voice tool registered")
-		} else if funcName == "change_role" {
+		} else if funcName.Name == "change_role" && funcName.Enabled {
 			c.AddToolChangeRole()
 			c.logger.Info("RegisterTools: change_role tool registered")
-		} else if funcName == "play_music" {
+		} else if funcName.Name == "play_music" && funcName.Enabled {
 			c.AddToolPlayMusic()
 			c.logger.Info("RegisterTools: play_music tool registered")
 		} else {

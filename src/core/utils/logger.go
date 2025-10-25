@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -29,10 +30,9 @@ const (
 var DefaultLogger *Logger
 
 type LogCfg struct {
-	LogFormat string `yaml:"log_format" json:"log_format"`
-	LogLevel  string `yaml:"log_level" json:"log_level"`
-	LogDir    string `yaml:"log_dir" json:"log_dir"`
-	LogFile   string `yaml:"log_file" json:"log_file"`
+	LogLevel string `yaml:"log_level" json:"log_level"`
+	LogDir   string `yaml:"log_dir" json:"log_dir"`
+	LogFile  string `yaml:"log_file" json:"log_file"`
 }
 
 type colorWriter struct {
@@ -80,14 +80,14 @@ type Logger struct {
 
 // configLogLevelToSlogLevel 将配置中的日志级别转换为slog.Level
 func configLogLevelToSlogLevel(configLevel string) slog.Level {
-	switch configLevel {
-	case "DEBUG":
+	switch strings.ToLower(configLevel) {
+	case "debug":
 		return slog.LevelDebug
-	case "INFO":
+	case "info":
 		return slog.LevelInfo
-	case "WARN":
+	case "warn":
 		return slog.LevelWarn
-	case "ERROR":
+	case "error":
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
@@ -271,10 +271,8 @@ func (l *Logger) Close() error {
 	if l.ticker != nil {
 		l.ticker.Stop()
 	}
-
 	// 发送停止信号
 	close(l.stopCh)
-
 	// 关闭日志文件
 	if l.logFile != nil {
 		return l.logFile.Close()
@@ -293,8 +291,16 @@ func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
 	if len(fields) > 0 && fields[0] != nil {
 		// 处理fields参数
 		if fieldsMap, ok := fields[0].(map[string]interface{}); ok {
-			for k, v := range fieldsMap {
-				attrs = append(attrs, slog.Any(k, v))
+			// 提取并排序键
+			keys := make([]string, 0, len(fieldsMap))
+			for k := range fieldsMap {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+
+			// 按排序后的键顺序添加属性
+			for _, k := range keys {
+				attrs = append(attrs, slog.Any(k, fieldsMap[k]))
 			}
 		} else {
 			// 如果不是map，直接作为fields字段

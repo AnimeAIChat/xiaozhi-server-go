@@ -104,11 +104,13 @@ func DeleteAgentDialogByID(
 }
 
 func SaveAgentConversation(tx *gorm.DB, agentID uint, conversationID string) error {
-	// 更新 Agent 的 Conversationid 字段
+	// 更新 Agent 的 Conversationid 字段,以及最后对话时间
 	return tx.Model(&models.Agent{}).
 		Where("id = ?", agentID).
-		Update("conversationid", conversationID).
-		Error
+		Updates(map[string]interface{}{
+			"conversationid":       conversationID,
+			"last_conversation_at": time.Now(),
+		}).Error
 }
 
 func ClearAgentConversation(tx *gorm.DB, agentID uint) error {

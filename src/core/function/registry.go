@@ -3,6 +3,7 @@ package function
 import (
 	"fmt"
 	"strings"
+	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -19,7 +20,7 @@ func NewFunctionRegistry() *FunctionRegistry {
 
 func (fr *FunctionRegistry) RegisterFunction(name string, function openai.Tool) error {
 	if _, exists := fr.functions[name]; exists {
-		return fmt.Errorf("function already registered: %s", name)
+		utils.DefaultLogger.Info("function already registered: %s", name)
 	}
 	fr.functions[name] = function
 	return nil
