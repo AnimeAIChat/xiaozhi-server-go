@@ -195,41 +195,6 @@ func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
 	})
 }
 
-// handleAgentClearConversation 清空Agent的Conversationid
-// @Summary 清空Agent的Conversationid
-// @Description 清空指定ID的Agent的Conversationid
-// @Tags Agent
-// @Produce json
-// @Param id path int true "Agent ID"
-// @Success 200 {object} map[string]interface{} "清空结果"
-// @Router /user/agent/clear_conversation/{id}  [post]
-func (s *DefaultUserService) handleAgentClearConversation(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		s.logger.Error("无效的Agent ID: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-	// 检查Agent是否属于当前用户
-	_, err = database.GetAgentByIDAndUser(database.GetDB(), uint(id), userID)
-	if err != nil {
-		s.logger.Error("清空会话id，获取Agent失败: %v", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
-		return
-	}
-
-	WithTx(c, func(tx *gorm.DB) error {
-		if err := database.ClearAgentConversation(tx, uint(id)); err != nil {
-			s.logger.Error("清空Agent Conversation失败: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return err
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-		return nil
-	})
-}
-
 // handleAgentHistoryDialogList 获取Agent对话记录列表
 // @Summary 获取Agent对话记录列表
 // @Description 获取指定Agent的对话记录列表
