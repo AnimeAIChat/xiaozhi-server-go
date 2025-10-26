@@ -70,12 +70,11 @@ func (s *DefaultAdminService) handleGet(c *gin.Context) {
 }
 
 type SystemConfig struct {
-	SelectedASR     string   `                  json:"selectedASR"`
-	SelectedTTS     string   `                  json:"selectedTTS"`
-	SelectedLLM     string   `                  json:"selectedLLM"`
-	SelectedVLLLM   string   `                  json:"selectedVLLLM"`
-	Prompt          string   ` json:"prompt"`
-	QuickReplyWords []string `                  json:"quickReplyWords"` // 存储为 JSON 数组
+	SelectedASR   string `                  json:"selectedASR"`
+	SelectedTTS   string `                  json:"selectedTTS"`
+	SelectedLLM   string `                  json:"selectedLLM"`
+	SelectedVLLLM string `                  json:"selectedVLLLM"`
+	Prompt        string ` json:"prompt"`
 }
 
 // handleSystemGet 获取系统配置
@@ -92,7 +91,6 @@ func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
 	config.SelectedLLM = configs.Cfg.SelectedModule["LLM"]
 	config.SelectedVLLLM = configs.Cfg.SelectedModule["VLLLM"]
 	config.Prompt = configs.Cfg.DefaultPrompt
-	config.QuickReplyWords = configs.Cfg.QuickReplyWords
 
 	var data map[string]interface{}
 	tmp, _ := json.Marshal(config)
@@ -163,7 +161,6 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 	configs.Cfg.SelectedModule["LLM"] = config.SelectedLLM
 	configs.Cfg.SelectedModule["VLLM"] = config.SelectedVLLLM
 	configs.Cfg.DefaultPrompt = config.Prompt
-	configs.Cfg.QuickReplyWords = config.QuickReplyWords
 
 	configs.Cfg.SaveToDB(database.GetServerConfigDB())
 	c.JSON(200, gin.H{
