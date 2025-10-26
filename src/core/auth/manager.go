@@ -42,7 +42,7 @@ func NewAuthManager(storeConfig *store.StoreConfig, logger *utils.Logger) (*Auth
 		logger:        logger,
 	}
 
-	manager.logger.Info("认证管理器初始化成功", map[string]interface{}{
+	manager.logger.Info("[认证] [管理器] 初始化成功", map[string]interface{}{
 		"store_type": storeConfig.Type,
 		"expiry_hr":  storeConfig.ExpiryHr,
 	})

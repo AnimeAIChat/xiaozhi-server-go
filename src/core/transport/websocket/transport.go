@@ -109,8 +109,23 @@ func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	clientID := fmt.Sprintf("%p", conn)
-	t.logger.Info("收到WebSocket连接请求: %s", r.Header.Get("Device-Id"))
+	deviceID := r.Header.Get("Device-Id")
+	clientID := r.Header.Get("Client-Id")
+	if deviceID == "" {
+		// 尝试从url中获取
+		deviceID = r.URL.Query().Get("device-id")
+		r.Header.Set("Device-Id", deviceID)
+		t.logger.Info("尝试从URL获取Device-Id: %v", r.URL)
+	}
+	if clientID == "" {
+		// 尝试从url中获取
+		clientID = r.URL.Query().Get("client-id")
+		r.Header.Set("Client-Id", clientID)
+	}
+	if clientID == "" {
+		clientID = fmt.Sprintf("%p", conn)
+	}
+	t.logger.Info("[WebSocket] [连接请求 %s/%s]", deviceID, clientID)
 	wsConn := NewWebSocketConnection(clientID, conn)
 
 	if t.connHandler == nil {
@@ -127,7 +142,7 @@ func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Requ
 	}
 
 	t.activeConnections.Store(clientID, handler)
-	t.logger.Info("WebSocket客户端 %s 连接已建立，资源已分配", clientID)
+	t.logger.Info("[WebSocket] [连接建立 %s] 资源已分配", clientID)
 
 	// 启动连接处理，并在结束时清理资源
 	go func() {

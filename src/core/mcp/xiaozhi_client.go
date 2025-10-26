@@ -367,7 +367,7 @@ func (c *XiaoZhiMCPClient) SendMCPInitializeMessage() error {
 		return fmt.Errorf("序列化MCP初始化消息失败: %v", err)
 	}
 
-	c.logger.Info("发送MCP初始化消息")
+	c.logger.Info("[MCP] [初始化] 发送初始化消息")
 	if c.conn == nil {
 		return fmt.Errorf("MCP客户端尚未连接")
 	}
@@ -472,7 +472,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 			if serverInfo, ok := result.(map[string]interface{})["serverInfo"].(map[string]interface{}); ok {
 				name := serverInfo["name"]
 				version := serverInfo["version"]
-				c.logger.Info(fmt.Sprintf("客户端MCP服务器信息: name=%v, version=%v", name, version))
+				c.logger.Info(fmt.Sprintf("[MCP] [服务器信息 %v/%v]", name, version))
 			}
 
 			// 初始化完成后，请求工具列表
@@ -540,7 +540,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 					c.logger.Debug(fmt.Sprintf("客户端工具 #%d: %v", i+1, name))
 					toolNames += fmt.Sprintf("%s ", name)
 				}
-				c.logger.Info(fmt.Sprintf("客户端工具列表: %s", toolNames))
+				c.logger.Info(fmt.Sprintf("[MCP] [工具列表] %s", toolNames))
 
 				// 检查是否需要继续获取下一页工具
 				if nextCursor, ok := toolsData["nextCursor"].(string); ok && nextCursor != "" {
