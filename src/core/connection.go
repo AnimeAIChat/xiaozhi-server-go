@@ -133,6 +133,7 @@ type ConnectionHandler struct {
 		text      string
 		round     int // 轮次
 		textIndex int
+		filepath  string
 	}
 
 	audioMessagesQueue chan struct {
@@ -172,6 +173,7 @@ func NewConnectionHandler(
 			text      string
 			round     int // 轮次
 			textIndex int
+			filepath  string
 		}, 100),
 		audioMessagesQueue: make(chan struct {
 			filepath  string
@@ -1063,7 +1065,7 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 		case <-h.stopChan:
 			return
 		case task := <-h.ttsQueue:
-			h.processTTSTask(task.text, task.textIndex, task.round)
+			h.processTTSTask(task.text, task.textIndex, task.round, task.filepath)
 		}
 	}
 }
@@ -1214,7 +1216,13 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 			text      string
 			round     int
 			textIndex int
-		}{text, round, textIndex}
+			filepath  string
+		}{
+			text:      text,
+			round:     round,
+			textIndex: textIndex,
+			filepath:  "",
+		}
 	}()
 
 	originText := text // 保存原始文本用于日志
