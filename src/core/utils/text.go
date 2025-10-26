@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -28,10 +29,10 @@ func SplitAtLastPunctuation(text string) (string, int) {
 
 	// 定义不同优先级的分句标点符号
 	// 优先级1：强制停顿的标点（句号、问号、感叹号等）
-	strongPunctuations := []string{"。", "？", "！", "；", ".", "?", "!", ";"}
+	strongPunctuations := []string{"。", "？", "！", "；", "?", "!", ";"}
 
 	// 优先级2：中等停顿的标点（逗号、冒号等）
-	mediumPunctuations := []string{"，", "：", ",", ":"}
+	mediumPunctuations := []string{"，", "：", ",", ".", ":"}
 
 	// 优先级3：轻微停顿的标点（顿号、括号等）
 	lightPunctuations := []string{"、", "）", ")", "】", "]", "》", ">", "`", "'"}
@@ -110,6 +111,25 @@ func findLastPunctuationWithMinLength(text string, punctuations []string, minLen
 		searchText := text[minLength:]
 		if idx := strings.LastIndex(searchText, punct); idx != -1 {
 			actualIdx := idx + minLength
+
+			// 如果是小数点（英文句号），且前后均为 ASCII 数字，则认为是小数点，跳过此位置
+			if punct == "." {
+				// 确保前后索引在范围内再检查（按 rune 安全解码）
+				if actualIdx > 0 && actualIdx < len(text) {
+					// 解码前一个 rune
+					beforeRune, _ := utf8.DecodeLastRuneInString(text[:actualIdx])
+					// 解码后一个 rune（从 actualIdx+len(punct) 开始）
+					afterStart := actualIdx + len(punct)
+					if afterStart < len(text) {
+						afterRune, _ := utf8.DecodeRuneInString(text[afterStart:])
+						// 仅当两边都是 ASCII 数字时认为是小数点
+						if beforeRune >= '0' && beforeRune <= '9' && afterRune >= '0' && afterRune <= '9' {
+							continue
+						}
+					}
+				}
+			}
+
 			if actualIdx > lastIndex {
 				lastIndex = actualIdx
 				foundPunctuation = punct
@@ -139,11 +159,11 @@ func adjustForClosingQuotes(text string, pos int) int {
 		return pos
 	}
 
-	// 转换为rune切片以正确处理UTF-8字符
+	// 转换为 rune 切片以正确处理 UTF-8 字符
 	runes := []rune(text)
-	if pos >= len(runes) {
-		return pos
-	}
+
+	// 把字节索引 pos 转为 rune 索引
+	runePos := len([]rune(text[:pos]))
 
 	// 只处理中文下引号的情况
 	chineseClosingQuotes := map[rune]bool{
@@ -154,12 +174,12 @@ func adjustForClosingQuotes(text string, pos int) int {
 	// 最多向前查找2个字符（只考虑紧邻的引号）
 	maxLookAhead := 2
 
-	for i := 0; i < maxLookAhead && pos < len(runes); i++ {
-		char := runes[pos]
+	for i := 0; i < maxLookAhead && runePos < len(runes); i++ {
+		char := runes[runePos]
 
 		// 如果是中文下引号，包含它
 		if chineseClosingQuotes[char] {
-			pos++
+			runePos++
 			continue
 		}
 
@@ -167,7 +187,8 @@ func adjustForClosingQuotes(text string, pos int) int {
 		break
 	}
 
-	return pos
+	// 将 rune 索引转换回字节索引并返回
+	return len(string(runes[:runePos]))
 }
 
 // findLastSpaceWithMinLength 查找最后一个空格位置，确保最小长度
@@ -282,7 +303,7 @@ func IsInArray(text string, array []string) bool {
 // RandomSelectFromArray 从字符串数组中随机选择一个返回
 func RandomSelectFromArray(array []string) string {
 	if len(array) == 0 {
-		return ""
+		return "在呢"
 	}
 
 	// 生成随机索引

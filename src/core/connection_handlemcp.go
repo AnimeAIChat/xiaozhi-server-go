@@ -3,9 +3,12 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/vision"
+	"xiaozhi-server-go/src/httpsvr/vision"
 )
 
 func (h *ConnectionHandler) initMCPResultHandlers() {
@@ -17,6 +20,91 @@ func (h *ConnectionHandler) initMCPResultHandlers() {
 		"mcp_handler_change_voice": h.mcp_handler_change_voice,
 		"mcp_handler_change_role":  h.mcp_handler_change_role,
 		"mcp_handler_play_music":   h.mcp_handler_play_music,
+		"mcp_handler_switch_agent": h.mcp_handler_switch_agent,
+	}
+}
+
+// mcp_handler_switch_agent 处理切换智能体的请求，参数可以是 {"agent_id": <number>} 或 {"agent_id": "123"} 或 {"agent_name": "名字"}
+func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
+	var newAgentID uint = 0
+	var agentName string
+
+	switch v := args.(type) {
+	case map[string]interface{}:
+		if idv, ok := v["agent_id"]; ok {
+			switch idt := idv.(type) {
+			case float64:
+				newAgentID = uint(idt)
+			case int:
+				newAgentID = uint(idt)
+			case string:
+				if n, err := strconv.Atoi(idt); err == nil {
+					newAgentID = uint(n)
+				}
+			}
+		}
+		if namev, ok := v["agent_name"]; ok {
+			if s, ok2 := namev.(string); ok2 {
+				agentName = s
+			}
+		}
+	case string:
+		// 如果直接传入字符串，尝试解析为数字ID，否则作为名字
+		if n, err := strconv.Atoi(v); err == nil {
+			newAgentID = uint(n)
+		} else {
+			agentName = v
+		}
+	case float64:
+		newAgentID = uint(v)
+	case int:
+		newAgentID = uint(v)
+	default:
+		h.logger.Error("mcp_handler_switch_agent: unsupported arg type %T", v)
+		return
+	}
+
+	if newAgentID != 0 && newAgentID == h.agentID {
+		h.logger.Info("mcp_handler_switch_agent: already using agent %d", newAgentID)
+		h.SystemSpeak("您已经在使用该智能体")
+		return
+	}
+
+	agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
+	// 查找agent
+	if err != nil {
+		h.logger.Error("mcp_handler_switch_agent: ListAgentsByUser failed: %v", err)
+		h.SystemSpeak("切换智能体失败：无法获取智能体列表")
+		return
+	}
+	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
+	if err != nil || device == nil {
+		h.logger.Error("mcp_handler_switch_agent: FindDeviceByID failed: %v", err)
+		return
+	}
+
+	for _, ag := range agents {
+		if ag.ID == newAgentID || (agentName != "" && ag.Name == agentName) {
+			// 找到对应的agent
+			h.logger.Info("mcp_handler_switch_agent: found agent %d, name %s", ag.ID, ag.Name)
+			h.agentID = ag.ID
+			device.AgentID = &ag.ID
+			database.UpdateDevice(database.GetDB(), device) // 更新设备的agent_id
+			agent, prompt := h.InitWithAgent()
+			// 更新对话系统提示并保留最近上下文
+			h.dialogueManager.SetSystemMessage(prompt)
+			h.dialogueManager.KeepRecentMessages(5)
+			// 重新检查并切换提供者
+			h.checkTTSProvider(agent, h.config)
+			h.checkLLMProvider(agent, h.config)
+
+			if agent != nil && agent.Name != "" {
+				h.SystemSpeak("已切换到智能体 " + agent.Name)
+			} else {
+				h.SystemSpeak("已切换到新的智能体")
+			}
+			return
+		}
 	}
 }
 
@@ -55,14 +143,7 @@ func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
 			h.SystemSpeak("没有找到名为" + songName + "的歌曲")
 		} else {
 			//h.SystemSpeak("这就为您播放音乐: " + songName)
-			h.tts_last_text_index = h.tts_last_text_index + 1
-
-			h.ttsQueue <- struct {
-				text      string
-				round     int
-				textIndex int
-				filepath  string
-			}{name, h.talkRound, h.tts_last_text_index, path}
+			h.sendAudioMessage(path, name, h.tts_last_text_index, h.talkRound)
 		}
 	} else {
 		h.logger.Error("mcp_handler_play_music: args is not a string")
@@ -72,10 +153,11 @@ func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
 func (h *ConnectionHandler) mcp_handler_change_voice(args interface{}) {
 	if voice, ok := args.(string); ok {
 		h.logger.Info("mcp_handler_change_voice: %s", voice)
-		if err := h.providers.tts.SetVoice(voice); err != nil {
+		if err, voiceName := h.providers.tts.SetVoice(voice); err != nil {
 			h.logger.Error("mcp_handler_change_voice: SetVoice failed: %v", err)
 			h.SystemSpeak("切换语音失败，没有叫" + voice + "的音色")
 		} else {
+			h.LogInfo(fmt.Sprintf("mcp_handler_change_voice: SetVoice success: %s", voiceName))
 			h.SystemSpeak("已切换到音色" + voice)
 		}
 	} else {
@@ -91,7 +173,7 @@ func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) {
 		h.logger.Info("mcp_handler_change_role: %s", role)
 		h.dialogueManager.SetSystemMessage(prompt)
 		h.dialogueManager.KeepRecentMessages(5) // 保留最近5条消息
-		if getter, ok := h.providers.tts.(configGetter); ok {
+		if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
 			ttsProvider := getter.Config().Type
 			if ttsProvider == "edge" {
 				if role == "陕西女友" {

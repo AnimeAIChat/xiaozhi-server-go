@@ -34,6 +34,8 @@ type Manager struct {
 	isInitialized         bool              // 添加初始化状态标记
 	systemCfg             *configs.Config
 	mu                    sync.RWMutex
+
+	AutoReturnToPool bool // 是否自动归还到资源池
 }
 
 // NewManagerForPool 创建用于资源池的MCP管理器
@@ -58,7 +60,11 @@ func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 	}
 	// 预先初始化非连接相关的MCP服务器
 	if err := mgr.preInitializeServers(); err != nil {
-		lg.Error("预初始化MCP服务器失败: %v", err)
+		if err.Error() == "no valid MCP server configuration found" {
+			lg.Warn("没有找到有效的MCP服务器配置，跳过预初始化，如需使用外部MCP功能，请提供配置文件")
+		} else {
+			lg.Error("预初始化MCP服务器失败: %v", err)
+		}
 	}
 
 	return mgr
@@ -94,6 +100,11 @@ func (m *Manager) preInitializeServers() error {
 			continue
 		}
 
+		if !clientConfig.Enabled {
+			m.logger.Debug("MCP client %s is disabled", name)
+			continue
+		}
+
 		client, err := NewClient(clientConfig, m.logger)
 		if err != nil {
 			m.logger.Error("Failed to create MCP client for server %s: %v", name, err)
@@ -109,6 +120,15 @@ func (m *Manager) preInitializeServers() error {
 
 	m.isInitialized = true
 	return nil
+}
+
+func (m *Manager) GetAllToolsNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	names := make([]string, len(m.tools))
+	copy(names, m.tools)
+	return names
 }
 
 // BindConnection 绑定连接到MCP Manager
@@ -129,11 +149,14 @@ func (m *Manager) BindConnection(
 	clientID := paramsMap["client_id"].(string)
 	token := paramsMap["token"].(string)
 	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
+	if !m.isInitialized {
+		m.logger.Info("BindConnection, MCP Manager未初始化，预初始化MCP服务器")
+		m.preInitializeServers()
+	}
 
 	// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
 		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
-		m.clients["xiaozhi"] = m.XiaoZhiMCPClient
 		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
 		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
 		m.XiaoZhiMCPClient.SetToken(token)
@@ -147,11 +170,13 @@ func (m *Manager) BindConnection(
 		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
 		m.XiaoZhiMCPClient.SetToken(token)
 		if !m.XiaoZhiMCPClient.IsReady() {
+			m.logger.Info("XiaoZhi MCP客户端未就绪，重新启动")
 			if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
 				return fmt.Errorf("重启XiaoZhi MCP客户端失败: %v", err)
 			}
 		}
 	}
+	m.clients["xiaozhi"] = m.XiaoZhiMCPClient
 
 	// 重新注册工具（只注册尚未注册的）
 	m.registerAllToolsIfNeeded()
@@ -165,7 +190,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 	}
 
 	// 检查是否已注册，避免重复注册
-	if !m.bRegisteredXiaoZhiMCP && m.XiaoZhiMCPClient != nil && m.XiaoZhiMCPClient.IsReady() {
+	if m.XiaoZhiMCPClient != nil && m.XiaoZhiMCPClient.IsReady() {
 		tools := m.XiaoZhiMCPClient.GetAvailableTools()
 		for _, tool := range tools {
 			toolName := tool.Function.Name
@@ -180,10 +205,10 @@ func (m *Manager) registerAllToolsIfNeeded() {
 			tools := client.GetAvailableTools()
 			for _, tool := range tools {
 				toolName := tool.Function.Name
+				m.funcHandler.RegisterFunction(toolName, tool)
 				if !m.isToolRegistered(toolName) {
-					m.funcHandler.RegisterFunction(toolName, tool)
 					m.tools = append(m.tools, toolName)
-					// m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
+					m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
 				}
 			}
 		}
@@ -217,13 +242,15 @@ func (m *Manager) Reset() error {
 	}
 
 	// 对外部MCP客户端进行连接重置
-	for name, client := range m.clients {
-		if name != "xiaozhi" {
-			if resetter, ok := client.(interface{ ResetConnection() error }); ok {
-				resetter.ResetConnection()
+	/*
+		for name, client := range m.clients {
+			if name != "xiaozhi" {
+				if resetter, ok := client.(interface{ ResetConnection() error }); ok {
+					resetter.ResetConnection()
+				}
 			}
 		}
-	}
+	*/
 
 	return nil
 }
@@ -265,9 +292,13 @@ func (m *Manager) HandleXiaoZhiMCPMessage(msgMap map[string]interface{}) error {
 	if m.XiaoZhiMCPClient == nil {
 		return fmt.Errorf("XiaoZhiMCPClient is not initialized")
 	}
-	m.XiaoZhiMCPClient.HandleMCPMessage(msgMap)
+	err := m.XiaoZhiMCPClient.HandleMCPMessage(msgMap)
+	if err != nil {
+		m.logger.Error(fmt.Sprintf("处理小智MCP消息失败: %v", err))
+		return err
+	}
 	if m.XiaoZhiMCPClient.IsReady() && !m.bRegisteredXiaoZhiMCP {
-		// 注册小智MCP工具
+		// 注册小智MCP工具, 小智MCP工具交互时间长，之前可能未注册
 		m.registerTools(m.XiaoZhiMCPClient.GetAvailableTools())
 		m.bRegisteredXiaoZhiMCP = true
 	}
@@ -313,6 +344,11 @@ func convertConfig(cfg map[string]interface{}) (*Config, error) {
 				config.Args = append(config.Args, argStr)
 			}
 		}
+	}
+
+	// enabled参数
+	if enabled, ok := cfg["enabled"].(bool); ok {
+		config.Enabled = enabled
 	}
 
 	// 环境变量
@@ -388,7 +424,12 @@ func (m *Manager) ExecuteTool(
 		}
 	}
 
-	return nil, fmt.Errorf("Tool %s not found in any MCP server", toolName)
+	clientNames := make([]string, 0, len(m.clients))
+	for name := range m.clients {
+		clientNames = append(clientNames, name)
+	}
+
+	return nil, fmt.Errorf("Tool %s not found in any MCP server， %v", toolName, clientNames)
 }
 
 // CleanupAll 依次关闭所有MCPClient
@@ -424,4 +465,5 @@ func (m *Manager) CleanupAll(ctx context.Context) {
 		delete(m.clients, name)
 		m.mu.Unlock()
 	}
+	m.isInitialized = false
 }

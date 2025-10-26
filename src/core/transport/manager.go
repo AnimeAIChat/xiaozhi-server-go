@@ -3,7 +3,9 @@ package transport
 import (
 	"context"
 	"sync"
+	"time"
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -48,7 +50,36 @@ func (m *TransportManager) StartAll(ctx context.Context) error {
 		}(name, transport)
 	}
 
+	m.StartTicker(ctx)
+
 	return nil
+}
+
+func (m *TransportManager) StartTicker(ctx context.Context) {
+	// 设置定时器，打印各个传输层的状态信息
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				clientCnt := 0
+				sessionCnt := 0
+				for _, transport := range m.transports {
+					c, s := transport.GetActiveConnectionCount()
+					clientCnt += c
+					sessionCnt += s
+				}
+				//m.logger.Info("当前活跃连接数: %d, 当前活跃会话数: %d", clientCnt, sessionCnt)
+				systemMemoryUse, _ := utils.GetSystemMemoryUsage()
+				systemCPUUse, _ := utils.GetSystemCPUUsage()
+				database.UpdateServerStatus(systemMemoryUse, systemCPUUse, clientCnt, sessionCnt)
+			}
+		}
+	}()
 }
 
 // StopAll 停止所有传输层

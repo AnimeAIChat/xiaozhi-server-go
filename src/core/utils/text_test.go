@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -128,27 +128,38 @@ func BenchmarkRemoveAllPunctuation_Short(b *testing.B) {
 	}
 }
 
-func TestSplitAtLastPunctuation(t *testing.T) {
-	msg := ""
-	cnt := 0
-	strings := []string{}
-	for len(msg) > 20 {
-		text, n := SplitAtLastPunctuation(msg)
-		// 检查是否找到分割点
-		if n == 0 || len(text) == 0 {
-			fmt.Println("没有找到分割点，结束分割")
-			break
-		}
-		strings = append(strings, msg[n:])
-		msg = text[:len(text)-1]
-		cnt++
-		if cnt > 210 {
-			fmt.Println("... 结束 ...")
-			break
-		}
+func TestSplitAtLastPunctuation_BasicChinese(t *testing.T) {
+	text := "你好，世界！这是测试。继续"
+	seg, pos := SplitAtLastPunctuation(text)
+	expectedIdx := strings.LastIndex(text, "。")
+	if expectedIdx == -1 {
+		t.Fatalf("setup error: expected to find full stop in %q", text)
 	}
-	// 倒序打印
-	for i := len(strings) - 1; i >= 0; i-- {
-		fmt.Printf("第 %d 段: %s\n", i+1, strings[i])
+	expectedSeg := text[:expectedIdx+len("。")]
+	if pos != len(expectedSeg) || seg != expectedSeg {
+		t.Fatalf("SplitAtLastPunctuation(%q) = (%q, %d), want (%q, %d)", text, seg, pos, expectedSeg, len(expectedSeg))
+	}
+}
+
+func TestSplitAtLastPunctuation_DotDecimal_NoSplit(t *testing.T) {
+	// contains "3.14" (dot between digits) and total length > 50 so medium punctuations are considered
+	text := strings.Repeat("a", 30) + "3.14" + strings.Repeat("b", 20) // length = 54
+	seg, pos := SplitAtLastPunctuation(text)
+	if seg != "" || pos != 0 {
+		t.Fatalf("SplitAtLastPunctuation(%q) = (%q, %d), want (\"\", 0) — decimal point should not cause split", text, seg, pos)
+	}
+}
+
+func TestSplitAtLastPunctuation_DotBetweenLetters_Split(t *testing.T) {
+	// dot between letters should be treated as punctuation when medium punctuations are considered
+	text := strings.Repeat("a", 30) + "end.word" + strings.Repeat("b", 20) // length > 50
+	seg, pos := SplitAtLastPunctuation(text)
+	expectedIdx := strings.LastIndex(text, ".")
+	if expectedIdx == -1 {
+		t.Fatalf("setup error: expected to find '.' in %q", text)
+	}
+	expectedSeg := text[:expectedIdx+1]
+	if pos != len(expectedSeg) || seg != expectedSeg {
+		t.Fatalf("SplitAtLastPunctuation(%q) = (%q, %d), want (%q, %d)", text, seg, pos, expectedSeg, len(expectedSeg))
 	}
 }

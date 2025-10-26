@@ -33,10 +33,12 @@ func (f *ProviderFactory) Create() (interface{}, error) {
 }
 
 func (f *ProviderFactory) Destroy(resource interface{}) error {
+	f.logger.Info("[Destroy] %s 资源池关闭，销毁资源", f.Name)
+
 	if provider, ok := resource.(providers.Provider); ok {
 		return provider.Cleanup()
 	}
-	// 对于VLLLM，我们尝试调用Cleanup方法（如果存在）
+
 	if resource != nil {
 		// 使用反射或类型断言来调用Cleanup方法
 		if cleaner, ok := resource.(interface{ Cleanup() error }); ok {
