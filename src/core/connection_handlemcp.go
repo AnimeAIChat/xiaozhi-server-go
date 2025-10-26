@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/httpsvr/vision"
@@ -65,10 +66,11 @@ func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
 func (h *ConnectionHandler) mcp_handler_change_voice(args interface{}) {
 	if voice, ok := args.(string); ok {
 		h.logger.Info("mcp_handler_change_voice: %s", voice)
-		if err := h.providers.tts.SetVoice(voice); err != nil {
+		if err, voiceName := h.providers.tts.SetVoice(voice); err != nil {
 			h.logger.Error("mcp_handler_change_voice: SetVoice failed: %v", err)
 			h.SystemSpeak("切换语音失败，没有叫" + voice + "的音色")
 		} else {
+			h.LogInfo(fmt.Sprintf("mcp_handler_change_voice: SetVoice success: %s", voiceName))
 			h.SystemSpeak("已切换到音色" + voice)
 		}
 	} else {
@@ -84,7 +86,7 @@ func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) {
 		h.logger.Info("mcp_handler_change_role: %s", role)
 		h.dialogueManager.SetSystemMessage(prompt)
 		h.dialogueManager.KeepRecentMessages(5) // 保留最近5条消息
-		if getter, ok := h.providers.tts.(configGetter); ok {
+		if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
 			ttsProvider := getter.Config().Type
 			if ttsProvider == "edge" {
 				if role == "陕西女友" {

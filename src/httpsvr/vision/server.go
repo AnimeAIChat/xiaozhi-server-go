@@ -87,7 +87,7 @@ func (s *DefaultVisionService) initVLLMProviders() error {
 	}
 
 	s.vlllmMap[selected_vlllm] = provider
-	s.logger.Info(fmt.Sprintf("VLLLM provider %s 初始化成功", selected_vlllm))
+	s.logger.Info(fmt.Sprintf("[VLLLM] [初始化 %s] 成功", selected_vlllm))
 
 	if len(s.vlllmMap) == 0 {
 		s.logger.Error("没有可用的VLLLM provider，请检查配置")
@@ -108,7 +108,7 @@ func (s *DefaultVisionService) Start(
 	apiGroup.POST("/vision", s.handlePost)
 	apiGroup.OPTIONS("/vision", s.handleOptions)
 
-	s.logger.Info("Vision HTTP服务路由注册完成")
+	s.logger.Info("[Vision] [服务] HTTP路由注册完成")
 	return nil
 }
 

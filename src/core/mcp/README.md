@@ -8,7 +8,7 @@ esp32的MCP，添加自定义MCP工具需要在前端修改，默认支持4个�
 使用esp32客户端连接服务后，服务日志会打印以上4个工具的注册信息，直接对话，让小智调整音量，即可测试效果。
 
 ## 服务端外部MCP
-服务端通过在源码根目录/二进制程序所在目录配置.mcp_server_settings.json文件，支持外部MCP调用，格式为
+服务端通过在源码根目录/二进制程序（windows-amd64-server.exe或linux-amd64-server-upx）所在目录配置.mcp_server_settings.json文件，支持外部MCP调用，格式为
 ```
 {
   "mcpServers": {

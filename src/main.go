@@ -43,7 +43,9 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
 	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
 	_ "xiaozhi-server-go/src/core/providers/asr/gosherpa"
+	_ "xiaozhi-server-go/src/core/providers/asr/stepfun"
 	_ "xiaozhi-server-go/src/core/providers/llm/coze"
+	_ "xiaozhi-server-go/src/core/providers/llm/doubao"
 	_ "xiaozhi-server-go/src/core/providers/llm/ollama"
 	_ "xiaozhi-server-go/src/core/providers/llm/openai"
 	_ "xiaozhi-server-go/src/core/providers/tts/deepgram"
@@ -68,7 +70,6 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	_, _, err = database.InitDB()
 	if err != nil {
 		fmt.Printf("数据库连接失败: %v\n", err)
-
 	}
 	// 加载配置,默认使用.config.yaml
 	config, configPath, err := configs.LoadConfig(database.GetServerConfigDB())
@@ -81,7 +82,7 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
+	logger.Info("[日志] [初始化 %s] 成功", configPath)
 	utils.DefaultLogger = logger
 	logger.Info("日志系统初始化成功,level:%s 配置文件路径: %s", config.Log.LogLevel, configPath)
 
@@ -158,7 +159,7 @@ func StartTransportServer(
 		return nil, fmt.Errorf("没有启用任何传输层")
 	}
 
-	logger.Info("启用的传输层: %v", enabledTransports)
+	logger.Info("[传输层] [启用 %v]", enabledTransports)
 
 	// 启动传输层服务
 	g.Go(func() error {

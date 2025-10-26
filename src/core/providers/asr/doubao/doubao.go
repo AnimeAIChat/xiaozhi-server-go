@@ -107,6 +107,19 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 	// 创建连接ID
 	connectID := fmt.Sprintf("%d", time.Now().UnixNano())
 
+	// 从配置中读取end_window_size，如果没有设置则使用默认值400
+	endWindowSize := 400 // 默认值
+	if configEndWindowSize, ok := config.Data["end_window_size"]; ok {
+		switch v := configEndWindowSize.(type) {
+		case float64:
+			endWindowSize = int(v)
+		case int:
+			endWindowSize = v
+		case int64:
+			endWindowSize = int(v)
+		}
+	}
+
 	provider := &Provider{
 		BaseProvider:  base,
 		appID:         appID,
@@ -120,7 +133,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 
 		// 默认配置
 		modelName:     "bigmodel",
-		endWindowSize: 800,
+		endWindowSize: endWindowSize,
 		enablePunc:    true,
 		enableITN:     true,
 		enableDDC:     false,
@@ -359,7 +372,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) StartStreaming(ctx context.Context) error {
-	p.logger.Info("----开始流式识别----")
+	p.logger.Info("[ASR] [流式识别] 开始")
 	p.ResetStartListenTime()
 	// 加锁保护连接初始化
 	p.connMutex.Lock()
@@ -429,6 +442,9 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 		return fmt.Errorf("构造请求数据失败: %v", err)
 	}
 
+	// 调试: 输出请求内容
+	// p.logger.Info("[ASR] [请求内容] %s", string(requestBytes))
+
 	var buf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buf)
 	if _, err := gzipWriter.Write(requestBytes); err != nil {
@@ -481,7 +497,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 }
 
 func (p *Provider) ReadMessage() {
-	p.logger.Info("doubao流式识别协程已启动")
+	p.logger.Info("[ASR] [doubao] 流式识别协程已启动")
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Error("流式识别协程发生错误: %v", r)
@@ -492,7 +508,7 @@ func (p *Provider) ReadMessage() {
 			p.closeConnection()
 		}
 		p.connMutex.Unlock()
-		p.logger.Info("doubao流式识别协程已结束")
+		p.logger.Info("[ASR] [doubao] 流式识别协程已结束")
 	}()
 
 	for {
@@ -659,7 +675,7 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	p.logger.Info("ASR状态已重置")
+	p.logger.Info("[ASR] [状态] 已重置")
 
 	return nil
 }

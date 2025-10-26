@@ -32,6 +32,7 @@ func InitAdminUser(db *gorm.DB, config *configs.Config) error {
 	pwd := hex.EncodeToString(hash[:])
 	// 创建管理员用户
 	adminUser := &models.User{
+		ID:        AdminUserID,
 		Username:  "admin",
 		Email:     "",
 		Password:  pwd, // 使用默认的管理员密码
