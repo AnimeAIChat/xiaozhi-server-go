@@ -6,7 +6,6 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/models"
 
 	"github.com/gin-gonic/gin"
 )
@@ -70,6 +69,15 @@ func (s *DefaultAdminService) handleGet(c *gin.Context) {
 	})
 }
 
+type SystemConfig struct {
+	SelectedASR     string   `                  json:"selectedASR"`
+	SelectedTTS     string   `                  json:"selectedTTS"`
+	SelectedLLM     string   `                  json:"selectedLLM"`
+	SelectedVLLLM   string   `                  json:"selectedVLLLM"`
+	Prompt          string   ` json:"prompt"`
+	QuickReplyWords []string `                  json:"quickReplyWords"` // 存储为 JSON 数组
+}
+
 // handleSystemGet 获取系统配置
 // @Summary 获取系统配置
 // @Description 获取当前系统配置
@@ -78,15 +86,14 @@ func (s *DefaultAdminService) handleGet(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "系统配置信息"
 // @Router /admin/system [get]
 func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
-	config, err := database.GetSystemConfig(nil)
-	if err != nil {
-		c.JSON(500, gin.H{
-			"status":  "error",
-			"message": "Failed to retrieve system configuration",
-			"error":   err.Error(),
-		})
-		return
-	}
+	var config SystemConfig
+	config.SelectedASR = configs.Cfg.SelectedModule["ASR"]
+	config.SelectedTTS = configs.Cfg.SelectedModule["TTS"]
+	config.SelectedLLM = configs.Cfg.SelectedModule["LLM"]
+	config.SelectedVLLLM = configs.Cfg.SelectedModule["VLLM"]
+	config.Prompt = configs.Cfg.DefaultPrompt
+	config.QuickReplyWords = configs.Cfg.QuickReplyWords
+
 	var data map[string]interface{}
 	tmp, _ := json.Marshal(config)
 	json.Unmarshal(tmp, &data)
@@ -141,7 +148,7 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 	s.logger.Info("Received system configuration data: %s", requestData.Data)
 
 	// 解析data字段中的JSON字符串到SystemConfig结构体
-	var config models.SystemConfig
+	var config SystemConfig
 	if err := json.Unmarshal([]byte(requestData.Data), &config); err != nil {
 		c.JSON(400, gin.H{
 			"status":  "error",
@@ -153,16 +160,14 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 
 	s.logger.Debug("Received system configuration: %+v", config)
 
-	// 更新系统配置
-	if err := database.UpdateSystemConfig(nil, &config); err != nil {
-		c.JSON(500, gin.H{
-			"status":  "error",
-			"message": "Failed to save system configuration",
-			"error":   err.Error(),
-		})
-		return
-	}
+	configs.Cfg.SelectedModule["ASR"] = config.SelectedASR
+	configs.Cfg.SelectedModule["TTS"] = config.SelectedTTS
+	configs.Cfg.SelectedModule["LLM"] = config.SelectedLLM
+	configs.Cfg.SelectedModule["VLLM"] = config.SelectedVLLLM
+	configs.Cfg.DefaultPrompt = config.Prompt
+	configs.Cfg.QuickReplyWords = config.QuickReplyWords
 
+	configs.Cfg.SaveToDB(database.GetServerConfigDB())
 	c.JSON(200, gin.H{
 		"status":  "ok",
 		"message": "System configuration saved successfully",

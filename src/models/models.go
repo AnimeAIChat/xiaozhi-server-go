@@ -4,22 +4,8 @@ import (
 	//"gorm.io/gorm"
 	"time"
 
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
-
-// 系统全局配置（只保存一条记录）
-type SystemConfig struct {
-	ID               uint           `gorm:"primaryKey" json:"-"`
-	SelectedASR      string         `                  json:"selectedASR"`
-	SelectedTTS      string         `                  json:"selectedTTS"`
-	SelectedLLM      string         `                  json:"selectedLLM"`
-	SelectedVLLLM    string         `                  json:"selectedVLLLM"`
-	Prompt           string         `gorm:"type:text"  json:"prompt"`
-	QuickReplyWords  datatypes.JSON `                  json:"quickReplyWords"` // 存储为 JSON 数组
-	DeleteAudio      bool           `                  json:"deleteAudio"`
-	UsePrivateConfig bool           `                  json:"-"`
-}
 
 // 智能体结构：智能体属于某个用户，拥有多个设备
 type Agent struct {
