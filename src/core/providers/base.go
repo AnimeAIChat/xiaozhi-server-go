@@ -12,7 +12,7 @@ type Provider interface {
 }
 
 type AsrEventListener interface {
-	OnAsrResult(result string) bool
+	OnAsrResult(result string, isFinalResult bool) bool
 }
 
 // ASRProvider 语音识别提供者接口
@@ -23,14 +23,28 @@ type ASRProvider interface {
 	// 添加音频数据到缓冲区
 	AddAudio(data []byte) error
 
+	// 发送最后一块音频数据并标记为结束
+	SendLastAudio(data []byte) error
+
 	SetListener(listener AsrEventListener)
+
+	// 设置用户偏好，例如语言等
+	SetUserPreferences(preferences map[string]interface{}) error
+
 	// 复位ASR状态
 	Reset() error
+
+	// 长连接的asr断开连接
+	CloseConnection() error
 
 	// 获取当前静音计数
 	GetSilenceCount() int
 
+	ResetSilenceCount()
+
 	ResetStartListenTime()
+
+	EnableSilenceDetection(bEnable bool)
 }
 
 // TTSProvider 语音合成提供者接口

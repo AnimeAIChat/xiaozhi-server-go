@@ -37,6 +37,8 @@ type BaseProvider struct {
 	StartListenTime         time.Time // 最后一次ASR处理时间
 	SilenceCount            int       // 连续静音计数
 
+	UserPreferences map[string]interface{}
+
 	listener providers.AsrEventListener
 }
 
@@ -74,6 +76,11 @@ func (p *BaseProvider) SetListener(listener providers.AsrEventListener) {
 // GetListener 获取事件监听器
 func (p *BaseProvider) GetListener() providers.AsrEventListener {
 	return p.listener
+}
+
+func (p *BaseProvider) SetUserPreferences(preferences map[string]interface{}) error {
+	p.UserPreferences = preferences
+	return nil
 }
 
 // Config 获取配置

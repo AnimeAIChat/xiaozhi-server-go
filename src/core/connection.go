@@ -111,7 +111,6 @@ type ConnectionHandler struct {
 	enabledTools []string      // 启用的工具列表
 	tools        []openai.Tool // 缓存的工具列表
 	// 语音处理相关
-	clientVoiceStop bool  // true客户端语音停止, 不再上传语音数据
 	serverVoiceStop int32 // 1表示true服务端语音停止, 不再下发语音数据
 
 	opusDecoder *utils.OpusDecoder // Opus解码器
@@ -629,12 +628,12 @@ func (h *ConnectionHandler) sendAudioMessageCoroutine() {
 
 // OnAsrResult 实现 AsrEventListener 接口
 // 返回true则停止语音识别，返回false会继续语音识别
-func (h *ConnectionHandler) OnAsrResult(result string) bool {
+func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool {
 	//h.LogInfo(fmt.Sprintf("[%s] ASR识别结果: %s", h.clientListenMode, result))
 	if h.providers.asr.GetSilenceCount() >= 2 {
 		h.LogInfo("[ASR] [静音检测] 连续两次，结束对话")
 		h.closeAfterChat = true // 如果连续两次静音，则结束对话
-		result = "长时间未检测到用户说话，请礼貌的结束对话"
+		result = "[SILENCE_TIMEOUT] 长时间未检测到用户说话，请礼貌的结束对话"
 	}
 	if h.clientListenMode == "auto" {
 		if result == "" {
@@ -645,10 +644,7 @@ func (h *ConnectionHandler) OnAsrResult(result string) bool {
 		return true
 	} else if h.clientListenMode == "manual" {
 		h.client_asr_text += result
-		if result != "" {
-			h.LogInfo(fmt.Sprintf("[ASR] [识别结果 %s/%s]", h.clientListenMode, h.client_asr_text))
-		}
-		if h.clientVoiceStop {
+		if isFinalResult {
 			h.handleChatMessage(context.Background(), h.client_asr_text)
 			return true
 		}
@@ -1250,8 +1246,12 @@ func (h *ConnectionHandler) Close() {
 			h.providers.tts.SetVoice(h.initialVoice) // 恢复初始语音
 		}
 		if h.providers.asr != nil {
+			h.providers.asr.ResetSilenceCount() // 重置静音计数
 			if err := h.providers.asr.Reset(); err != nil {
 				h.LogError(fmt.Sprintf("重置ASR状态失败: %v", err))
+			}
+			if err := h.providers.asr.CloseConnection(); err != nil {
+				h.LogError(fmt.Sprintf("断开ASR状态失败: %v", err))
 			}
 		}
 		h.cleanTTSAndAudioQueue(true)

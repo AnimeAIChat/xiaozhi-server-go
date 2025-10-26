@@ -25,7 +25,7 @@
 
 ---
 
-## ✅ 功能清单
+## ✅ 社区版功能清单
 
 * [x] 支持 websocket 连接
 * [x] 支持 PCM / Opus 格式语音对话
@@ -42,11 +42,38 @@
 * [x] 支持本地数据库 sqlite
 * [x] 支持coze工作流 
 * [x] 支持Docker部署
-* [x] 支持MySQL,PostgreSQL（商务版功能）
-* [x] 支持 MQTT 连接（商务版功能）
-* [x] 支持dify工作流 （商务版功能）
-* [x] 管理后台(商务版已完成：设备绑定，用户、智能体管理)
+## ✅商务版功能清单
+* [x] 社区版所有功能
+* [x] 开发团队技术支持
+* [x] 后续核心功能免费更新
+* [x] 商务版管理后台，更多的功能选项
+* [x] 支持多用户管理
+* [x] 自定义修改欢迎界面
+* [x] 自定义修改版权logo，使用自己公司的商务标识
+* [x] 自定义修改Agent角色模板
+* [x] 支持更多的模型
+* [x] 支持 websocket 和 MQTT+UDP 两种通信协议
+* [x] 支持 tts 流式生成及发送
+* [x] 支持声音克隆
+* [x] 支持知识库
+* [x] 支持定制音色（cosyvoice2, indextts）
+* [x] 支持通过 OTA 升级固件
+* [x] 支持 Coze 工作流
+* [x] 支持 Dify 工作流
+* [x] 深度优化响应速度
+* [x] 支持用户身份验证，激活绑定设备
+* [x] 支持设备管理：解绑/禁用
+* [x] 支持后台解绑设备
+* [x] 支持用户自定义 Agent
+* [x] 国际化多语言支持：中文、英语、日语、西班牙语、印尼语等
+* [x] 支持MCP接入点
+* [x] 支持网络数据库
+* [x] 支持分布式部署
+* [x] 支持本地部署大模型
 
+商务版测试/体验地址：
+
+https://xiaozhi.xf.bj.cn/login
 
 ---
 
@@ -201,8 +228,9 @@ swag init -g main.go
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/c1dfe50e-9f4e-4c97-a6fc-5e801dcb8a3c" width="450" alt="微信群二维码">
 
+<img src="https://github.com/user-attachments/assets/c162b3a1-c299-4cf3-960d-404b21f138cb" width="450" alt="微信群二维码"> 
+<img src="https://github.com/user-attachments/assets/074c6aec-cfb5-4a68-8fc2-2d08679e366b" width="450" alt="QQ群二维码">
 ---
 
 ## 🛠️ 定制开发
