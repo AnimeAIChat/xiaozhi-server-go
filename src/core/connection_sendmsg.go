@@ -91,16 +91,23 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 	return h.conn.WriteMessage(1, jsonData)
 }
 
-func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
+func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int, skipClear bool) {
+	logText := utils.SanitizeForLog(text)
 	startTime := time.Now() // 记录发送任务开始时间
 	defer func() {
 		// 音频发送完成后，根据配置决定是否删除文件
 		h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
 
 		spentTime := time.Since(startTime).Milliseconds()
-		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, text))
+		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, logText))
 		h.providers.asr.ResetStartListenTime()
-		if textIndex == h.tts_last_text_index {
+		if skipClear {
+			h.LogDebug(fmt.Sprintf("[TTS] [快速回复完成] 保持讲话状态, index=%d", textIndex))
+			h.tts_last_text_index = -1
+			h.tts_last_audio_index = -1
+			return
+		}
+		if h.tts_last_audio_index >= 0 && textIndex == h.tts_last_audio_index {
 			h.sendTTSMessage("stop", "", textIndex)
 			if h.closeAfterChat {
 				h.Close()
@@ -116,14 +123,14 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 	// 检查轮次
 	if round != h.talkRound {
 		h.LogInfo(fmt.Sprintf("sendAudioMessage: 跳过过期轮次的音频: 任务轮次=%d, 当前轮次=%d, 文本=%s",
-			round, h.talkRound, text))
+			round, h.talkRound, logText))
 		// 即使跳过，也要根据配置删除音频文件
 		h.deleteAudioFileIfNeeded(filepath, "跳过过期轮次")
 		return
 	}
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
-		h.LogInfo(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", text))
+		h.LogInfo(fmt.Sprintf("sendAudioMessage 服务端语音停止, 不再发送音频数据：%s", logText))
 		// 服务端语音停止时也要根据配置删除音频文件
 		h.deleteAudioFileIfNeeded(filepath, "服务端语音停止")
 		return
@@ -158,9 +165,9 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 	if textIndex == 1 {
 		now := time.Now()
 		spentTime := now.Sub(h.roundStartTime)
-		h.logger.Debug("回复首句耗时 %s 第一句话【%s】, round: %d", spentTime, text, round)
+		h.logger.Debug("回复首句耗时 %s 第一句话【%s】, round: %d", spentTime, logText, round)
 	}
-	h.logger.Debug("TTS发送(%s): \"%s\" (索引:%d/%d，时长:%f，帧数:%d)", h.serverAudioFormat, text, textIndex, h.tts_last_text_index, duration, len(audioData))
+	h.logger.Debug("TTS发送(%s): \"%s\" (索引:%d/%d，时长:%f，帧数:%d)", h.serverAudioFormat, logText, textIndex, h.tts_last_text_index, duration, len(audioData))
 
 	// 分时发送音频数据
 	if err := h.sendAudioFrames(audioData, text, round); err != nil {
@@ -181,6 +188,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 		return nil
 	}
 
+	logText := utils.SanitizeForLog(text)
 	startTime := time.Now()
 	playPosition := 0 // 播放位置（毫秒）
 
@@ -195,7 +203,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 	for i := 0; i < preBufferFrames; i++ {
 		// 检查是否被打断
 		if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-			h.LogInfo(fmt.Sprintf("音频发送被中断(预缓冲阶段): 帧=%d/%d, 文本=%s", i+1, preBufferFrames, text))
+			h.LogInfo(fmt.Sprintf("音频发送被中断(预缓冲阶段): 帧=%d/%d, 文本=%s", i+1, preBufferFrames, logText))
 			return nil
 		}
 
@@ -210,7 +218,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 	for i, chunk := range remainingFrames {
 		// 检查是否被打断或轮次变化
 		if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-			h.LogInfo(fmt.Sprintf("音频发送被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), text))
+			h.LogInfo(fmt.Sprintf("音频发送被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), logText))
 			return nil
 		}
 
@@ -238,7 +246,7 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 				case <-ticker.C:
 					// 检查中断条件
 					if atomic.LoadInt32(&h.serverVoiceStop) == 1 || round != h.talkRound {
-						h.LogInfo(fmt.Sprintf("音频发送在延迟中被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), text))
+						h.LogInfo(fmt.Sprintf("音频发送在延迟中被中断: 帧=%d/%d, 文本=%s", i+preBufferFrames+1, len(audioData), logText))
 						return nil
 					}
 				case <-h.stopChan:
@@ -256,6 +264,6 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 	}
 	time.Sleep(preBufferTime) // 确保预缓冲时间已过
 	spentTime := time.Since(startTime).Milliseconds()
-	h.LogInfo(fmt.Sprintf("[TTS] [音频帧 %d/%dms/%dms] %s", len(audioData), playPosition, spentTime, text))
+	h.LogInfo(fmt.Sprintf("[TTS] [音频帧 %d/%dms/%dms] %s", len(audioData), playPosition, spentTime, logText))
 	return nil
 }
