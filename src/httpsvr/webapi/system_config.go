@@ -228,17 +228,17 @@ func (s *SystemConfigService) handleUpdateTransportConfig(c *gin.Context) {
 type WebConfig struct {
 	Enabled      bool   `json:"enabled"`
 	Port         int    `json:"port"`
-	StaticDir    string `json:"static_dir"`
+	StaticDir    string `json:"staticDir"`
 	Websocket    string `json:"websocket"`
-	VisionURL    string `json:"vision"`
-	ActivateText string `json:"activate_text"` // 发送激活码时携带的文本
+	VisionURL    string `json:"visionUrl"`
+	ActivateText string `json:"activateText"` // 发送激活码时携带的文本
 }
 
 // LogConfig 日志配置
 type LogConfig struct {
-	LogLevel string `json:"log_level"`
-	LogDir   string `json:"log_dir"`
-	LogFile  string `json:"log_file"`
+	LogLevel string `json:"logLevel"`
+	LogDir   string `json:"logDir"`
+	LogFile  string `json:"logFile"`
 }
 
 // RoleConfig 角色配置
