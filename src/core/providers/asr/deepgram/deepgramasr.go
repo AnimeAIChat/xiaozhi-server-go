@@ -293,15 +293,15 @@ func (p *Provider) ReadMessage() {
 									} else if p.result != "" {
 										p.BaseProvider.SilenceCount = 0
 									}
-									if finished := listener.OnAsrResult(p.result); finished {
+									if finished := listener.OnAsrResult(p.result, true); finished {
 										return
 									}
 								}
-							// } else if p.interim {
-							// 	// For interim results, notify listener but don't update final result
-							// 	if listener := p.BaseProvider.GetListener(); listener != nil {
-							// 		listener.OnAsrInterimResult(transcript)
-							// 	}
+								// } else if p.interim {
+								// 	// For interim results, notify listener but don't update final result
+								// 	if listener := p.BaseProvider.GetListener(); listener != nil {
+								// 		listener.OnAsrInterimResult(transcript)
+								// 	}
 							}
 						}
 					}
