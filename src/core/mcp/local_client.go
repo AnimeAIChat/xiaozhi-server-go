@@ -65,6 +65,9 @@ func (c *LocalClient) RegisterTools() {
 		} else if funcName.Name == "play_music" && funcName.Enabled {
 			c.AddToolPlayMusic()
 			c.logger.Info("RegisterTools: play_music tool registered")
+		} else if funcName.Name == "switch_agent" && funcName.Enabled {
+			c.AddToolSwitchAgent()
+			c.logger.Info("RegisterTools: switch_agent tool registered")
 		} else {
 			c.logger.Warn("RegisterTools: unknown function name %s", funcName)
 		}

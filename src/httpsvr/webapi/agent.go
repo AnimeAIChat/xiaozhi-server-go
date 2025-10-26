@@ -64,28 +64,34 @@ func (s *DefaultUserService) handleAgentCreate(c *gin.Context) {
 }
 
 // 构造返回结构体，带 device id 列表
-type Agents struct {
+type AgentWithDeviceIDs struct {
 	models.Agent
+	DeviceIDs []uint `json:"deviceIDs"`
 }
 
 // handleAgentList 获取Agent列表
 // @Summary 获取当前用户的所有Agent
-// @Description 获取当前用户的所有Agent
+// @Description 获取当前用户的所有Agent及其设备ID列表
 // @Tags Agent
 // @Produce json
-// @Success 200 {object} []Agents "Agent列表"
+// @Success 200 {object} []AgentWithDeviceIDs "Agent列表"
 // @Router /user/agent/list [get]
 func (s *DefaultUserService) handleAgentList(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	WithTx(c, func(tx *gorm.DB) error {
-		userID := c.GetUint("user_id")
 		agents, err := database.ListAgentsByUser(tx, userID)
 		if err != nil {
 			return err
 		}
-		var result []Agents
+		var result []AgentWithDeviceIDs
 		for _, agent := range agents {
-			result = append(result, Agents{
-				Agent: agent,
+			var ids []uint
+			for _, d := range agent.Devices {
+				ids = append(ids, d.ID)
+			}
+			result = append(result, AgentWithDeviceIDs{
+				Agent:     agent,
+				DeviceIDs: ids,
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "data": result})

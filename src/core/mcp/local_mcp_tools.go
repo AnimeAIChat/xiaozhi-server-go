@@ -181,3 +181,48 @@ func (c *LocalClient) AddToolPlayMusic() error {
 
 	return nil
 }
+
+func (c *LocalClient) AddToolSwitchAgent() error {
+	InputSchema := ToolInputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"agent_id": map[string]any{
+				"type":        "number",
+				"description": "要切换到的智能体ID",
+			},
+			"agent_name": map[string]any{
+				"type":        "string",
+				"description": "智能体名称",
+			},
+		},
+		Required: []string{},
+	}
+
+	c.AddTool("switch_agent",
+		"当用户想切换智能体时调用，必须提供agent_id（数字）或agent_name（字符串）其中之一",
+		InputSchema,
+		func(ctx context.Context, args map[string]any) (interface{}, error) {
+			// 验证至少提供了一个参数
+			if _, hasID := args["agent_id"]; !hasID {
+				if _, hasName := args["agent_name"]; !hasName {
+					c.logger.Warn("switch_agent: 必须提供 agent_id 或 agent_name 其中之一")
+					return types.ActionResponse{
+						Action: types.ActionTypeReqLLM,
+						Result: "切换智能体需要提供智能体ID或名称",
+					}, nil
+				}
+			}
+
+			// 将完整的参数传给连接处理器的 handler，由 handler 解析并执行切换
+			res := types.ActionResponse{
+				Action: types.ActionTypeCallHandler,
+				Result: types.ActionResponseCall{
+					FuncName: "mcp_handler_switch_agent",
+					Args:     args,
+				},
+			}
+			return res, nil
+		})
+
+	return nil
+}
