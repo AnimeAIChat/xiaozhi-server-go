@@ -112,8 +112,6 @@ func NewDefaultInitConfig() *Config {
 	config.DeleteAudio = false
 	config.SaveTTSAudio = false
 	config.SaveUserAudio = false
-	config.QuickReply = true
-	config.QuickReplyWords = []string{"我在", "在呢", "来了", "啥事啊"}
 	config.LocalMCPFun = []LocalMCPFun{
 		{Name: "time", Description: "获取当前时间"},
 		{Name: "exit", Description: "退出程序"},

@@ -57,12 +57,6 @@ func (s *SystemConfigService) RegisterRoutes(apiGroup *gin.RouterGroup) {
 		adminGroup.PUT("/roles/:id", s.handleUpdateRoleConfig)
 		adminGroup.DELETE("/roles/:id", s.handleDeleteRoleConfig)
 
-		// 快捷回复词
-		adminGroup.GET("/quick-reply", s.handleGetQuickReplyWords)
-		adminGroup.POST("/quick-reply", s.handleCreateQuickReplyWord)
-		adminGroup.PUT("/quick-reply/:id", s.handleUpdateQuickReplyWord)
-		adminGroup.DELETE("/quick-reply/:id", s.handleDeleteQuickReplyWord)
-
 		// 本地MCP功能
 		adminGroup.GET("/mcp-functions", s.handleGetMCPFunctions)
 		adminGroup.POST("/mcp-functions", s.handleCreateMCPFunction)
@@ -79,7 +73,6 @@ func (s *SystemConfigService) RegisterRoutes(apiGroup *gin.RouterGroup) {
 
 type ApplicationConfig struct {
 	EnableMCPFilter bool `json:"enableMCPFilter"`
-	QuickReply      bool `json:"quickReply"`
 	SaveTtsAudio    bool `json:"saveTtsAudio"`
 	SaveUserAudio   bool `json:"saveUserAudio"`
 }
@@ -89,7 +82,6 @@ func (s *SystemConfigService) handleGetApplicationConfig(c *gin.Context) {
 	var config ApplicationConfig
 	config.SaveTtsAudio = configs.Cfg.SaveTTSAudio
 	config.SaveUserAudio = configs.Cfg.SaveUserAudio
-	config.QuickReply = configs.Cfg.QuickReply
 
 	c.JSON(200, gin.H{
 		"status": "ok",
@@ -110,7 +102,6 @@ func (s *SystemConfigService) handleUpdateApplicationConfig(c *gin.Context) {
 
 	configs.Cfg.SaveTTSAudio = config.SaveTtsAudio
 	configs.Cfg.SaveUserAudio = config.SaveUserAudio
-	configs.Cfg.QuickReply = config.QuickReply
 	fmt.Println("设置应用配置：", config)
 	configs.Cfg.SaveToDB(database.GetServerConfigDB())
 
@@ -246,13 +237,6 @@ type RoleConfig struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Enabled     bool   `json:"enabled"`
-}
-
-// QuickReplyWord 快捷回复词
-type QuickReplyWord struct {
-	Word    string `json:"word"`
-	Enabled bool   `json:"enabled"`
-	Order   int    `json:"order"`
 }
 
 // LocalMCPFunction 本地MCP功能配置
@@ -450,85 +434,6 @@ func (s *SystemConfigService) handleDeleteRoleConfig(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"status":  "ok",
 		"message": "角色配置删除成功",
-	})
-}
-
-// 快捷回复词相关处理器
-func (s *SystemConfigService) handleGetQuickReplyWords(c *gin.Context) {
-	var words []QuickReplyWord
-	words = make([]QuickReplyWord, 0)
-	for _, dbWord := range configs.Cfg.QuickReplyWords {
-		words = append(words, QuickReplyWord{
-			Word:    dbWord,
-			Enabled: true,
-		})
-	}
-
-	c.JSON(200, gin.H{
-		"status": "ok",
-		"data":   words,
-	})
-}
-
-func (s *SystemConfigService) handleCreateQuickReplyWord(c *gin.Context) {
-	var word QuickReplyWord
-	if err := c.ShouldBindJSON(&word); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
-		return
-	}
-
-	configs.Cfg.QuickReplyWords = append(configs.Cfg.QuickReplyWords, word.Word)
-	configs.Cfg.SaveToDB(database.GetServerConfigDB())
-
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "快捷回复词创建成功",
-		"data":    word,
-	})
-}
-
-func (s *SystemConfigService) handleUpdateQuickReplyWord(c *gin.Context) {
-	var word QuickReplyWord
-	if err := c.ShouldBindJSON(&word); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
-		return
-	}
-
-	for i, dbWord := range configs.Cfg.QuickReplyWords {
-		if dbWord == word.Word {
-			configs.Cfg.QuickReplyWords[i] = word.Word
-			break
-		}
-	}
-
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "快捷回复词更新成功",
-	})
-}
-
-func (s *SystemConfigService) handleDeleteQuickReplyWord(c *gin.Context) {
-	word := c.Param("id")
-	newWords := []string{}
-	for _, dbWord := range configs.Cfg.QuickReplyWords {
-		if dbWord != word {
-			newWords = append(newWords, dbWord)
-		}
-	}
-	configs.Cfg.QuickReplyWords = newWords
-	configs.Cfg.SaveToDB(database.GetServerConfigDB())
-
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "快捷回复词删除成功",
 	})
 }
 

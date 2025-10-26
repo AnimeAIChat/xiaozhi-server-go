@@ -62,14 +62,12 @@ type Config struct {
 		ActivateText string `yaml:"activate_text" json:"activate_text"` // 发送激活码时携带的文本
 	} `yaml:"web" json:"web"`
 
-	DefaultPrompt   string        `yaml:"prompt"             json:"prompt"`
-	Roles           []Role        `yaml:"roles"              json:"roles"` // 角色列表
-	DeleteAudio     bool          `yaml:"delete_audio"       json:"delete_audio"`
-	QuickReply      bool          `yaml:"quick_reply"        json:"quick_reply"`
-	QuickReplyWords []string      `yaml:"quick_reply_words"  json:"quick_reply_words"`
-	LocalMCPFun     []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
-	SaveTTSAudio    bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
-	SaveUserAudio   bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
+	DefaultPrompt string        `yaml:"prompt"             json:"prompt"`
+	Roles         []Role        `yaml:"roles"              json:"roles"` // 角色列表
+	DeleteAudio   bool          `yaml:"delete_audio"       json:"delete_audio"`
+	LocalMCPFun   []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
+	SaveTTSAudio  bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
+	SaveUserAudio bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
 
 	SelectedModule map[string]string `yaml:"selected_module" json:"selected_module"`
 
