@@ -102,9 +102,6 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, logText))
 		h.providers.asr.ResetStartListenTime()
 		if skipClear {
-			if err := h.sendTTSMessage("stop", "", textIndex); err != nil {
-				h.LogError(fmt.Sprintf("快速回复停止状态发送失败: %v", err))
-			}
 			h.LogDebug(fmt.Sprintf("[TTS] [快速回复完成] 保持讲话状态, index=%d", textIndex))
 			h.tts_last_text_index = -1
 			h.tts_last_audio_index = -1

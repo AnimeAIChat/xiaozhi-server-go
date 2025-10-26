@@ -698,13 +698,13 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 	return false
 }
 
-func (h *ConnectionHandler) quickReplyWakeUpWords(text string) bool {
+func (h *ConnectionHandler) quickReplyWakeUpWords(text string) (bool, string) {
 	// 检查是否包含唤醒词
 	if !h.config.QuickReply || h.talkRound != 1 {
-		return false
+		return false, ""
 	}
 	if !utils.IsWakeUpWord(text) {
-		return false
+		return false, ""
 	}
 
 	repalyWords := h.config.QuickReplyWords
@@ -713,7 +713,7 @@ func (h *ConnectionHandler) quickReplyWakeUpWords(text string) bool {
 	h.forceSkipSpeakClear = true
 	h.SpeakAndPlay(reply_text, 1, h.talkRound)
 
-	return true
+	return true, reply_text
 }
 
 // handleChatMessage 处理聊天消息
@@ -742,6 +742,20 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		return fmt.Errorf("发送STT消息失败: %v", err)
 	}
 
+	h.LogInfo(fmt.Sprintf("[聊天] [消息 %s]", utils.SanitizeForLog(text)))
+
+	if handled, reply := h.quickReplyWakeUpWords(text); handled {
+		h.dialogueManager.Put(chat.Message{
+			Role:    "user",
+			Content: text,
+		})
+		h.dialogueManager.Put(chat.Message{
+			Role:    "assistant",
+			Content: reply,
+		})
+		return nil
+	}
+
 	// 发送tts start状态
 	if err := h.sendTTSMessage("start", "", 0); err != nil {
 		h.LogError(fmt.Sprintf("发送TTS开始状态失败: %v", err))
@@ -752,12 +766,6 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	if err := h.sendEmotionMessage("thinking"); err != nil {
 		h.LogError(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
 		return fmt.Errorf("发送情绪消息失败: %v", err)
-	}
-
-	h.LogInfo(fmt.Sprintf("[聊天] [消息 %s]", utils.SanitizeForLog(text)))
-
-	if h.quickReplyWakeUpWords(text) {
-		return nil
 	}
 
 	// 添加用户消息到对话历史
