@@ -90,7 +90,7 @@ func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
 	config.SelectedASR = configs.Cfg.SelectedModule["ASR"]
 	config.SelectedTTS = configs.Cfg.SelectedModule["TTS"]
 	config.SelectedLLM = configs.Cfg.SelectedModule["LLM"]
-	config.SelectedVLLLM = configs.Cfg.SelectedModule["VLLM"]
+	config.SelectedVLLLM = configs.Cfg.SelectedModule["VLLLM"]
 	config.Prompt = configs.Cfg.DefaultPrompt
 	config.QuickReplyWords = configs.Cfg.QuickReplyWords
 
@@ -157,8 +157,6 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 		})
 		return
 	}
-
-	s.logger.Debug("Received system configuration: %+v", config)
 
 	configs.Cfg.SelectedModule["ASR"] = config.SelectedASR
 	configs.Cfg.SelectedModule["TTS"] = config.SelectedTTS
