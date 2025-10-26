@@ -75,6 +75,10 @@ func (dm *DialogueManager) GetRecentMessages(maxMessages int) []Message {
 
 // Put 添加新消息到对话
 func (dm *DialogueManager) Put(message Message) {
+	// 如果最近一条是user消息且当前也是user消息，则插入一个空的assistant消息
+	if len(dm.dialogue) > 0 && dm.dialogue[len(dm.dialogue)-1].Role == "user" && message.Role == "user" {
+		dm.dialogue = append(dm.dialogue, Message{Role: "assistant", Content: "..."})
+	}
 	dm.dialogue = append(dm.dialogue, message)
 }
 

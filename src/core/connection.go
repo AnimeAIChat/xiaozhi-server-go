@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
@@ -20,13 +21,17 @@ import (
 	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
+	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/providers/tts"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/src/models"
 	"xiaozhi-server-go/src/task"
 
 	"github.com/google/uuid"
+	"github.com/sashabaranov/go-openai"
+	"gorm.io/gorm"
 )
 
 // Connection 统一连接接口
@@ -49,8 +54,12 @@ type Connection interface {
 	IsStale(timeout time.Duration) bool
 }
 
-type configGetter interface {
+type ttsConfigGetter interface {
 	Config() *tts.Config
+}
+
+type llmConfigGetter interface {
+	Config() *llm.Config
 }
 
 // ConnectionHandler 连接处理器结构
@@ -71,7 +80,9 @@ type ConnectionHandler struct {
 		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
 
-	initialVoice string // 初始语音名称
+	initialVoice    string // 初始语音名称
+	ttsProviderName string // 默认TTS提供者名称
+	voiceName       string // 语音名称
 
 	// 会话相关
 	sessionID     string            // 设备与服务端会话ID
@@ -95,6 +106,10 @@ type ConnectionHandler struct {
 	isDeviceVerified bool
 	closeAfterChat   bool
 
+	// Agent 相关
+	agentID      uint          // 设备绑定的AgentID
+	enabledTools []string      // 启用的工具列表
+	tools        []openai.Tool // 缓存的工具列表
 	// 语音处理相关
 	serverVoiceStop int32 // 1表示true服务端语音停止, 不再下发语音数据
 
@@ -116,7 +131,6 @@ type ConnectionHandler struct {
 		text      string
 		round     int // 轮次
 		textIndex int
-		filepath  string // 如果有path，就直接使用
 	}
 
 	audioMessagesQueue chan struct {
@@ -155,7 +169,6 @@ func NewConnectionHandler(
 			text      string
 			round     int // 轮次
 			textIndex int
-			filepath  string
 		}, 100),
 		audioMessagesQueue: make(chan struct {
 			filepath  string
@@ -213,24 +226,255 @@ func NewConnectionHandler(
 		handler.providers.vlllm = providerSet.VLLLM
 		handler.mcpManager = providerSet.MCP
 	}
+	handler.checkDeviceInfo()
+	agent, prompt := handler.InitWithAgent()
+	handler.checkTTSProvider(agent, config) // 检查TTS提供者
+	handler.checkLLMProvider(agent, config) // 检查LLM提供者是否匹配
 
-	ttsProvider := "default" // 默认TTS提供者名称
-	voiceName := "default"
-	if getter, ok := handler.providers.tts.(configGetter); ok {
-		ttsProvider = getter.Config().Type
-		voiceName = getter.Config().Voice
-		handler.initialVoice = voiceName // 保存初始语音名称
-	}
-	logger.Info("[TTS] [提供者 %s/%s]", ttsProvider, voiceName)
-	handler.quickReplyCache = utils.NewQuickReplyCache(ttsProvider, voiceName)
+	handler.quickReplyCache = utils.NewQuickReplyCache(handler.ttsProviderName, handler.voiceName)
 
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
-	handler.dialogueManager.SetSystemMessage(config.DefaultPrompt)
+	handler.dialogueManager.SetSystemMessage(prompt)
 	handler.functionRegister = function.NewFunctionRegistry()
 	handler.initMCPResultHandlers()
 
 	return handler
+}
+
+func (h *ConnectionHandler) InitWithAgent() (*models.Agent, string) {
+	// 根据agentID获取Agent
+	var agent *models.Agent = nil
+	var err error
+	prompt := h.config.DefaultPrompt
+	if h.agentID != 0 {
+		// 此处不需要事务
+		agent, err = database.GetAgentByID(database.GetDB(), h.agentID)
+		if err != nil {
+			h.LogError(fmt.Sprintf("获取Agent失败: %v", err))
+		}
+		agentName := agent.Name
+		prompt = agent.Prompt // 使用Agent的Prompt
+		if agentName != "" {
+			if strings.Contains(prompt, "{{assistant_name}}") {
+				prompt = strings.Replace(prompt, "{{assistant_name}}", agentName, -1)
+			} else {
+				prompt += "\n\n助手名称: " + agentName
+			}
+		}
+
+		if agent.Language != "" && agent.Language != "普通话" && agent.Language != "中文" {
+			prompt += "\n\n使用 " + agent.Language + " 回答用户的问题。"
+		}
+
+		if agent.EnabledTools != "" {
+			h.enabledTools = strings.Split(agent.EnabledTools, ",")
+		} else {
+			h.enabledTools = []string{} // 没有则不过滤
+		}
+
+		h.LogInfo(fmt.Sprintf("允许的工具: %v", h.enabledTools))
+		h.LogInfo(fmt.Sprintf("使用Agent %d 的Prompt: %s", h.agentID, prompt))
+
+	}
+	return agent, prompt
+}
+
+func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *configs.Config) {
+	h.ttsProviderName = "default" // 默认TTS提供者名称
+	h.voiceName = "default"
+	if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
+
+		userID := database.AdminUserID
+		alltts, err := database.GetProviderByTypeInternal("TTS", userID, false)
+		if err == nil {
+			for name, data := range alltts {
+
+				cfg := configs.TTSConfig{}
+				if err := json.Unmarshal([]byte(data), &cfg); err != nil {
+					h.LogError(fmt.Sprintf("反序列化用户 %d 的 TTS 提供者 %s 配置失败: %v", userID, name, err))
+					continue
+				}
+				// h.LogInfo(fmt.Sprintf("用户 %d 的 TTS 提供者: %s, 配置: %v", userID, name, cfg))
+				config.TTS[name] = cfg // 更新配置
+			}
+		} else {
+			h.LogError(fmt.Sprintf("获取用户 %d 的 TTS 提供者失败: %v", userID, err))
+		}
+
+		h.ttsProviderName = getter.Config().Type
+		// 从agent配置中获取
+		h.voiceName = getter.Config().Voice
+		if agent != nil && agent.Voice != "" {
+			err, newVoice := h.providers.tts.SetVoice(agent.Voice) // 设置TTS语音
+			if err != nil {
+				// 检查是否是其他tts支持的音色
+				bChangeTTSSucc := false
+				for name, cfg := range config.TTS {
+					if bSupport, newVoice2, _ := tts.IsSupportedVoice(agent.Voice, cfg.SupportedVoices); bSupport {
+						ttsCfg := &tts.Config{
+							Name:            name,
+							Type:            cfg.Type,
+							OutputDir:       cfg.OutputDir,
+							Voice:           newVoice2,
+							Format:          cfg.Format,
+							SampleRate:      h.serverAudioSampleRate,
+							AppID:           cfg.AppID,
+							Token:           cfg.Token,
+							Cluster:         cfg.Cluster,
+							SupportedVoices: cfg.SupportedVoices,
+						}
+						newVoice = newVoice2
+						newtts, err := tts.Create(cfg.Type, ttsCfg, false)
+						if err == nil {
+							h.providers.tts = newtts
+							bChangeTTSSucc = true
+							h.ttsProviderName = cfg.Type
+							h.LogInfo(fmt.Sprintf("已切换TTS提供者到: %s, 语音名称: %s, v:%s", name, agent.Voice, newVoice))
+							break
+						} else {
+							h.LogError(fmt.Sprintf("创建TTS提供者失败: %v", err))
+						}
+					} else {
+						h.LogInfo(fmt.Sprintf("Agent %d 的语音 %s 在 TTS 提供者 %s 中不受支持", agent.ID, agent.Voice, name))
+					}
+				}
+				if !bChangeTTSSucc {
+					h.LogError(fmt.Sprintf("设置TTS语音为agent配置失败: %v", err))
+				} else {
+					h.voiceName = newVoice
+				}
+			} else {
+				h.voiceName = newVoice
+			}
+		}
+		h.initialVoice = h.voiceName // 保存初始语音名称
+	}
+	h.logger.Info("使用TTS提供者: %s, 语音名称: %s", h.ttsProviderName, h.voiceName)
+
+}
+
+func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *configs.Config) {
+	if agent == nil {
+		return
+	}
+	agentLLMName := agent.LLM
+	// 从agent里获取extra
+	apiKey := ""
+	baseUrl := ""
+	if agent.Extra != "" {
+		// 解析Extra字段
+		var extra map[string]interface{}
+		if err := json.Unmarshal([]byte(agent.Extra), &extra); err == nil {
+			if key, ok := extra["api_key"].(string); ok {
+				apiKey = key
+			}
+			if url, ok := extra["base_url"].(string); ok {
+				baseUrl = url
+			}
+		} else {
+			h.LogError(fmt.Sprintf("Agent %d 的 Extra 字段格式错误: %v， err:%v", agent.ID, agent.Extra, err))
+		}
+	}
+	// 判断handler.providers.llm 类型是否和 agent.LLM 相同
+	if getter, ok := h.providers.llm.(llmConfigGetter); ok {
+		// 从数据库加载用户私有的LLM配置
+		userID := database.AdminUserID
+		llms, err := database.GetProviderByTypeInternal("LLM", userID, false)
+		if err == nil {
+			for name, data := range llms {
+
+				cfg := configs.LLMConfig{}
+				if err := json.Unmarshal([]byte(data), &cfg); err != nil {
+					h.LogError(fmt.Sprintf("反序列化用户 %d 的 LLM 提供者 %s 配置失败: %v", userID, name, err))
+					continue
+				}
+				//h.LogInfo(fmt.Sprintf("用户 %d 的 LLM 提供者: %s, 配置: %v", userID, name, cfg))
+				config.LLM[name] = cfg // 更新配置
+			}
+		} else {
+			h.LogError(fmt.Sprintf("获取用户 %d 的 LLM 提供者失败: %v", userID, err))
+		}
+
+		llmName := getter.Config().Name
+		if llmName != agentLLMName {
+			// 根据agent.LLM类型设置LLM提供者
+			if cfg, ok := config.LLM[agentLLMName]; !ok {
+				h.LogError(fmt.Sprintf("Agent %d 的 LLM 类型 %s 不存在", h.agentID, agentLLMName))
+			} else {
+				if apiKey != "" {
+					cfg.APIKey = apiKey // 使用Agent的API密钥
+				}
+				if baseUrl != "" {
+					cfg.BaseURL = baseUrl // 使用Agent的BaseURL
+				}
+				llmCfg := &llm.Config{
+					Name:        agentLLMName,
+					Type:        cfg.Type,
+					ModelName:   cfg.ModelName,
+					BaseURL:     cfg.BaseURL,
+					APIKey:      cfg.APIKey,
+					Temperature: cfg.Temperature,
+					MaxTokens:   cfg.MaxTokens,
+					TopP:        cfg.TopP,
+					Extra:       cfg.Extra,
+				}
+				newllm, err := llm.Create(cfg.Type, llmCfg)
+				if err != nil {
+					h.LogError(fmt.Sprintf("创建LLM提供者失败: %v", err))
+				} else {
+					h.providers.llm = newllm
+					h.LogInfo(fmt.Sprintf("已切换Agent %d 的 LLM 提供者到: %s", h.agentID, agentLLMName))
+				}
+			}
+		} else {
+			if apiKey != "" {
+				getter.Config().APIKey = apiKey
+			}
+			if baseUrl != "" {
+				getter.Config().BaseURL = baseUrl
+			}
+			h.LogInfo(fmt.Sprintf("使用Agent %d 的 LLM 类型: %s, BaseURL:%s", h.agentID, llmName, getter.Config().BaseURL))
+		}
+	}
+}
+
+func (h *ConnectionHandler) checkDeviceInfo() {
+	h.agentID = 0 // 清空AgentID
+
+	if h.deviceID == "" {
+		h.LogError("设备ID未设置，无法检查设备绑定状态")
+		return
+	}
+	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
+	if err == gorm.ErrRecordNotFound {
+		h.LogError(fmt.Sprintf("查找设备失败: %v", err))
+		return
+	}
+
+	if device.AgentID != nil {
+		h.agentID = *device.AgentID // 获取设备绑定的AgentID
+	} else {
+		// 查询当前agent列表，绑定到第一个agent
+		agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
+		if err != nil {
+			h.LogError(fmt.Sprintf("查询智能体失败: %v", err))
+			return
+		}
+		if len(agents) > 0 {
+			h.agentID = agents[0].ID
+			device.AgentID = &h.agentID
+			err = database.UpdateDevice(database.GetDB(), device)
+			if err != nil {
+				h.LogError(fmt.Sprintf("更新设备绑定的智能体失败: %v", err))
+				return
+			}
+		} else {
+			h.agentID = 0 // 未绑定则为0
+		}
+	}
+
+	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))
 }
 
 func (h *ConnectionHandler) SetTaskCallback(callback func(func(*ConnectionHandler)) func()) {
@@ -791,13 +1035,18 @@ func (h *ConnectionHandler) SystemSpeak(text string) error {
 		return errors.New("收到空文本，无法合成语音")
 	}
 	texts := utils.SplitByPunctuation(text)
-	index := h.tts_last_text_index
+	index := 0
 	for _, item := range texts {
 		index++
 		h.tts_last_text_index = index // 重置文本索引
 		h.SpeakAndPlay(item, index, h.talkRound)
 	}
 	return nil
+}
+
+// isNeedAuth 判断是否需要验证
+func (h *ConnectionHandler) isNeedAuth() bool {
+	return !h.isDeviceVerified
 }
 
 // processTTSQueueCoroutine 处理TTS队列
@@ -807,7 +1056,7 @@ func (h *ConnectionHandler) processTTSQueueCoroutine() {
 		case <-h.stopChan:
 			return
 		case task := <-h.ttsQueue:
-			h.processTTSTask(task.text, task.textIndex, task.round, task.filepath)
+			h.processTTSTask(task.text, task.textIndex, task.round)
 		}
 	}
 }
@@ -845,7 +1094,8 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 }
 
 // processTTSTask 处理单个TTS任务
-func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int, filepath string) {
+func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int) {
+	filepath := ""
 	defer func() {
 		h.audioMessagesQueue <- struct {
 			filepath  string
@@ -854,9 +1104,6 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 			textIndex int
 		}{filepath, text, round, textIndex}
 	}()
-	if filepath != "" {
-		return
-	}
 
 	if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 		// 尝试从缓存查找音频文件
@@ -905,6 +1152,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 		ttsSpentTime := now.Sub(ttsStartTime)
 		h.logger.Debug(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, text, textIndex))
 	}
+
 }
 
 // speakAndPlay 合成并播放语音
@@ -915,8 +1163,7 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 			text      string
 			round     int
 			textIndex int
-			filepath  string
-		}{text, round, textIndex, ""}
+		}{text, round, textIndex}
 	}()
 
 	originText := text // 保存原始文本用于日志

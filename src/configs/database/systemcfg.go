@@ -60,6 +60,17 @@ func (d *ServerConfigDB) InitServerConfig(cfgStr string) error {
 	return d.db.Create(&defaultConfig).Error
 }
 
+func (d *ServerConfigDB) GetServerConfig() (string, error) {
+	var config models.ServerConfig
+	if err := d.db.First(&config, ServerConfigID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", nil
+		}
+		return "", fmt.Errorf("查询服务器配置失败: %v", err)
+	}
+	return config.CfgStr, nil
+}
+
 func (d *ServerConfigDB) UpdateServerConfig(cfgStr string) error {
 	// 只有一个
 	var count int64

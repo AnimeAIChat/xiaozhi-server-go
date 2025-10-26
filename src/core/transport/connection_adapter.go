@@ -177,6 +177,18 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 		f.logger.Error(fmt.Sprintf("获取提供者集合失败: %v", err))
 		return nil
 	}
+	//检查conn是否有属性mcpManager
+	if holder, ok := conn.(MCPManagerHolder); ok {
+		if mgr := holder.GetMCPManager(); mgr != nil {
+			f.poolManager.ReturnMcpManager(providerSet.MCP)
+			providerSet.MCP = mgr
+			fmt.Println("使用已有的MCPManager创建handler")
+		} else {
+			fmt.Println("连接没有已有的MCPManager")
+		}
+	} else {
+		fmt.Println("连接没有MCPManagerHolder接口")
+	}
 
 	// 创建连接上下文适配器
 	adapter := NewConnectionContextAdapter(

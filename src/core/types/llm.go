@@ -96,10 +96,12 @@ type FunctionCall struct {
 
 // Response LLM响应结构
 type Response struct {
-	Content    string     `json:"content,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	StopReason string     `json:"stop_reason,omitempty"`
-	Error      string     `json:"error,omitempty"`
+	Content              string     `json:"content,omitempty"`
+	ReasonContent        string     `json:"reasoning_content,omitempty"`
+	UpdateConversationID string     `json:"update_conversation_id,omitempty"`
+	ToolCalls            []ToolCall `json:"tool_calls,omitempty"`
+	StopReason           string     `json:"stop_reason,omitempty"`
+	Error                string     `json:"error,omitempty"`
 }
 
 // Provider 基础提供者接口

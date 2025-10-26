@@ -60,15 +60,14 @@ func (p *BaseProvider) Initialize() error {
 	return nil
 }
 
-func (p *BaseProvider) SetVoice(voice string) error {
-	// 设置声音配置
+func IsSupportedVoice(voice string, supportedVoices []configs.VoiceInfo) (bool, string, error) {
 	if voice == "" {
-		return fmt.Errorf("声音不能为空")
+		return false, "", fmt.Errorf("声音不能为空")
 	}
 	cnNames := map[string]string{}
 	enNames := map[string]string{}
 	voiceNames := []string{}
-	for _, v := range p.config.SupportedVoices {
+	for _, v := range supportedVoices {
 		cnNames[v.DisplayName] = v.Name // 中文名
 		enNames[v.Name] = v.Name        // 英文名（实际是音色名）
 		voiceNames = append(voiceNames, v.Name)
@@ -86,12 +85,22 @@ func (p *BaseProvider) SetVoice(voice string) error {
 
 	// 检查声音是否在支持的列表中
 	if !utils.IsInArray(voice, voiceNames) {
-		return fmt.Errorf("不支持的声音: %s, 可用声音: %v", voice, voiceNames)
+		return false, "", fmt.Errorf("不支持的声音: %s, 可用声音: %v", voice, voiceNames)
 	}
 
-	p.Config().Voice = voice
-	fmt.Printf("已设置声音为: %s\n", voice)
-	return nil
+	return true, voice, nil
+}
+
+func (p *BaseProvider) SetVoice(voice string) (error, string) {
+	isSupported, newVoice, err := IsSupportedVoice(voice, p.config.SupportedVoices)
+	if err != nil {
+		return err, ""
+	}
+	if !isSupported {
+		return fmt.Errorf("不支持的声音: %s", voice), ""
+	}
+	p.Config().Voice = newVoice
+	return nil, newVoice
 }
 
 // Cleanup 清理资源
