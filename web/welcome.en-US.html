@@ -1,0 +1,152 @@
+<!-- WELCOME_PAGE_MARKER -->
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anime AI Chat Admin Console</title>
+  <style>
+    body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial; color:#222; background:#f5f7fa; margin:0; padding:0; }
+    .container { max-width:1100px; margin:32px auto; background:#fff; border-radius:12px; box-shadow:0 4px 24px 0 rgba(0,0,0,0.06); padding:32px 24px; }
+    .alert { background: #fffbe6; border: 1px solid #ffe58f; color: #ad8b00; border-radius: 8px; padding: 14px 20px; margin-bottom: 32px; font-size: 16px; }
+    h1 { text-align:center; margin-bottom:8px; font-size:2.2em; }
+    .title-icons { font-size: 1.2em; vertical-align: middle; }
+    .lead { text-align:center; color:#666; margin-bottom:24px; }
+    .card { background: #f7f8fa; border-radius: 8px; margin-bottom: 24px; border: none; padding: 18px 28px; }
+    .card2 { background: #f0f5ff; }
+    .card3 { background: #e6fffb; }
+    .card4 { background: #f9f0ff; }
+    .quickstart { color: #888; font-size: 15px; line-height: 2; margin: 0; padding-left: 22px; }
+    .section { text-align: center; margin-top: 32px; }
+    .contact-row { display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; }
+    .contact-col { min-width: 220px; }
+    .qr-img { width: 240px; height: 240px; border-radius: 8px; border: 1px solid #eee; background: #fff; }
+    .features { display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; margin-top: 32px; }
+    .feature-card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.04); width: 250px; min-height: 340px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 24px 28px 18px 28px; }
+    .feature-title { display: flex; align-items: center; margin-bottom: 12px; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+    .feature-list { font-size: 15px; color: #222; line-height: 2; margin: 0; padding-left: 18px; flex: 1; }
+    @media (max-width:900px) { .features { flex-direction: column; align-items: center; } }
+    @media (max-width:600px) { .container { margin:12px; padding:12px; } .qr-img { width:160px; height:160px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="alert">This demo is for testing only and administrator privileges are not enabled. For full features, please deploy locally.</div>
+    <h1>
+      <span class="title-icons">😊</span>
+      Anime AI Chat Admin Console
+      <span class="title-icons" style="color:#eb2f96;">❤️</span>
+    </h1>
+    <div class="lead">
+      A modern admin system built by the <b>Anime AI Chat</b> team to simplify management for the
+      <a href="https://github.com/AnimeAIChat/xiaozhi-server-go" style="margin:0 4px;color:#1677ff;font-weight:500;" target="_blank" rel="noreferrer">xiaozhi-server-go</a>
+      backend service.
+    </div>
+    <div class="card">
+      <b>Usage notes:</b>
+      <ul class="quickstart">
+        <li>Daily per-user quota: <b>3000</b> characters, reset at <b>00:00</b> each day.</li>
+        <li>For extensive testing, contact the administrator.</li>
+      </ul>
+    </div>
+    <div class="card card2">
+      <h4 style="color:#222;font-weight:600;margin-bottom:12px;">Quick Start</h4>
+      <ol class="quickstart">
+        <li>Create an agent on the Agents page to bind a device.</li>
+        <li>
+          In device firmware, set the OTA URL to:
+          <span style="color:#1677ff;font-weight:500;">https://xiaozhi.xf.bj.cn/api/ota/</span>
+          and reboot the client.
+        </li>
+        <li>After reboot, visit the OTA URL to retrieve WebSocket and MQTT+UDP addresses.</li>
+        <li>Connect to the backend via WS or MQTT (firmware must support MQTT) to obtain a verification code.</li>
+        <li>Enter the code on the agent page in the console to bind the device.</li>
+        <li>Reboot the device to start chatting.</li>
+      </ol>
+    </div>
+    <div class="lead" style="margin-top:8px;">
+      This project is in testing. Feedback is welcome and we will keep improving the experience.
+    </div>
+    <div class="section">
+      <h5 style="margin-bottom:16px;">Contact</h5>
+      <div class="contact-row">
+        <div class="contact-col">
+          <div style="color:#888;">GitHub</div>
+          <a href="https://github.com/AnimeAIChat/xiaozhi-server-go" target="_blank" rel="noopener noreferrer"
+            style="display:inline-block;padding:8px 20px;background:#1677ff;color:#fff;border-radius:6px;font-weight:500;font-size:15px;text-decoration:none;box-shadow:0 2px 8px 0 rgba(0,0,0,0.04);transition:background 0.2s;">
+            Visit GitHub Project
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-title">🚀 Open Source</div>
+        <ul class="feature-list">
+          <li>Free for personal use</li>
+          <li>Supports websocket connections</li>
+          <li>Supports OPUS audio encoding</li>
+          <li>Supports PCM audio encoding</li>
+          <li>Supported models: ASR (streaming), LLM (OpenAI API, ollama), TTS (EdgeTTS, Doubao TTS)</li>
+          <li>Supports OTA</li>
+          <li>Supports auto/manual/realtime conversation modes with interruption</li>
+          <li>Supports ESP32, Python, Android clients</li>
+          <li>Server-side MCP integrations available</li>
+          <li>ESP32 client MCP support for IOT control</li>
+          <li>Voice-controlled camera recognition</li>
+          <li>Voice-controlled role voice switching</li>
+          <li>Voice-controlled preset switching</li>
+          <li>Voice-controlled music playback</li>
+          <li>Standalone deployment supported</li>
+          <li>Local sqlite database supported</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-title">⚡ Commercial</div>
+        <ul class="feature-list">
+          <li>Commercial license available</li>
+          <li>All open-source features included</li>
+          <li>Team technical support</li>
+          <li>Core feature updates</li>
+          <li>Extended admin options</li>
+          <li>Support for more models</li>
+          <li>Supports websocket and MQTT+UDP</li>
+          <li>Supports TTS streaming</li>
+          <li>Voice cloning support</li>
+          <li>Custom voice/timbre options</li>
+          <li>OTA firmware upgrades</li>
+          <li>Coze and Dify workflow support</li>
+          <li>Performance optimizations</li>
+          <li>User authentication and device binding</li>
+          <li>Device unbind from admin</li>
+          <li>User-defined Agents</li>
+          <li>Networked databases</li>
+          <li>Distributed deployment</li>
+          <li>Local large model hosting</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-title">⭐ Future</div>
+        <ul class="feature-list">
+          <li>Voiceprint recognition</li>
+          <li>Knowledge base</li>
+          <li>Long-term memory</li>
+          <li>Text-to-image and text-to-video</li>
+          <li>Android client with voice + config management</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-title">🎁 Services</div>
+        <ul class="feature-list">
+          <li>Custom development</li>
+          <li>Deployment assistance</li>
+          <li>Managed operations</li>
+        </ul>
+      </div>
+    </div>
+    <footer style="margin-top:26px;text-align:center;color:#999;font-size:13px;">
+      © Anime AI Chat
+    </footer>
+  </div>
+</body>
+</html>
