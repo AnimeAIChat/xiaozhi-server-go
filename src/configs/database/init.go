@@ -132,7 +132,6 @@ func SetLogger(logger *xiaozhi_utils.Logger) {
 // migrateTables 自动迁移模型表结构
 func migrateTables(db *gorm.DB) error {
 	err := db.AutoMigrate(
-		&models.SystemConfig{},
 		&models.LLMConfig{},
 		&models.TTSConfig{},
 		&models.ASRConfig{},
@@ -150,9 +149,6 @@ func migrateTables(db *gorm.DB) error {
 // InsertDefaultConfigIfNeeded 首次启动插入默认配置
 func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
 	config := configs.Cfg
-	if err := InitSystemConfig(db, config); err != nil {
-		return fmt.Errorf("初始化系统配置失败: %v", err)
-	}
 	if err := InitProviders(db, config); err != nil {
 		return fmt.Errorf("初始化提供者配置失败: %v", err)
 	}

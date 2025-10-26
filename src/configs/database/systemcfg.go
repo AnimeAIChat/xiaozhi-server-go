@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/models"
 
 	"gorm.io/gorm"
@@ -103,53 +102,4 @@ func (d *ServerConfigDB) LoadServerConfig() (string, error) {
 	}
 
 	return config.CfgStr, nil
-}
-
-// InitSystemConfig 初始化系统配置
-func InitSystemConfig(db *gorm.DB, config *configs.Config) error {
-	var count int64
-	if err := db.Model(&models.SystemConfig{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	defaultConfig := models.SystemConfig{
-		ID:              SystemConfigID,
-		SelectedASR:     config.SelectedModule["ASR"],
-		SelectedTTS:     config.SelectedModule["TTS"],
-		SelectedLLM:     config.SelectedModule["LLM"],
-		SelectedVLLLM:   config.SelectedModule["VLLLM"],
-		Prompt:          config.DefaultPrompt,
-		QuickReplyWords: []byte(`["我在", "在呢", "来了", "啥事啊"]`),
-		DeleteAudio:     config.DeleteAudio,
-	}
-
-	return db.Create(&defaultConfig).Error
-}
-
-// GetSystemConfig 获取系统配置
-func GetSystemConfig(db *gorm.DB) (*models.SystemConfig, error) {
-	if db == nil {
-		db = DB
-	}
-
-	var config models.SystemConfig
-	if err := db.First(&config, SystemConfigID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("系统配置未找到")
-		}
-		return nil, fmt.Errorf("查询系统配置失败: %v", err)
-	}
-	return &config, nil
-}
-
-// UpdateSystemConfig 更新系统配置
-func UpdateSystemConfig(db *gorm.DB, config *models.SystemConfig) error {
-	if db == nil {
-		db = DB
-	}
-
-	return db.Model(&models.SystemConfig{}).Where("id = ?", SystemConfigID).Updates(config).Error
 }
