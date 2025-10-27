@@ -9,25 +9,192 @@
     "host": "localhost:8080",
     "basePath": "/api",
     "paths": {
-        "/ota/": {
+        "/admin/system": {
             "get": {
-                "description": "获取 OTA 服务状态和 WebSocket 地址，供设备查询",
+                "description": "获取当前系统配置",
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
-                    "OTA"
+                    "System"
                 ],
-                "summary": "获取 OTA 状态",
+                "summary": "获取系统配置",
                 "responses": {
                     "200": {
-                        "description": "OTA interface is running, websocket address: ws://...",
+                        "description": "系统配置信息",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/system/providers": {
+            "get": {
+                "description": "获取系统中所有Provider信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "获取所有Provider",
+                "responses": {
+                    "200": {
+                        "description": "Provider列表",
+                        "schema": {
+                            "type": "array",
+                            "items": {}
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/system/providers/{type}": {
+            "get": {
+                "description": "根据类型获取Provider信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "获取指定类型Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Provider信息",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/admin/system/providers/{type}/{name}": {
+            "get": {
+                "description": "根据类型和名称获取Provider信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "获取指定类型和名称的Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider名称",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Provider信息",
+                        "schema": {}
+                    }
+                }
+            },
+            "put": {
+                "description": "更新指定类型和名称的Provider",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "更新Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider名称",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provider更新参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             },
+            "delete": {
+                "description": "删除指定类型和名称的Provider",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "删除Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider名称",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/ota/": {
             "post": {
                 "description": "设备上传信息后，返回最新固件版本和下载地址",
                 "consumes": [
@@ -54,7 +221,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ota.OtaRequest"
+                            "$ref": "#/definitions/ota.OTARequestBody"
                         }
                     }
                 ],
@@ -72,56 +239,751 @@
                         }
                     }
                 }
-            },
-            "options": {
-                "description": "处理 OTA 接口的 OPTIONS 预检请求，返回 200",
+            }
+        },
+        "/user/agent/create": {
+            "post": {
+                "description": "创建新的智能体",
                 "consumes": [
-                    "*/*"
+                    "application/json"
                 ],
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
-                    "OTA"
+                    "Agent"
                 ],
-                "summary": "OTA 预检请求",
+                "summary": "创建新的智能体",
+                "parameters": [
+                    {
+                        "description": "Agent创建参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webapi.AgentCreateRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "创建成功返回Agent信息",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.Agent"
                         }
                     }
                 }
             }
         },
-        "/ota_bin/{filename}": {
+        "/user/agent/history_dialog/{dialog_id}": {
             "get": {
-                "description": "根据文件名下载 OTA 固件",
+                "description": "根据对话ID获取Agent的单条对话记录",
                 "produces": [
-                    "application/octet-stream"
+                    "application/json"
                 ],
                 "tags": [
-                    "OTA"
+                    "Agent"
                 ],
-                "summary": "下载 OTA 固件文件",
+                "summary": "获取Agent的单条对话记录",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "固件文件名",
-                        "name": "filename",
+                        "type": "integer",
+                        "description": "对话ID",
+                        "name": "dialog_id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "文件流"
-                    },
-                    "404": {
-                        "description": "Not Found",
+                        "description": "对话记录",
                         "schema": {
-                            "$ref": "#/definitions/ota.ErrorResponse"
+                            "$ref": "#/definitions/models.AgentDialog"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "根据对话ID删除Agent的单条对话记录",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "删除Agent的单条对话记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "对话ID",
+                        "name": "dialog_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/agent/history_dialog_list/{id}": {
+            "post": {
+                "description": "获取指定Agent的对话记录列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "获取Agent对话记录列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "对话记录列表",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AgentDialog"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/user/agent/list": {
+            "get": {
+                "description": "获取当前用户的所有Agent及其设备ID列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "获取当前用户的所有Agent",
+                "responses": {
+                    "200": {
+                        "description": "Agent列表",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/webapi.AgentWithDeviceIDs"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/user/agent/{id}": {
+            "get": {
+                "description": "根据ID获取Agent详情",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "获取指定ID的Agent",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Agent信息",
+                        "schema": {
+                            "$ref": "#/definitions/models.Agent"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "根据ID更新Agent信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "更新指定ID的Agent",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Agent更新参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webapi.AgentCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的Agent信息",
+                        "schema": {
+                            "$ref": "#/definitions/models.Agent"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "根据ID删除Agent",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "删除指定ID的Agent",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/change-password": {
+            "post": {
+                "description": "修改当前登录用户的密码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "修改密码",
+                "parameters": [
+                    {
+                        "description": "修改密码参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webapi.ChangePasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "修改密码结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/device": {
+            "delete": {
+                "description": "删除指定设备",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Device"
+                ],
+                "summary": "删除设备",
+                "parameters": [
+                    {
+                        "description": "设备删除参数（deviceID）",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/device/list": {
+            "get": {
+                "description": "获取当前用户的所有设备",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Device"
+                ],
+                "summary": "获取当前用户的所有设备",
+                "responses": {
+                    "200": {
+                        "description": "设备列表",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Device"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/user/device/{id}": {
+            "get": {
+                "description": "获取指定ID的设备信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Device"
+                ],
+                "summary": "获取设备详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "设备ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "设备信息",
+                        "schema": {
+                            "$ref": "#/definitions/models.Device"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新指定ID的设备信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Device"
+                ],
+                "summary": "更新设备信息",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "设备ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "设备更新参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webapi.DeviceUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的设备信息",
+                        "schema": {
+                            "$ref": "#/definitions/models.Device"
+                        }
+                    }
+                }
+            }
+        },
+        "/user/login": {
+            "post": {
+                "description": "用户登录接口",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "用户登录",
+                "parameters": [
+                    {
+                        "description": "登录参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webapi.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "登录成功返回token和用户信息",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/logout": {
+            "post": {
+                "description": "用户登出接口",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "用户登出",
+                "responses": {
+                    "200": {
+                        "description": "登出结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/profile": {
+            "get": {
+                "description": "获取当前登录用户的个人信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取用户资料",
+                "responses": {
+                    "200": {
+                        "description": "用户资料",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新当前登录用户的个人信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "更新用户资料",
+                "parameters": [
+                    {
+                        "description": "用户资料参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的用户资料",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/providers/create": {
+            "post": {
+                "description": "用户创建新的Provider，创建的provider为用户私有，其他人不可见",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "用户创建Provider",
+                "parameters": [
+                    {
+                        "description": "Provider创建参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "创建结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/providers/{type}": {
+            "get": {
+                "description": "根据类型获取Provider信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "获取指定类型Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Provider信息",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/user/providers/{type}/{name}": {
+            "put": {
+                "description": "更新指定类型和名称的Provider,仅可更新用户自己创建的",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "更新Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider名称",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provider更新参数",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除指定类型和名称的Provider,仅可删除用户自己创建的",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Provider"
+                ],
+                "summary": "删除Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider名称",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/vision": {
+            "get": {
+                "description": "检查Vision服务是否正常运行",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Vision"
+                ],
+                "summary": "Vision服务状态检查",
+                "responses": {
+                    "200": {
+                        "description": "服务状态信息",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "上传图片并进行视觉分析，返回分析结果",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Vision"
+                ],
+                "summary": "图片分析",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer Token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "设备ID",
+                        "name": "Device-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "问题文本",
+                        "name": "question",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "图片文件",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vision.VisionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/vision.VisionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/vision.VisionResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/vision.VisionResponse"
                         }
                     }
                 }
@@ -129,6 +991,227 @@
         }
     },
     "definitions": {
+        "models.Agent": {
+            "type": "object",
+            "properties": {
+                "LLM": {
+                    "type": "string"
+                },
+                "asrSpeed": {
+                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "catalogy_id": {
+                    "description": "分类ID",
+                    "type": "integer"
+                },
+                "conversationId": {
+                    "description": "关联的对话AgentDialog的ID",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "智能体描述",
+                    "type": "string"
+                },
+                "enabledTools": {
+                    "description": "启用的工具列表，字符串格式，如 \"tool1,tool2\"",
+                    "type": "string"
+                },
+                "extra": {
+                    "description": "额外信息，JSON格式",
+                    "type": "string"
+                },
+                "head_img": {
+                    "description": "头像URL",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "language": {
+                    "description": "语言，默认为中文",
+                    "type": "string"
+                },
+                "lastConversationAt": {
+                    "description": "最后对话时间",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "智能体名称",
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "speakSpeed": {
+                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "tone": {
+                    "description": "TTS 角色音调，1-100，低音-高音",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "description": "更新时间",
+                    "type": "string"
+                },
+                "voice": {
+                    "description": "语音，默认为zh_female_wanwanxiaohe_moon_bigtts",
+                    "type": "string"
+                },
+                "voiceName": {
+                    "description": "语音，默认为湾湾小何",
+                    "type": "string"
+                }
+            }
+        },
+        "models.AgentDialog": {
+            "type": "object",
+            "properties": {
+                "agentID": {
+                    "description": "外键关联 Agent",
+                    "type": "integer"
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "dialog": {
+                    "description": "对话内容",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "description": "更新",
+                    "type": "string"
+                },
+                "userID": {
+                    "description": "外键关联 User",
+                    "type": "integer"
+                }
+            }
+        },
+        "models.Device": {
+            "type": "object",
+            "properties": {
+                "agentID": {
+                    "description": "外键关联 Agent",
+                    "type": "integer"
+                },
+                "application": {
+                    "description": "应用名称",
+                    "type": "string"
+                },
+                "authCode": {
+                    "description": "认证码",
+                    "type": "string"
+                },
+                "authStatus": {
+                    "description": "认证状态，可选值：pending",
+                    "type": "string"
+                },
+                "boardType": {
+                    "description": "主板类型，可能为 lichuang-dev/atk-dnesp32s3-box",
+                    "type": "string"
+                },
+                "channel": {
+                    "description": "WiFi 频道",
+                    "type": "integer"
+                },
+                "chipModelName": {
+                    "description": "芯片型号名称，默认为 esp32s3",
+                    "type": "string"
+                },
+                "clientId": {
+                    "description": "客户端唯一标识",
+                    "type": "string"
+                },
+                "conversationId": {
+                    "description": "关联的对话AgentDialog的ID",
+                    "type": "string"
+                },
+                "deviceCode": {
+                    "description": "设备码，简化版的设备唯一标识",
+                    "type": "string"
+                },
+                "deviceId": {
+                    "description": "设备唯一标识,mac地址",
+                    "type": "string"
+                },
+                "extra": {
+                    "description": "额外信息，JSON格式",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "language": {
+                    "description": "语言，默认为中文",
+                    "type": "string"
+                },
+                "lastActiveTimeV2": {
+                    "description": "最后活跃时间",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "模式:chat/listen/ban",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "设备名称",
+                    "type": "string"
+                },
+                "online": {
+                    "description": "在线状态",
+                    "type": "boolean"
+                },
+                "ota": {
+                    "description": "是否支持OTA升级",
+                    "type": "boolean"
+                },
+                "registerTimeV2": {
+                    "description": "注册时间",
+                    "type": "string"
+                },
+                "ssid": {
+                    "description": "WiFi SSID",
+                    "type": "string"
+                },
+                "userID": {
+                    "description": "外键关联 User",
+                    "type": "integer"
+                },
+                "version": {
+                    "description": "设备固件版本号",
+                    "type": "string"
+                }
+            }
+        },
+        "ota.Activation": {
+            "type": "object",
+            "properties": {
+                "challenge": {
+                    "description": "用于设备认证挑战",
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string",
+                    "example": "543091"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "ota.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -139,6 +1222,188 @@
                 "success": {
                     "type": "boolean",
                     "example": false
+                }
+            }
+        },
+        "ota.FirmwareInfo": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "example": "/ota_bin/1.2.4.bin"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "1.2.4"
+                }
+            }
+        },
+        "ota.MQTTInfo": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "example": "CGID_test@@@mac@@@client"
+                },
+                "endpoint": {
+                    "type": "string",
+                    "example": "mqtt://broker:1883"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "randomPwd"
+                },
+                "publish_topic": {
+                    "type": "string",
+                    "example": "device-server"
+                },
+                "subscribe_topic": {
+                    "type": "string",
+                    "example": "null"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "base64string"
+                }
+            }
+        },
+        "ota.OTARequestBody": {
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "object",
+                    "properties": {
+                        "compile_time": {
+                            "type": "string"
+                        },
+                        "elf_sha256": {
+                            "type": "string"
+                        },
+                        "idf_version": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "version": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "board": {
+                    "type": "object",
+                    "properties": {
+                        "channel": {
+                            "type": "integer"
+                        },
+                        "ip": {
+                            "type": "string"
+                        },
+                        "mac": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "rssi": {
+                            "type": "integer"
+                        },
+                        "ssid": {
+                            "type": "string"
+                        },
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "chip_info": {
+                    "type": "object",
+                    "properties": {
+                        "cores": {
+                            "type": "integer"
+                        },
+                        "features": {
+                            "type": "integer"
+                        },
+                        "model": {
+                            "type": "integer"
+                        },
+                        "revision": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "chip_model_name": {
+                    "type": "string"
+                },
+                "flash_size": {
+                    "type": "number"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "mac_address": {
+                    "type": "string"
+                },
+                "minimum_free_heap_size": {
+                    "type": "string"
+                },
+                "ota": {
+                    "type": "object",
+                    "properties": {
+                        "label": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "partition_table": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "number"
+                            },
+                            "label": {
+                                "type": "string"
+                            },
+                            "size": {
+                                "type": "number"
+                            },
+                            "subtype": {
+                                "type": "integer"
+                            },
+                            "type": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "uuid": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ota.OTAResponse": {
+            "type": "object",
+            "properties": {
+                "activation": {
+                    "$ref": "#/definitions/ota.Activation"
+                },
+                "firmware": {
+                    "$ref": "#/definitions/ota.FirmwareInfo"
+                },
+                "mqtt": {
+                    "$ref": "#/definitions/ota.MQTTInfo"
+                },
+                "server_time": {
+                    "$ref": "#/definitions/ota.ServerTimeInfo"
+                },
+                "websocket": {
+                    "$ref": "#/definitions/ota.WebSocketInfo"
                 }
             }
         },
@@ -182,17 +1447,220 @@
                 }
             }
         },
-        "ota.OtaRequest": {
+        "ota.ServerTimeInfo": {
             "type": "object",
             "properties": {
-                "application": {
-                    "type": "object",
-                    "properties": {
-                        "version": {
-                            "type": "string",
-                            "example": "1.0.0"
-                        }
+                "timestamp": {
+                    "type": "integer",
+                    "example": 1720065289451
+                },
+                "timezone_offset": {
+                    "type": "integer",
+                    "example": 480
+                }
+            }
+        },
+        "ota.WebSocketInfo": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "example": "wss://your-server/ws"
+                }
+            }
+        },
+        "vision.VisionResponse": {
+            "description": "Vision分析响应体",
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "错误信息（失败时）",
+                    "type": "string"
+                },
+                "result": {
+                    "description": "分析结果（成功时）",
+                    "type": "string"
+                },
+                "success": {
+                    "description": "是否成功",
+                    "type": "boolean"
+                }
+            }
+        },
+        "webapi.AgentCreateRequest": {
+            "type": "object",
+            "properties": {
+                "LLM": {
+                    "type": "string"
+                },
+                "asrSpeed": {
+                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "language": {
+                    "description": "语言，默认为中文",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "智能体名称",
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "speakSpeed": {
+                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "tone": {
+                    "description": "TTS 角色音调，1-100，低音-高音",
+                    "type": "integer"
+                },
+                "voice": {
+                    "description": "语音，默认为湾湾小何的音色id",
+                    "type": "string"
+                },
+                "voiceName": {
+                    "description": "语音名称，默认为湾湾小何",
+                    "type": "string"
+                }
+            }
+        },
+        "webapi.AgentWithDeviceIDs": {
+            "type": "object",
+            "properties": {
+                "LLM": {
+                    "type": "string"
+                },
+                "asrSpeed": {
+                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "catalogy_id": {
+                    "description": "分类ID",
+                    "type": "integer"
+                },
+                "conversationId": {
+                    "description": "关联的对话AgentDialog的ID",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "智能体描述",
+                    "type": "string"
+                },
+                "deviceIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
                     }
+                },
+                "enabledTools": {
+                    "description": "启用的工具列表，字符串格式，如 \"tool1,tool2\"",
+                    "type": "string"
+                },
+                "extra": {
+                    "description": "额外信息，JSON格式",
+                    "type": "string"
+                },
+                "head_img": {
+                    "description": "头像URL",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "language": {
+                    "description": "语言，默认为中文",
+                    "type": "string"
+                },
+                "lastConversationAt": {
+                    "description": "最后对话时间",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "智能体名称",
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "speakSpeed": {
+                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
+                    "type": "integer"
+                },
+                "tone": {
+                    "description": "TTS 角色音调，1-100，低音-高音",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "description": "更新时间",
+                    "type": "string"
+                },
+                "voice": {
+                    "description": "语音，默认为zh_female_wanwanxiaohe_moon_bigtts",
+                    "type": "string"
+                },
+                "voiceName": {
+                    "description": "语音，默认为湾湾小何",
+                    "type": "string"
+                }
+            }
+        },
+        "webapi.ChangePasswordRequest": {
+            "description": "修改密码参数",
+            "type": "object",
+            "required": [
+                "new_password",
+                "old_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 6
+                },
+                "old_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "webapi.DeviceUpdateRequest": {
+            "description": "更新设备信息",
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "integer"
+                },
+                "authStatus": {
+                    "type": "string"
+                },
+                "lastActiveTime": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "online": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "webapi.LoginRequest": {
+            "description": "用户登录参数",
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
                 }
             }
         }
