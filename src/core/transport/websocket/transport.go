@@ -47,7 +47,7 @@ func (t *WebSocketTransport) Start(ctx context.Context) error {
 		Handler: mux,
 	}
 
-	t.logger.Info("启动WebSocket传输层 ws://%s", addr)
+	t.logger.Info("[WebSocket] ws://%s", addr)
 
 	// 监听关闭信号
 	go func() {
