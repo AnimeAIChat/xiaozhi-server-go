@@ -108,7 +108,7 @@ func (s *DefaultVisionService) Start(
 	apiGroup.POST("/vision", s.handlePost)
 	apiGroup.OPTIONS("/vision", s.handleOptions)
 
-	s.logger.Info("[Vision] [服务] HTTP路由注册完成")
+	s.logger.Info("[HTTP] [Vision] 注册完成")
 	return nil
 }
 

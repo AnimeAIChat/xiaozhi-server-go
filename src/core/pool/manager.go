@@ -119,7 +119,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 	}
 
 	// 初始化MCP池（总是初始化，因为MCP是核心功能）
-	logger.Info("开始初始化MCP资源池，请等待...")
+	logger.Debug("开始初始化MCP资源池，请等待...")
 	mcpFactory := NewMCPFactory(config, logger)
 	if mcpFactory != nil {
 		mcpPool, err := NewResourcePool("mcpPool", mcpFactory, poolConfig, logger)
@@ -128,7 +128,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.mcpPool = mcpPool
 		_, cnt := mcpPool.GetStats()
-		logger.Info("[资源池] [MCP %d] 初始化成功", cnt)
+	logger.Info("[资源池] [MCP %d] 初始化成功", cnt)
 	} else {
 		logger.Warn("创建MCP工厂失败，MCP功能将不可用")
 	}
