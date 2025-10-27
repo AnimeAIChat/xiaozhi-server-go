@@ -324,7 +324,7 @@ func StartHttpServer(
 
 	g.Go(func() error {
 		logger.Info("[Gin] 访问地址: http://localhost:%d", config.Web.Port)
-		logger.Info("[Gin] [OTA]，访问地址: http://localhost:%d/api/ota/", config.Web.Port)
+		logger.Info("[Gin] [OTA] 访问地址: http://localhost:%d/api/ota/", config.Web.Port)
 		logger.Info("[API文档] 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
 		
 
