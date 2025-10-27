@@ -16,7 +16,7 @@ func WithTx(c *gin.Context, fn func(tx *gorm.DB) error) {
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "事务异常中断"})
+			respondError(c, http.StatusInternalServerError, "事务异常中断", gin.H{"error": r})
 		}
 	}()
 	if err := fn(tx); err != nil {
@@ -25,7 +25,7 @@ func WithTx(c *gin.Context, fn func(tx *gorm.DB) error) {
 	}
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "事务提交失败: " + err.Error()})
+		respondError(c, http.StatusInternalServerError, "事务提交失败", gin.H{"error": err.Error()})
 		return
 	}
 }

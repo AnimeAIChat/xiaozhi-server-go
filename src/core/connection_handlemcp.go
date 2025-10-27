@@ -203,18 +203,30 @@ func (h *ConnectionHandler) mcp_handler_exit(args interface{}) {
 }
 
 func (h *ConnectionHandler) mcp_handler_take_photo(args interface{}) {
-	// 特殊处理拍照函数，解析为VisionResponse
+	// 特殊处理拍照函数，解析新的 Vision API 响应结构
 	resultStr, _ := args.(string)
-	var visionResponse vision.VisionResponse
-	if err := json.Unmarshal([]byte(resultStr), &visionResponse); err != nil {
-		h.logger.Error("解析VisionResponse失败: %v", err)
+	type visionAPIResponse struct {
+		Success bool                      `json:"success"`
+		Message string                    `json:"message"`
+		Code    int                       `json:"code"`
+		Data    vision.VisionAnalysisData `json:"data"`
 	}
 
-	if !visionResponse.Success {
-		h.logger.Error("拍照失败: %s", visionResponse.Message)
+	var resp visionAPIResponse
+	if err := json.Unmarshal([]byte(resultStr), &resp); err != nil {
+		h.logger.Error("解析 Vision API 响应失败: %v", err)
+		return
+	}
+
+	if !resp.Success {
+		errMsg := resp.Data.Error
+		if errMsg == "" && resp.Message != "" {
+			errMsg = resp.Message
+		}
+		h.logger.Error("拍照失败: %s", errMsg)
 		h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
-
+		return
 	}
 
-	h.SystemSpeak(visionResponse.Result)
+	h.SystemSpeak(resp.Data.Result)
 }

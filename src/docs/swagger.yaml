@@ -161,15 +161,6 @@ definitions:
       message:
         type: string
     type: object
-  ota.ErrorResponse:
-    properties:
-      message:
-        example: 缺少 device-id
-        type: string
-      success:
-        example: false
-        type: boolean
-    type: object
   ota.FirmwareInfo:
     properties:
       url:
@@ -291,33 +282,6 @@ definitions:
       websocket:
         $ref: '#/definitions/ota.WebSocketInfo'
     type: object
-  ota.OtaFirmwareResponse:
-    properties:
-      firmware:
-        properties:
-          url:
-            example: /ota_bin/1.0.3.bin
-            type: string
-          version:
-            example: 1.0.3
-            type: string
-        type: object
-      server_time:
-        properties:
-          timestamp:
-            example: 1688443200000
-            type: integer
-          timezone_offset:
-            example: 480
-            type: integer
-        type: object
-      websocket:
-        properties:
-          url:
-            example: wss://example.com/ota
-            type: string
-        type: object
-    type: object
   ota.ServerTimeInfo:
     properties:
       timestamp:
@@ -333,17 +297,14 @@ definitions:
         example: wss://your-server/ws
         type: string
     type: object
-  vision.VisionResponse:
-    description: Vision分析响应体
+  webapi.APIResponse:
     properties:
+      code:
+        type: integer
+      data: {}
       message:
-        description: 错误信息（失败时）
-        type: string
-      result:
-        description: 分析结果（成功时）
         type: string
       success:
-        description: 是否成功
         type: boolean
     type: object
   webapi.AgentCreateRequest:
@@ -627,11 +588,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/ota.OtaFirmwareResponse'
+            $ref: '#/definitions/webapi.APIResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/ota.ErrorResponse'
+            $ref: '#/definitions/webapi.APIResponse'
       summary: 上传设备信息获取最新固件
       tags:
       - OTA
@@ -974,86 +935,11 @@ paths:
       summary: 更新用户资料
       tags:
       - User
-  /user/providers/{type}:
-    get:
-      description: 根据类型获取Provider信息
-      parameters:
-      - description: Provider类型
-        in: path
-        name: type
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Provider信息
-          schema: {}
-      summary: 获取指定类型Provider
-      tags:
-      - Provider
-  /user/providers/{type}/{name}:
-    delete:
-      description: 删除指定类型和名称的Provider,仅可删除用户自己创建的
-      parameters:
-      - description: Provider类型
-        in: path
-        name: type
-        required: true
-        type: string
-      - description: Provider名称
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 删除结果
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 删除Provider
-      tags:
-      - Provider
-    put:
-      consumes:
-      - application/json
-      description: 更新指定类型和名称的Provider,仅可更新用户自己创建的
-      parameters:
-      - description: Provider类型
-        in: path
-        name: type
-        required: true
-        type: string
-      - description: Provider名称
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: Provider更新参数
-        in: body
-        name: data
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 更新结果
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 更新Provider
-      tags:
-      - Provider
   /user/providers/create:
     post:
       consumes:
       - application/json
-      description: 用户创建新的Provider，创建的provider为用户私有，其他人不可见
+      description: 创建新的Provider
       parameters:
       - description: Provider创建参数
         in: body
@@ -1069,7 +955,7 @@ paths:
           schema:
             additionalProperties: true
             type: object
-      summary: 用户创建Provider
+      summary: 创建Provider
       tags:
       - Provider
   /vision:
@@ -1116,19 +1002,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/vision.VisionResponse'
+            $ref: '#/definitions/webapi.APIResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/vision.VisionResponse'
+            $ref: '#/definitions/webapi.APIResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/vision.VisionResponse'
+            $ref: '#/definitions/webapi.APIResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/vision.VisionResponse'
+            $ref: '#/definitions/webapi.APIResponse'
       summary: 图片分析
       tags:
       - Vision

@@ -235,13 +235,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/ota.OtaFirmwareResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/ota.ErrorResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     }
                 }
@@ -762,7 +762,7 @@ const docTemplate = `{
         },
         "/user/providers/create": {
             "post": {
-                "description": "用户创建新的Provider，创建的provider为用户私有，其他人不可见",
+                "description": "创建新的Provider",
                 "consumes": [
                     "application/json"
                 ],
@@ -772,7 +772,7 @@ const docTemplate = `{
                 "tags": [
                     "Provider"
                 ],
-                "summary": "用户创建Provider",
+                "summary": "创建Provider",
                 "parameters": [
                     {
                         "description": "Provider创建参数",
@@ -787,117 +787,6 @@ const docTemplate = `{
                 "responses": {
                     "201": {
                         "description": "创建结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/user/providers/{type}": {
-            "get": {
-                "description": "根据类型获取Provider信息",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Provider"
-                ],
-                "summary": "获取指定类型Provider",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Provider类型",
-                        "name": "type",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Provider信息",
-                        "schema": {}
-                    }
-                }
-            }
-        },
-        "/user/providers/{type}/{name}": {
-            "put": {
-                "description": "更新指定类型和名称的Provider,仅可更新用户自己创建的",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Provider"
-                ],
-                "summary": "更新Provider",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Provider类型",
-                        "name": "type",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Provider名称",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Provider更新参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "更新结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "description": "删除指定类型和名称的Provider,仅可删除用户自己创建的",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Provider"
-                ],
-                "summary": "删除Provider",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Provider类型",
-                        "name": "type",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Provider名称",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "删除结果",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -971,25 +860,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/vision.VisionResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/vision.VisionResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/vision.VisionResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/vision.VisionResponse"
+                            "$ref": "#/definitions/webapi.APIResponse"
                         }
                     }
                 }
@@ -1218,19 +1107,6 @@ const docTemplate = `{
                 }
             }
         },
-        "ota.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "缺少 device-id"
-                },
-                "success": {
-                    "type": "boolean",
-                    "example": false
-                }
-            }
-        },
         "ota.FirmwareInfo": {
             "type": "object",
             "properties": {
@@ -1413,46 +1289,6 @@ const docTemplate = `{
                 }
             }
         },
-        "ota.OtaFirmwareResponse": {
-            "type": "object",
-            "properties": {
-                "firmware": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "example": "/ota_bin/1.0.3.bin"
-                        },
-                        "version": {
-                            "type": "string",
-                            "example": "1.0.3"
-                        }
-                    }
-                },
-                "server_time": {
-                    "type": "object",
-                    "properties": {
-                        "timestamp": {
-                            "type": "integer",
-                            "example": 1688443200000
-                        },
-                        "timezone_offset": {
-                            "type": "integer",
-                            "example": 480
-                        }
-                    }
-                },
-                "websocket": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "example": "wss://example.com/ota"
-                        }
-                    }
-                }
-            }
-        },
         "ota.ServerTimeInfo": {
             "type": "object",
             "properties": {
@@ -1475,20 +1311,17 @@ const docTemplate = `{
                 }
             }
         },
-        "vision.VisionResponse": {
-            "description": "Vision分析响应体",
+        "webapi.APIResponse": {
             "type": "object",
             "properties": {
-                "message": {
-                    "description": "错误信息（失败时）",
-                    "type": "string"
+                "code": {
+                    "type": "integer"
                 },
-                "result": {
-                    "description": "分析结果（成功时）",
+                "data": {},
+                "message": {
                     "type": "string"
                 },
                 "success": {
-                    "description": "是否成功",
                     "type": "boolean"
                 }
             }

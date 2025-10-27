@@ -96,10 +96,11 @@ func (cm *MemoryCryptoManager) GenerateSessionKeys(sessionID string) (*SessionKe
 	cm.keys[sessionID] = sessionKeys
 	cm.mutex.Unlock()
 
-	cm.logger.Debug("生成会话密钥", map[string]interface{}{
-		"session_id": sessionID,
-		"expires_at": sessionKeys.ExpiresAt,
-	})
+	cm.logger.Debug(
+		"生成会话密钥: session_id=%s expires_at=%s",
+		sessionID,
+		sessionKeys.ExpiresAt.Format(time.RFC3339),
+	)
 
 	return sessionKeys, nil
 }
@@ -137,9 +138,7 @@ func (cm *MemoryCryptoManager) RevokeSessionKeys(sessionID string) error {
 	}
 
 	delete(cm.keys, sessionID)
-	cm.logger.Info("撤销会话密钥", map[string]interface{}{
-		"session_id": sessionID,
-	})
+	cm.logger.Info("撤销会话密钥: session_id=%s", sessionID)
 
 	return nil
 }
@@ -160,9 +159,7 @@ func (cm *MemoryCryptoManager) CleanupExpiredKeys() error {
 	}
 
 	if expiredCount > 0 {
-		cm.logger.Info("清理过期密钥", map[string]interface{}{
-			"expired_count": expiredCount,
-		})
+		cm.logger.Info("清理过期密钥: expired_count=%d", expiredCount)
 	}
 
 	return nil

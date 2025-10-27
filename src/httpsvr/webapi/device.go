@@ -51,15 +51,15 @@ func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
 	agentID := c.Param("id")
 	id, err := strconv.Atoi(agentID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid agent id"})
+		respondError(c, http.StatusBadRequest, "Agent ID 非法", gin.H{"error": "invalid agent id"})
 		return
 	}
 	devices, err := database.ListDevicesByAgent(database.GetDB(), uint(id))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, "获取设备列表失败", gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": devices})
+	respondSuccess(c, http.StatusOK, devices, "获取设备列表成功")
 }
 
 // handleDeviceListByUser 获取当前用户的所有设备
@@ -74,10 +74,10 @@ func (s *DefaultUserService) handleDeviceListByUser(c *gin.Context) {
 	WithTx(c, func(tx *gorm.DB) error {
 		devices, err := database.ListDevicesByUser(tx, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			respondError(c, http.StatusInternalServerError, "获取设备列表失败", gin.H{"error": err.Error()})
 			return err
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "data": devices})
+		respondSuccess(c, http.StatusOK, devices, "获取设备列表成功")
 		return nil
 	})
 }
@@ -96,15 +96,15 @@ func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
 
 	device, err := database.FindDeviceByIDAndUser(database.GetDB(), idStr, userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		respondError(c, http.StatusNotFound, "设备不存在", gin.H{"error": "device not found"})
 		return
 	}
 	if device.UserID == nil || *device.UserID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, "无权访问该设备", gin.H{"error": "access denied"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": device})
+	respondSuccess(c, http.StatusOK, device, "获取设备详情成功")
 }
 
 // handleDeviceUpdate 设备更新
@@ -122,13 +122,13 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 	idStr := c.Param("id")
 	var req DeviceUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, "参数校验失败", gin.H{"error": err.Error()})
 		return
 	}
 
 	device, err := database.FindDeviceByIDAndUser(database.GetDB(), idStr, userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		respondError(c, http.StatusNotFound, "设备不存在", gin.H{"error": "device not found"})
 		return
 	}
 	if req.Online != nil {
@@ -143,7 +143,7 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 	if req.AgentID != nil {
 		_, err = database.GetAgentByID(database.GetDB(), *req.AgentID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "agent not found"})
+			respondError(c, http.StatusNotFound, "智能体不存在", gin.H{"error": "agent not found"})
 			return
 		}
 		device.AgentID = req.AgentID
@@ -152,10 +152,10 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 		device.Name = *req.Name
 	}
 	if err := database.UpdateDevice(database.GetDB(), device); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, "更新设备失败", gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": device})
+	respondSuccess(c, http.StatusOK, device, "更新设备成功")
 	return
 }
 
@@ -176,7 +176,7 @@ func (s *DefaultUserService) handleDeviceDelete(c *gin.Context) {
 		DeviceID string `json:"deviceID"`
 	}
 	if err := c.ShouldBindJSON(&requestData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": "invalid request body"})
 		return
 	}
 	deviceID := requestData.DeviceID
@@ -185,17 +185,17 @@ func (s *DefaultUserService) handleDeviceDelete(c *gin.Context) {
 	_, err := database.FindDeviceByIDAndUser(database.GetDB(), deviceID, userID)
 	// 查找设备
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		respondError(c, http.StatusNotFound, "设备不存在", gin.H{"error": "device not found"})
 		return
 	}
 
 	err = database.DeleteDevice(database.GetDB(), deviceID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete device"})
+		respondError(c, http.StatusInternalServerError, "删除设备失败", gin.H{"error": "failed to delete device"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	respondSuccess(c, http.StatusOK, nil, "删除设备成功")
 }
 
 func (s *DefaultAdminService) handleDeviceDeleteAdmin(c *gin.Context) {
@@ -204,7 +204,7 @@ func (s *DefaultAdminService) handleDeviceDeleteAdmin(c *gin.Context) {
 		DeviceID string `json:"deviceID"`
 	}
 	if err := c.ShouldBindJSON(&requestData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": "invalid request body"})
 		return
 	}
 	deviceID := requestData.DeviceID
@@ -213,14 +213,14 @@ func (s *DefaultAdminService) handleDeviceDeleteAdmin(c *gin.Context) {
 	// 查找设备
 	_, err := database.FindDeviceByID(database.GetDB(), deviceID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		respondError(c, http.StatusNotFound, "设备不存在", gin.H{"error": "device not found"})
 		return
 	}
 	err = database.DeleteDevice(database.GetDB(), deviceID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete device"})
+		respondError(c, http.StatusInternalServerError, "删除设备失败", gin.H{"error": "failed to delete device"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	respondSuccess(c, http.StatusOK, nil, "删除设备成功")
 }

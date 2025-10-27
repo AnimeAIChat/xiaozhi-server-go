@@ -271,7 +271,7 @@ func (m *Manager) LoadConfig() map[string]interface{} {
 
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
-		m.logger.Error(fmt.Sprintf("Error loading MCP config from %s: %v", m.configPath, err))
+		m.logger.Error("Error loading MCP config from %s: %v", m.configPath, err)
 		return nil
 	}
 
@@ -280,7 +280,7 @@ func (m *Manager) LoadConfig() map[string]interface{} {
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
-		m.logger.Error(fmt.Sprintf("Error parsing MCP config: %v", err))
+		m.logger.Error("Error parsing MCP config: %v", err)
 		return nil
 	}
 
@@ -294,7 +294,7 @@ func (m *Manager) HandleXiaoZhiMCPMessage(msgMap map[string]interface{}) error {
 	}
 	err := m.XiaoZhiMCPClient.HandleMCPMessage(msgMap)
 	if err != nil {
-		m.logger.Error(fmt.Sprintf("处理小智MCP消息失败: %v", err))
+		m.logger.Error("处理小智MCP消息失败: %v", err)
 		return err
 	}
 	if m.XiaoZhiMCPClient.IsReady() && !m.bRegisteredXiaoZhiMCP {
@@ -385,7 +385,7 @@ func (m *Manager) registerTools(tools []go_openai.Tool) {
 		m.tools = append(m.tools, toolName)
 		if m.funcHandler != nil {
 			if err := m.funcHandler.RegisterFunction(toolName, tool); err != nil {
-				m.logger.Error(fmt.Sprintf("注册工具失败: %s, 错误: %v", toolName, err))
+				m.logger.Error("注册工具失败: %s, 错误: %v", toolName, err)
 				continue
 			}
 			// m.logger.Info("Registered tool: [%s] %s", toolName, tool.Function.Description)
@@ -413,7 +413,7 @@ func (m *Manager) ExecuteTool(
 	toolName string,
 	arguments map[string]interface{},
 ) (interface{}, error) {
-	m.logger.Info(fmt.Sprintf("Executing tool %s with arguments: %v", toolName, arguments))
+	m.logger.Info("Executing tool %s with arguments: %v", toolName, arguments)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -455,9 +455,9 @@ func (m *Manager) CleanupAll(ctx context.Context) {
 
 			select {
 			case <-done:
-				m.logger.Info(fmt.Sprintf("MCP client closed: %s", name))
+				m.logger.Info("MCP client closed: %s", name)
 			case <-ctx.Done():
-				m.logger.Error(fmt.Sprintf("Timeout closing MCP client %s", name))
+				m.logger.Error("Timeout closing MCP client %s", name)
 			}
 		}()
 
