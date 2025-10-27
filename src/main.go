@@ -29,15 +29,12 @@ import (
 	"xiaozhi-server-go/src/httpsvr/vision"
 	"xiaozhi-server-go/src/task"
 
-	_ "xiaozhi-server-go/src/docs"
-
 	cfg "xiaozhi-server-go/src/httpsvr/webapi"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/static"
 	"github.com/joho/godotenv"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/swaggo/swag"
 
 	// 导入所有providers以确保init函数被调用
 	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
@@ -58,6 +55,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 )
+
+const scalarHTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<title>小智 API Reference</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+	</head>
+	<body>
+		<script
+			id="api-reference"
+			data-url="/openapi.json"
+			data-layout="modern"
+			src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"
+		></script>
+	</body>
+</html>`
 
 func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	// 加载 .env 文件
@@ -293,10 +307,25 @@ func StartHttpServer(
 		Handler: router,
 	}
 
-	// 注册Swagger文档路由
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// 提供 OpenAPI JSON 文档
+	router.GET("/openapi.json", func(c *gin.Context) {
+		doc, err := swag.ReadDoc()
+		if err != nil {
+			logger.Error("生成 OpenAPI 文档失败 %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate openapi spec"})
+			return
+		}
+		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(doc))
+	})
+
+	// 提供 Scalar UI 作为 API 文档界面
+	router.GET("/docs", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(scalarHTML))
+	})
 
 	g.Go(func() error {
+		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
+		logger.Info("API文档 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
 		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
 
 		// 在单独的 goroutine 中监听关闭信号
