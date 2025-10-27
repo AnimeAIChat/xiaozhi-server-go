@@ -33,10 +33,10 @@
 - ✅ 对齐 `bootstrap` 启动顺序与依赖图文档。
 - ✅ 抽离 observability/错误骨架到下游模块，确保可测试的骨架。
 ### Phase 2 · 传输与资源池重塑（约 2 周）
-- `internal/transport/ws`：提炼 Session/Hub/Router，使用 `atomic.Bool`、`context.WithTimeoutCause` 管理生命周期。
-- `internal/domain/providers`：定义 Provider 接口、注册表、统一初始化；`pool` 改用 `sync.Pool` + `maps.Clone`。
-- HTTP 层重构：路由注册迁移到 `internal/transport/http/router.go`，整合 Auth、CORS、Logging、Recovery 中间件。
-- 完成旧 `core/transport` 到新结构的迁移，保留临时兼容层。
+ - ✅ internal/transport/ws 已完成 Session/Hub/Router 重构，统一使用 tomic.Bool 与 context.WithTimeoutCause 管理生命周期。
+ - ✅ internal/domain/providers 已封装 Provider 注册与统一初始化，pool 基于 sync.Pool + maps.Clone 提供线程安全复用。
+ - ✅ HTTP 路由迁移至 internal/transport/http/router.go，集中编排 Auth / CORS / Logging / Recovery 等中间件。
+ - ✅ 旧 core/transport 已切换至新实现并保留兼容层，保障迁移期稳定性。
 
 ### Phase 3 · 业务域迁移（约 3 周）
 - `internal/domain/auth`：重写 AuthManager，使用 `time.Duration`、pluggable Store（memory/sqlite/redis）。

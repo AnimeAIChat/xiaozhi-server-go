@@ -17,6 +17,7 @@ import (
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
 	platformobservability "xiaozhi-server-go/internal/platform/observability"
 	platformstorage "xiaozhi-server-go/internal/platform/storage"
+	httptransport "xiaozhi-server-go/internal/transport/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/auth"
@@ -32,8 +33,6 @@ import (
 
 	cfg "xiaozhi-server-go/src/httpsvr/webapi"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/swaggo/swag"
 	"golang.org/x/sync/errgroup"
@@ -461,83 +460,15 @@ func startHTTPServer(
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*http.Server, error) {
-	if config.Log.LogLevel == "debug" {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	router := gin.Default()
-
-	router.Use(func(c *gin.Context) {
-		path := c.FullPath()
-		if path == "" {
-			path = c.Request.URL.Path
-		}
-
-		reqCtx, spanEnd := platformobservability.StartSpan(c.Request.Context(), "http.server", path)
-		var spanErr error
-		c.Request = c.Request.WithContext(reqCtx)
-
-		start := time.Now()
-		c.Next()
-		duration := time.Since(start)
-
-		if len(c.Errors) > 0 {
-			spanErr = c.Errors.Last().Err
-		} else if status := c.Writer.Status(); status >= http.StatusInternalServerError {
-			spanErr = fmt.Errorf("status %d", status)
-		}
-		spanEnd(spanErr)
-
-		platformobservability.RecordMetric(
-			reqCtx,
-			"http.requests",
-			1,
-			map[string]string{
-				"component": "http.server",
-				"method":    c.Request.Method,
-				"path":      path,
-				"status":    strconv.Itoa(c.Writer.Status()),
-			},
-		)
-		platformobservability.RecordMetric(
-			reqCtx,
-			"http.request.duration_ms",
-			float64(duration.Milliseconds()),
-			map[string]string{
-				"component": "http.server",
-				"method":    c.Request.Method,
-				"path":      path,
-			},
-		)
+	httpRouter, err := httptransport.Build(httptransport.Options{
+		Config: config,
+		Logger: logger,
 	})
-
-	router.SetTrustedProxies([]string{"0.0.0.0"})
-
-	corsConfig := cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders: []string{
-			"Origin",
-			"Content-Type",
-			"Accept",
-			"Authorization",
-			"X-Requested-With",
-			"Cache-Control",
-			"X-File-Name",
-			"client-id",
-			"device-id",
-		},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+	if err != nil {
+		return nil, err
 	}
-	router.Use(cors.New(corsConfig))
-
-	logger.Debug("全局CORS中间件已配置，支持OPTIONS预检请求")
-
-	apiGroup := router.Group("/api")
-	router.Use(static.Serve("/", static.LocalFile("./web", true)))
+	router := httpRouter.Engine
+	apiGroup := httpRouter.API
 
 	router.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
