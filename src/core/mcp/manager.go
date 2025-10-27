@@ -40,7 +40,7 @@ type Manager struct {
 
 // NewManagerForPool 创建用于资源池的MCP管理器
 func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
-	lg.Info("创建MCP Manager用于资源池")
+	lg.Debug("创建MCP Manager用于资源池")
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
@@ -79,7 +79,7 @@ func (m *Manager) preInitializeServers() error {
 	config := m.LoadConfig()
 	if config == nil {
 		// 没有MCP配置文件，跳过外部服务器初始化
-		m.logger.Info("未找到MCP服务器配置文件，跳过外部MCP服务器初始化")
+		m.logger.Debug("未找到MCP服务器配置文件，跳过外部MCP服务器初始化")
 		m.isInitialized = true
 		return nil
 	}

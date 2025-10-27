@@ -96,9 +96,8 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger.Info("[日志] [初始化 %s] 成功", configPath)
 	utils.DefaultLogger = logger
-	logger.Info("日志系统初始化成功,level:%s 配置文件路径: %s", config.Log.LogLevel, configPath)
+	logger.Info("[日志] [初始化成功] [%s] 配置文件路径: %s", config.Log.LogLevel, configPath)
 
 	database.SetLogger(logger)
 	database.InsertDefaultConfigIfNeeded(database.GetDB())
@@ -324,9 +323,10 @@ func StartHttpServer(
 	})
 
 	g.Go(func() error {
-		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
-		logger.Info("API文档 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
-		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
+		logger.Info("[Gin] 访问地址: http://localhost:%d", config.Web.Port)
+		logger.Info("[Gin] [OTA]，访问地址: http://localhost:%d/api/ota/", config.Web.Port)
+		logger.Info("[API文档] 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
+		
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {
