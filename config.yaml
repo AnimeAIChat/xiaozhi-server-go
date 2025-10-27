@@ -89,6 +89,9 @@ local_mcp_fun:
   - name: "change_voice"
     description: "切换音色"
     enabled: true
+  - name: "switch_agent"
+    description: "切换智能体"
+    enabled: true
 
 # 选择使用的模块
 selected_module:
