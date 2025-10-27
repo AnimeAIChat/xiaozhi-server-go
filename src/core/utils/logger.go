@@ -462,3 +462,10 @@ func (l *Logger) InfoTiming(msg string, args ...interface{}) {
 	prefixedMsg := "[TIMING] " + msg
 	l.Info(prefixedMsg, args...)
 }
+
+// Slog exposes the underlying slog text logger for structured integrations.
+func (l *Logger) Slog() *slog.Logger {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.textLogger
+}

@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	appconfig "xiaozhi-server-go/internal/config"
+	platformconfig "xiaozhi-server-go/internal/platform/config"
+	platformlogging "xiaozhi-server-go/internal/platform/logging"
+	platformstorage "xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/auth"
@@ -110,21 +112,26 @@ func Run(ctx context.Context) error {
 }
 
 func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
-	if _, _, err := database.InitDB(); err != nil {
-		fmt.Printf("数据库连接失败: %v\n", err)
+	if err := platformstorage.InitConfigStore(); err != nil {
+		fmt.Printf("配置存储初始化失败: %v\n", err)
 	}
 
-	result, err := appconfig.NewLoader().Load()
+	result, err := platformconfig.NewLoader().Load()
 	if err != nil {
 		return nil, nil, err
 	}
 	config := result.Config
 	configPath := result.Path
 
-	logger, err := utils.NewLogger((*utils.LogCfg)(&config.Log))
+	logProvider, err := platformlogging.New(platformlogging.Config{
+		Level:    config.Log.LogLevel,
+		Dir:      config.Log.LogDir,
+		Filename: config.Log.LogFile,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
+	logger := logProvider.Legacy()
 	utils.DefaultLogger = logger
 	logger.Info("[日志] [初始化成功] [%s] 配置文件路径: %s", config.Log.LogLevel, configPath)
 
@@ -133,6 +140,7 @@ func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 
 	return config, logger, nil
 }
+
 func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthManager, error) {
 	storeConfig := &store.StoreConfig{
 		Type:     config.Server.Auth.Store.Type,

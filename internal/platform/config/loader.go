@@ -5,8 +5,8 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
 )
 
 // Loader bridges legacy config loading logic into the new internal layer.
@@ -19,7 +19,7 @@ type Loader struct {
 func NewLoader() *Loader {
 	return &Loader{
 		useDotEnv: true,
-		source:    database.GetServerConfigDB(),
+		source:    storage.ConfigStore(),
 	}
 }
 
@@ -47,13 +47,12 @@ type Result struct {
 func (l *Loader) Load() (*Result, error) {
 	if l.useDotEnv {
 		if err := godotenv.Load(); err != nil {
-			// 仅在 .env 不存在时提示，不中断流程
 			fmt.Println("未找到 .env 文件，使用系统环境变量")
 		}
 	}
 
 	if l.source == nil {
-		l.source = database.GetServerConfigDB()
+		l.source = storage.ConfigStore()
 	}
 
 	cfg, path, err := configs.LoadConfig(l.source)

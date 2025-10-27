@@ -24,11 +24,12 @@
 - 确认旧业务在新骨架下可启动，记录暂存的 TODO。
 
 ### Phase 1 · 横切资源整合（约 1-2 周）
-- 拆分存储层：`internal/platform/storage` 支持配置、会话、日志的抽象。
-- `internal/platform/observability` 集成 OpenTelemetry、Prometheus，编写 Gin/WebSocket 中间件。
-- 建立统一错误模型（`internal/platform/errors`），替换配置、数据库初始化的原始打印。
-- 调整 `bootstrap` 启动顺序，生成依赖拓扑图。
-- 新增冒烟测试（`go test ./internal/bootstrap -run Smoke`），验证启动/关闭流程。
+- ✅ 初始化 `internal/platform/config` Loader，并通过 `internal/platform/storage` 抽象配置存储
+- ✅ 引入 `internal/platform/logging`，统一使用 slog 包装旧日志（兼容 `utils.Logger`）
+- ◻️ `internal/platform/observability` 集成 OpenTelemetry、Prometheus，编写 Gin/WebSocket 中间件
+- ◻️ 建立统一错误模型（`internal/platform/errors`），替换配置、数据库初始化的原始打印
+- ◻️ 调整 `bootstrap` 启动顺序，生成依赖拓扑图
+- ◻️ 新增冒烟测试（`go test ./internal/bootstrap -run Smoke`），验证启动/关闭流程
 
 ### Phase 2 · 传输与资源池重塑（约 2 周）
 - `internal/transport/ws`：提炼 Session/Hub/Router，使用 `atomic.Bool`、`context.WithTimeoutCause` 管理生命周期。
