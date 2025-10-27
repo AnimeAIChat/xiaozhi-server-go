@@ -4,25 +4,31 @@
 GOCMD=go
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
+MAIN_PKG=./cmd/xiaozhi-server
 BINARY_NAME=xiaozhi-server
-BINARY_PATH=./src/main.go
+SWAG_MAIN=cmd/xiaozhi-server/main.go
+SWAG_OUT=src/docs
+SWAG_FLAGS=--parseGoList=false
 
 BUILD_DEPS := swag
 
 all: build
 
 build: $(BUILD_DEPS)
-	$(GOBUILD) -o $(BINARY_NAME) -v $(BINARY_PATH)
+	$(GOBUILD) -o $(BINARY_NAME) -v $(MAIN_PKG)
 
 clean:
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
 
 run: $(BUILD_DEPS)
-	$(GOCMD) run ./src/main.go
+	$(GOCMD) run $(MAIN_PKG)
 
-# 生成 Swagger 文档（可在 Makefile 外部通过 SWAG_AUTO 控制是否运行）
+test:
+	$(GOCMD) test ./...
+
+# 生成 Swagger 文档；若未安装 swag 或失败，忽略错误继续
 swag:
-	@cd src && swag init -g main.go || (echo "swag init failed, continuing..." && exit 0)
+	swag init -g $(SWAG_MAIN) -o $(SWAG_OUT) $(SWAG_FLAGS) || (echo "swag init failed, continuing..." && exit 0)
 
-.PHONY: all build clean run swag
+.PHONY: all build clean run test swag

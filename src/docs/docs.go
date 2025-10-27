@@ -575,7 +575,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Device"
+                                "$ref": "#/definitions/webapi.DeviceDoc"
                             }
                         }
                     }
@@ -605,7 +605,7 @@ const docTemplate = `{
                     "200": {
                         "description": "设备信息",
                         "schema": {
-                            "$ref": "#/definitions/models.Device"
+                            "$ref": "#/definitions/webapi.DeviceDoc"
                         }
                     }
                 }
@@ -644,7 +644,7 @@ const docTemplate = `{
                     "200": {
                         "description": "更新后的设备信息",
                         "schema": {
-                            "$ref": "#/definitions/models.Device"
+                            "$ref": "#/definitions/webapi.DeviceDoc"
                         }
                     }
                 }
@@ -992,102 +992,6 @@ const docTemplate = `{
                 "userID": {
                     "description": "外键关联 User",
                     "type": "integer"
-                }
-            }
-        },
-        "models.Device": {
-            "type": "object",
-            "properties": {
-                "agentID": {
-                    "description": "外键关联 Agent",
-                    "type": "integer"
-                },
-                "application": {
-                    "description": "应用名称",
-                    "type": "string"
-                },
-                "authCode": {
-                    "description": "认证码",
-                    "type": "string"
-                },
-                "authStatus": {
-                    "description": "认证状态，可选值：pending",
-                    "type": "string"
-                },
-                "boardType": {
-                    "description": "主板类型，可能为 lichuang-dev/atk-dnesp32s3-box",
-                    "type": "string"
-                },
-                "channel": {
-                    "description": "WiFi 频道",
-                    "type": "integer"
-                },
-                "chipModelName": {
-                    "description": "芯片型号名称，默认为 esp32s3",
-                    "type": "string"
-                },
-                "clientId": {
-                    "description": "客户端唯一标识",
-                    "type": "string"
-                },
-                "conversationId": {
-                    "description": "关联的对话AgentDialog的ID",
-                    "type": "string"
-                },
-                "deviceCode": {
-                    "description": "设备码，简化版的设备唯一标识",
-                    "type": "string"
-                },
-                "deviceId": {
-                    "description": "设备唯一标识,mac地址",
-                    "type": "string"
-                },
-                "extra": {
-                    "description": "额外信息，JSON格式",
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "language": {
-                    "description": "语言，默认为中文",
-                    "type": "string"
-                },
-                "lastActiveTimeV2": {
-                    "description": "最后活跃时间",
-                    "type": "string"
-                },
-                "mode": {
-                    "description": "模式:chat/listen/ban",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "设备名称",
-                    "type": "string"
-                },
-                "online": {
-                    "description": "在线状态",
-                    "type": "boolean"
-                },
-                "ota": {
-                    "description": "是否支持OTA升级",
-                    "type": "boolean"
-                },
-                "registerTimeV2": {
-                    "description": "注册时间",
-                    "type": "string"
-                },
-                "ssid": {
-                    "description": "WiFi SSID",
-                    "type": "string"
-                },
-                "userID": {
-                    "description": "外键关联 User",
-                    "type": "integer"
-                },
-                "version": {
-                    "description": "设备固件版本号",
-                    "type": "string"
                 }
             }
         },
@@ -1462,6 +1366,102 @@ const docTemplate = `{
                     "minLength": 6
                 },
                 "old_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "webapi.DeviceDoc": {
+            "type": "object",
+            "properties": {
+                "agentID": {
+                    "description": "外键关联 Agent",
+                    "type": "integer"
+                },
+                "application": {
+                    "description": "应用名称",
+                    "type": "string"
+                },
+                "authCode": {
+                    "description": "认证码",
+                    "type": "string"
+                },
+                "authStatus": {
+                    "description": "认证状态，可选值：pending",
+                    "type": "string"
+                },
+                "boardType": {
+                    "description": "主板类型，可能为 lichuang-dev/atk-dnesp32s3-box",
+                    "type": "string"
+                },
+                "channel": {
+                    "description": "WiFi 频道",
+                    "type": "integer"
+                },
+                "chipModelName": {
+                    "description": "芯片型号名称，默认为 esp32s3",
+                    "type": "string"
+                },
+                "clientId": {
+                    "description": "客户端唯一标识",
+                    "type": "string"
+                },
+                "conversationId": {
+                    "description": "关联的对话AgentDialog的ID",
+                    "type": "string"
+                },
+                "deviceCode": {
+                    "description": "设备码，简化版的设备唯一标识",
+                    "type": "string"
+                },
+                "deviceId": {
+                    "description": "设备唯一标识,mac地址",
+                    "type": "string"
+                },
+                "extra": {
+                    "description": "额外信息，JSON格式",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "language": {
+                    "description": "语言，默认为中文",
+                    "type": "string"
+                },
+                "lastActiveTimeV2": {
+                    "description": "最后活跃时间",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "模式:chat/listen/ban",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "设备名称",
+                    "type": "string"
+                },
+                "online": {
+                    "description": "在线状态",
+                    "type": "boolean"
+                },
+                "ota": {
+                    "description": "是否支持OTA升级",
+                    "type": "boolean"
+                },
+                "registerTimeV2": {
+                    "description": "注册时间",
+                    "type": "string"
+                },
+                "ssid": {
+                    "description": "WiFi SSID",
+                    "type": "string"
+                },
+                "userID": {
+                    "description": "外键关联 User",
+                    "type": "integer"
+                },
+                "version": {
+                    "description": "设备固件版本号",
                     "type": "string"
                 }
             }
