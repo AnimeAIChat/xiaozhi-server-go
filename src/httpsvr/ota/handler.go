@@ -216,9 +216,9 @@ func (s *DefaultOTAService) Trans2OTARequestBody(raw map[string]interface{}) OTA
 // @Accept json
 // @Produce json
 // @Param device-id header string true "设备ID"
-// @Param body body OtaRequest true "请求体"
-// @Success 200 {object} OtaFirmwareResponse
-// @Failure 400 {object} ErrorResponse
+// @Param body body ota.OTARequestBody true "请求体"
+// @Success 200 {object} ota.OtaFirmwareResponse
+// @Failure 400 {object} ota.ErrorResponse
 // @Router /ota/ [post]
 func (s *DefaultOTAService) handlePostOTA(c *gin.Context) {
 	deviceID := c.GetHeader("device-id")
