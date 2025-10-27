@@ -1,17 +1,9 @@
 config.db
 logs/**
-/tmp/**
-/tmpasr/**
-/web/**
-/scripts/**
-/vendor/**
-/src/docs/**
-/docs/**
-./
-@cmd /**/testdata/**
-
-src/models/**
-src/task/**
+tmp/**
+tmpasr/**
+web/**
+scripts/**
+vendor/**
 src/docs/**
-src/core/**
-src/configs/**
+docs/**
