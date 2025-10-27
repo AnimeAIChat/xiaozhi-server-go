@@ -49,27 +49,29 @@ func (c *LocalClient) RegisterTools() {
 		return
 	}
 
-	for _, funcName := range funcs {
-		if funcName.Name == "exit" && funcName.Enabled {
+	for _, localFunc := range funcs {
+		if localFunc.Name == "exit" && localFunc.Enabled {
 			c.AddToolExit()
 			c.logger.Info("RegisterTools: exit tool registered")
-		} else if funcName.Name == "time" && funcName.Enabled {
+		} else if localFunc.Name == "time" && localFunc.Enabled {
 			c.AddToolTime()
 			c.logger.Info("RegisterTools: time tool registered")
-		} else if funcName.Name == "change_voice" && funcName.Enabled {
+		} else if localFunc.Name == "change_voice" && localFunc.Enabled {
 			c.AddToolChangeVoice()
 			c.logger.Info("RegisterTools: change_voice tool registered")
-		} else if funcName.Name == "change_role" && funcName.Enabled {
+		} else if localFunc.Name == "change_role" && localFunc.Enabled {
 			c.AddToolChangeRole()
 			c.logger.Info("RegisterTools: change_role tool registered")
-		} else if funcName.Name == "play_music" && funcName.Enabled {
+		} else if localFunc.Name == "play_music" && localFunc.Enabled {
 			c.AddToolPlayMusic()
 			c.logger.Info("RegisterTools: play_music tool registered")
-		} else if funcName.Name == "switch_agent" && funcName.Enabled {
+		} else if localFunc.Name == "switch_agent" && localFunc.Enabled {
 			c.AddToolSwitchAgent()
 			c.logger.Info("RegisterTools: switch_agent tool registered")
 		} else {
-			c.logger.Warn("RegisterTools: unknown function name %s", funcName)
+			if localFunc.Enabled {
+				c.logger.Warn("RegisterTools: unknown function name %s", localFunc.Name)
+			}
 		}
 	}
 }

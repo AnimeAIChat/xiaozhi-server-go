@@ -80,6 +80,7 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
 	if err != nil || device == nil {
 		h.logger.Error("mcp_handler_switch_agent: FindDeviceByID failed: %v", err)
+		h.SystemSpeak("切换智能体失败：无法获取设备信息")
 		return
 	}
 
@@ -99,13 +100,14 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 			h.checkLLMProvider(agent, h.config)
 
 			if agent != nil && agent.Name != "" {
-				h.SystemSpeak("已切换到智能体 " + agent.Name)
+				h.SystemSpeak("已切换到 " + agent.Name)
 			} else {
 				h.SystemSpeak("已切换到新的智能体")
 			}
 			return
 		}
 	}
+	h.SystemSpeak("没有找到对应的智能体")
 }
 
 func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) string {

@@ -80,14 +80,8 @@ local_mcp_fun:
   - name: "exit"
     description: "识别退出意图"
     enabled: true
-  - name: "change_role"
-    description: "切换角色"
-    enabled: true
   - name: "play_music"
     description: "播放本地音乐"
-    enabled: true
-  - name: "change_voice"
-    description: "切换音色"
     enabled: true
   - name: "switch_agent"
     description: "切换智能体"
@@ -260,25 +254,6 @@ LLM:
 CMD_exit:
   - "退出"
   - "关闭"
-
-# 连通性检查配置
-connectivity_check:
-  # 是否启用连通性检查
-  enabled: false
-  # 检查超时时间
-  timeout: 30s
-  # 重试次数
-  retry_attempts: 3
-  # 重试延迟
-  retry_delay: 5s
-  # 测试模式配置
-  test_modes:
-    # ASR测试音频文件路径（可选，留空则仅测试连接）
-    asr_test_audio: ""
-    # LLM测试提示词
-    llm_test_prompt: "Hello"
-    # TTS测试文本
-    tts_test_text: "测试"
 
 # VLLLM配置（视觉语言大模型）
 VLLLM:

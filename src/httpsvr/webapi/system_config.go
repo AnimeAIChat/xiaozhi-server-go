@@ -501,6 +501,7 @@ func (s *SystemConfigService) handleUpdateMCPFunction(c *gin.Context) {
 			}
 		}
 	}
+	configs.Cfg.SaveToDB(database.GetServerConfigDB())
 
 	c.JSON(200, gin.H{
 		"status":  "ok",
