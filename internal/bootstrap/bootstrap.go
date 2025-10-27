@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os/signal"
 	"strconv"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	platformconfig "xiaozhi-server-go/internal/platform/config"
+	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
+	platformobservability "xiaozhi-server-go/internal/platform/observability"
 	platformstorage "xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
@@ -69,18 +72,66 @@ const scalarHTML = `<!DOCTYPE html>
 	</body>
 </html>`
 
+type stepFn func(context.Context, *appState) error
+
+type initStep struct {
+	ID        string
+	Title     string
+	DependsOn []string
+	Kind      platformerrors.Kind
+	Execute   stepFn
+}
+
+type appState struct {
+	config                *configs.Config
+	configPath            string
+	logProvider           *platformlogging.Logger
+	logger                *utils.Logger
+	slogger               *slog.Logger
+	observabilityShutdown platformobservability.ShutdownFunc
+	authManager           *auth.AuthManager
+}
+
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
 func Run(ctx context.Context) error {
-	config, logger, err := loadConfigAndLogger()
-	if err != nil {
-		return fmt.Errorf("load config and logger: %w", err)
+	state := &appState{}
+
+	steps := InitGraph()
+	if err := executeInitSteps(ctx, steps, state); err != nil {
+		return err
 	}
 
-	authManager, err := initAuthManager(config, logger)
-	if err != nil {
-		logger.Error("初始化认证管理器失败: %v", err)
-		return fmt.Errorf("init auth manager: %w", err)
+	config := state.config
+	logger := state.logger
+	if config == nil || logger == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"bootstrap state validation",
+			errors.New("config/logger not initialised"),
+		)
 	}
+
+	authManager := state.authManager
+	if authManager == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"bootstrap state validation",
+			errors.New("auth manager not initialised"),
+		)
+	}
+
+	logBootstrapGraph(logger, steps)
+
+	if shutdown := state.observabilityShutdown; shutdown != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdown(shutdownCtx); err != nil {
+				logger.Warn("[bootstrap] observability shutdown failed: %v", err)
+			}
+		}()
+	}
+
 	defer func() {
 		if authManager != nil {
 			if closeErr := authManager.Close(); closeErr != nil {
@@ -111,34 +162,213 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
-	if err := platformstorage.InitConfigStore(); err != nil {
-		fmt.Printf("配置存储初始化失败: %v\n", err)
+func logBootstrapGraph(logger *utils.Logger, steps []initStep) {
+	if logger == nil {
+		return
+	}
+	logger.Info("bootstrap dependency graph:")
+	for _, step := range steps {
+		if len(step.DependsOn) == 0 {
+			logger.Info("  %s (%s)", step.ID, step.Title)
+			continue
+		}
+		logger.Info("  %s (%s) depends on %s", step.ID, step.Title, strings.Join(step.DependsOn, ", "))
+	}
+	logger.Info("  startServices -> transports/http")
+}
+
+func executeInitSteps(ctx context.Context, steps []initStep, state *appState) error {
+	if state == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"execute init steps",
+			errors.New("nil bootstrap state"),
+		)
 	}
 
+	completed := make(map[string]struct{}, len(steps))
+	for _, step := range steps {
+		for _, dep := range step.DependsOn {
+			if _, ok := completed[dep]; !ok {
+				return platformerrors.Wrap(
+					platformerrors.KindBootstrap,
+					step.ID,
+					fmt.Errorf("dependency %s not satisfied", dep),
+				)
+			}
+		}
+		if step.Execute == nil {
+			return platformerrors.Wrap(
+				platformerrors.KindBootstrap,
+				step.ID,
+				errors.New("missing execute function"),
+			)
+		}
+		if err := step.Execute(ctx, state); err != nil {
+			var typed *platformerrors.Error
+			if errors.As(err, &typed) {
+				return err
+			}
+
+			kind := step.Kind
+			if kind == "" {
+				kind = platformerrors.KindBootstrap
+			}
+			return platformerrors.Wrap(kind, step.ID, err)
+		}
+		completed[step.ID] = struct{}{}
+	}
+	return nil
+}
+
+func InitGraph() []initStep {
+	return []initStep{
+		{
+			ID:      "storage:init-config-store",
+			Title:   "Initialise configuration store",
+			Kind:    platformerrors.KindStorage,
+			Execute: initStorageStep,
+		},
+		{
+			ID:        "config:load-runtime",
+			Title:     "Load runtime configuration",
+			DependsOn: []string{"storage:init-config-store"},
+			Kind:      platformerrors.KindConfig,
+			Execute:   loadConfigStep,
+		},
+		{
+			ID:        "logging:init-provider",
+			Title:     "Initialise logging provider",
+			DependsOn: []string{"config:load-runtime"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initLoggingStep,
+		},
+		{
+			ID:        "observability:setup-hooks",
+			Title:     "Setup observability hooks",
+			DependsOn: []string{"logging:init-provider"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   setupObservabilityStep,
+		},
+		{
+			ID:        "auth:init-manager",
+			Title:     "Initialise auth manager",
+			DependsOn: []string{"observability:setup-hooks"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initAuthStep,
+		},
+	}
+}
+
+func initStorageStep(_ context.Context, _ *appState) error {
+	if err := platformstorage.InitConfigStore(); err != nil {
+		return platformerrors.Wrap(platformerrors.KindStorage, "storage:init-config-store", err)
+	}
+	return nil
+}
+
+func loadConfigStep(_ context.Context, state *appState) error {
 	result, err := platformconfig.NewLoader().Load()
 	if err != nil {
-		return nil, nil, err
+		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-runtime", err)
 	}
-	config := result.Config
-	configPath := result.Path
+	state.config = result.Config
+	state.configPath = result.Path
+	return nil
+}
+
+func initLoggingStep(_ context.Context, state *appState) error {
+	if state == nil || state.config == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"logging:init-provider",
+			errors.New("config not loaded"),
+		)
+	}
 
 	logProvider, err := platformlogging.New(platformlogging.Config{
-		Level:    config.Log.LogLevel,
-		Dir:      config.Log.LogDir,
-		Filename: config.Log.LogFile,
+		Level:    state.config.Log.LogLevel,
+		Dir:      state.config.Log.LogDir,
+		Filename: state.config.Log.LogFile,
 	})
 	if err != nil {
-		return nil, nil, err
+		return platformerrors.Wrap(platformerrors.KindBootstrap, "logging:init-provider", err)
 	}
-	logger := logProvider.Legacy()
-	utils.DefaultLogger = logger
-	logger.Info("[日志] [初始化成功] [%s] 配置文件路径: %s", config.Log.LogLevel, configPath)
 
-	database.SetLogger(logger)
+	state.logProvider = logProvider
+	state.logger = logProvider.Legacy()
+	state.slogger = logProvider.Slog()
+	utils.DefaultLogger = state.logger
+
+	if state.logger != nil {
+		state.logger.Info("[bootstrap] logger ready level=%s config_path=%s", state.config.Log.LogLevel, state.configPath)
+	}
+
+	database.SetLogger(state.logger)
 	database.InsertDefaultConfigIfNeeded(database.GetDB())
 
-	return config, logger, nil
+	return nil
+}
+
+func setupObservabilityStep(ctx context.Context, state *appState) error {
+	if state == nil || state.logger == nil || state.config == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"observability:setup-hooks",
+			errors.New("config/logger not initialised"),
+		)
+	}
+
+	slogger := state.slogger
+	if slogger == nil && state.logger != nil {
+		slogger = state.logger.Slog()
+	}
+
+	cfg := platformobservability.Config{
+		Enabled: strings.EqualFold(state.config.Log.LogLevel, "debug"),
+	}
+
+	shutdown, err := platformobservability.Setup(ctx, cfg, slogger)
+	if err != nil {
+		return platformerrors.Wrap(platformerrors.KindBootstrap, "observability:setup-hooks", err)
+	}
+	state.observabilityShutdown = shutdown
+
+	return nil
+}
+
+func initAuthStep(_ context.Context, state *appState) error {
+	if state == nil || state.config == nil || state.logger == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"auth:init-manager",
+			errors.New("missing config/logger"),
+		)
+	}
+
+	authManager, err := initAuthManager(state.config, state.logger)
+	if err != nil {
+		return err
+	}
+	state.authManager = authManager
+	return nil
+}
+
+func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
+	state := &appState{}
+	graph := InitGraph()
+	if len(graph) < 3 {
+		return nil, nil, platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"load config and logger",
+			errors.New("bootstrap graph missing core steps"),
+		)
+	}
+
+	if err := executeInitSteps(context.Background(), graph[:3], state); err != nil {
+		return nil, nil, err
+	}
+	return state.config, state.logger, nil
 }
 
 func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthManager, error) {
@@ -150,7 +380,7 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthMa
 
 	authManager, err := auth.NewAuthManager(storeConfig, logger)
 	if err != nil {
-		return nil, fmt.Errorf("初始化认证管理器失败: %v", err)
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
 	}
 
 	return authManager, nil
@@ -166,7 +396,7 @@ func startTransportServer(
 	poolManager, err := pool.NewPoolManager(config, logger)
 	if err != nil {
 		logger.Error("初始化资源池管理器失败: %v", err)
-		return nil, fmt.Errorf("初始化资源池管理器失败: %v", err)
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
 	}
 
 	taskMgr := task.NewTaskManager(task.ResourceConfig{
@@ -237,6 +467,51 @@ func startHTTPServer(
 		gin.SetMode(gin.ReleaseMode)
 	}
 	router := gin.Default()
+
+	router.Use(func(c *gin.Context) {
+		path := c.FullPath()
+		if path == "" {
+			path = c.Request.URL.Path
+		}
+
+		reqCtx, spanEnd := platformobservability.StartSpan(c.Request.Context(), "http.server", path)
+		var spanErr error
+		c.Request = c.Request.WithContext(reqCtx)
+
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+
+		if len(c.Errors) > 0 {
+			spanErr = c.Errors.Last().Err
+		} else if status := c.Writer.Status(); status >= http.StatusInternalServerError {
+			spanErr = fmt.Errorf("status %d", status)
+		}
+		spanEnd(spanErr)
+
+		platformobservability.RecordMetric(
+			reqCtx,
+			"http.requests",
+			1,
+			map[string]string{
+				"component": "http.server",
+				"method":    c.Request.Method,
+				"path":      path,
+				"status":    strconv.Itoa(c.Writer.Status()),
+			},
+		)
+		platformobservability.RecordMetric(
+			reqCtx,
+			"http.request.duration_ms",
+			float64(duration.Milliseconds()),
+			map[string]string{
+				"component": "http.server",
+				"method":    c.Request.Method,
+				"path":      path,
+			},
+		)
+	})
+
 	router.SetTrustedProxies([]string{"0.0.0.0"})
 
 	corsConfig := cors.Config{
@@ -288,11 +563,11 @@ func startHTTPServer(
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
 		logger.Error("Vision 服务初始化失败:%v", err)
-		return nil, err
+		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:new-service", err)
 	}
 	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.Error("Vision 服务启动失败 %v", err)
-		return nil, err
+		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:start-service", err)
 	}
 
 	cfgServer, err := cfg.NewDefaultAdminService(config, logger)

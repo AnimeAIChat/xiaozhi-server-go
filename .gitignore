@@ -8,6 +8,7 @@ wake_replay
 /uploads
 .env
 *.db
+*.log
 /ota_bin
 xiaozhi-server
 !cmd/
