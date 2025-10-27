@@ -15,16 +15,11 @@ type VisionRequest struct {
 	ImagePath string // 图片路径
 }
 
-// VisionResponse Vision标准响应结构（兼容Python版本）
-// @Description Vision分析响应体
-// @Success 200 {object} VisionResponse
-// @Failure 400 {object} VisionResponse
-// @Failure 401 {object} VisionResponse
-// @Failure 500 {object} VisionResponse
-type VisionResponse struct {
-	Success bool   `json:"success"`           // 是否成功
-	Result  string `json:"result,omitempty"`  // 分析结果（成功时）
-	Message string `json:"message,omitempty"` // 错误信息（失败时）
+// VisionAnalysisData 表示视觉分析结果在 data 字段中的结构
+// @Description Vision分析数据载荷
+type VisionAnalysisData struct {
+	Result string `json:"result,omitempty"` // 分析结果（成功时）
+	Error  string `json:"error,omitempty"`  // 错误信息（失败时）
 }
 
 // VisionStatusResponse Vision状态响应结构

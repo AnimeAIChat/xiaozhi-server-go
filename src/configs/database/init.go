@@ -59,18 +59,20 @@ func (l *DBLogger) Trace(
 			// 忽略记录未找到的错误
 			return
 		}
-		l.logger.Error("SQL Trace Error", map[string]interface{}{
-			"sql":     sql,
-			"rows":    rows,
-			"elapsed": elapsed,
-			"err":     err,
-		})
+		l.logger.Error(
+			"SQL Trace Error: sql=%s rows=%d elapsed=%s err=%v",
+			sql,
+			rows,
+			elapsed,
+			err,
+		)
 	} else {
-		l.logger.Debug("SQL Trace", map[string]interface{}{
-			"sql":     sql,
-			"rows":    rows,
-			"elapsed": elapsed,
-		})
+		l.logger.Debug(
+			"SQL Trace: sql=%s rows=%d elapsed=%s",
+			sql,
+			rows,
+			elapsed,
+		)
 	}
 }
 

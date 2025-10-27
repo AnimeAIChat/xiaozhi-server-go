@@ -63,14 +63,14 @@ func NewConnectionContextAdapter(
 func (a *ConnectionContextAdapter) Handle() {
 	// 适配原有的Handle方法，传入适配的连接
 	a.handler.Handle(a.conn)
-	a.logger.Info(fmt.Sprintf("客户端 %s 连接处理完成", a.clientID))
+	a.logger.Info("客户端 %s 连接处理完成", a.clientID)
 }
 
 // Close 实现ConnectionHandler接口的Close方法，完全兼容原有逻辑
 func (a *ConnectionContextAdapter) Close() {
 	// 使用原子操作标记为已关闭
 	if !atomic.CompareAndSwapInt32(&a.closed, 0, 1) {
-		a.logger.Info(fmt.Sprintf("客户端 %s 连接已关闭，跳过重复关闭", a.clientID))
+		a.logger.Info("客户端 %s 连接已关闭，跳过重复关闭", a.clientID)
 		return // 已经关闭过了
 	}
 
@@ -123,14 +123,14 @@ func (a *ConnectionContextAdapter) CreateSafeCallback() func(func(*core.Connecti
 		return func() {
 			// 检查连接是否仍然活跃
 			if !a.IsActive() {
-				a.logger.Info(fmt.Sprintf("客户端 %s 连接已关闭，跳过回调", a.clientID))
+				a.logger.Info("客户端 %s 连接已关闭，跳过回调", a.clientID)
 				return
 			}
 
 			// 检查上下文是否已取消
 			select {
 			case <-a.ctx.Done():
-				a.logger.Info(fmt.Sprintf("客户端 %s 上下文已取消，跳过回调", a.clientID))
+				a.logger.Info("客户端 %s 上下文已取消，跳过回调", a.clientID)
 				return
 			default:
 			}
@@ -174,7 +174,7 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 	// 从资源池获取提供者集合
 	providerSet, err := f.poolManager.GetProviderSet()
 	if err != nil {
-		f.logger.Error(fmt.Sprintf("获取提供者集合失败: %v", err))
+		f.logger.Error("获取提供者集合失败: %v", err)
 		return nil
 	}
 	//检查conn是否有属性mcpManager

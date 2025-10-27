@@ -681,7 +681,7 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 	cleand_text := utils.RemoveAllPunctuation(text) // 移除标点符号，确保匹配准确
 	// 检查是否包含退出命令
 	for _, cmd := range exitCommands {
-		h.logger.Debug(fmt.Sprintf("检查退出命令: %s,%s", cmd, cleand_text))
+		h.logger.Debug("检查退出命令: %s,%s", cmd, cleand_text)
 		//判断相等
 		if cleand_text == cmd {
 			h.LogInfo("[客户端] [退出意图] 收到，准备结束对话")
@@ -829,7 +829,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			// 处理分段
 			fullText := utils.JoinStrings(responseMessage)
 			if len(fullText) <= processedChars {
-				h.logger.Warn(fmt.Sprintf("文本处理异常: fullText长度=%d, processedChars=%d", len(fullText), processedChars))
+				h.logger.Warn("文本处理异常: fullText长度=%d, processedChars=%d", len(fullText), processedChars)
 				continue
 			}
 			currentText := fullText[processedChars:]
@@ -1064,7 +1064,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 	if err := os.Remove(filepath); err != nil {
 		h.LogError(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
 	} else {
-		h.logger.Debug(fmt.Sprintf(reason+" 已删除音频文件: %s", filepath))
+		h.logger.Debug(reason+" 已删除音频文件: %s", filepath)
 	}
 }
 
@@ -1081,7 +1081,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 				textIndex int
 			}{filepath, text, round, textIndex}
 		} else {
-			h.logger.Debug(fmt.Sprintf("[TTS] [跳过音频任务] index=%d, 无可播放内容", textIndex))
+			h.logger.Debug("[TTS] [跳过音频任务] index=%d, 无可播放内容", textIndex)
 		}
 	}()
 
@@ -1097,7 +1097,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	cleanText = utils.RemoveParentheses(cleanText)
 
 	if cleanText == "" {
-		h.logger.Warn(fmt.Sprintf("[TTS] [警告] 收到空文本 index=%d", textIndex))
+		h.logger.Warn("[TTS] [警告] 收到空文本 index=%d", textIndex)
 		return
 	}
 
@@ -1113,7 +1113,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 
 	filepath = generatedFile
 	hasAudio = true
-	h.logger.Debug(fmt.Sprintf("TTS转换成功: text(%s), index(%d) %s", logText, textIndex, filepath))
+	h.logger.Debug("TTS转换成功: text(%s), index(%d) %s", logText, textIndex, filepath)
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.LogInfo(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", logText))
@@ -1127,7 +1127,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	if textIndex == 1 {
 		now := time.Now()
 		ttsSpentTime := now.Sub(ttsStartTime)
-		h.logger.Debug(fmt.Sprintf("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, logText, textIndex))
+		h.logger.Debug("TTS转换耗时: %s, 文本: %s, 索引: %d", ttsSpentTime, logText, textIndex)
 	}
 
 }
@@ -1164,7 +1164,7 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 	}
 
 	if len(text) > 255 {
-		h.logger.Warn(fmt.Sprintf("文本过长，超过255字符限制，截断合成语音: %s", utils.SanitizeForLog(text)))
+		h.logger.Warn("文本过长，超过255字符限制，截断合成语音: %s", utils.SanitizeForLog(text))
 		text = text[:255] // 截断文本
 	}
 

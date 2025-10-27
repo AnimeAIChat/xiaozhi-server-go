@@ -3,6 +3,7 @@ package webapi
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
@@ -63,10 +64,7 @@ func (s *DefaultAdminService) Start(
 }
 
 func (s *DefaultAdminService) handleGet(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "Admin service is running",
-	})
+	respondSuccess(c, http.StatusOK, nil, "Admin service is running")
 }
 
 type SystemConfig struct {
@@ -103,11 +101,7 @@ func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
 	data["vllmList"] = vllmList
 
 	// fmt.Println("JSON字符串:", data)
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "System configuration retrieved successfully",
-		"data":    data,
-	})
+	respondSuccess(c, http.StatusOK, data, "System configuration retrieved successfully")
 }
 
 // handleSystemGet 获取系统配置
@@ -125,21 +119,13 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 
 	// 绑定JSON数据到结构体
 	if err := c.ShouldBindJSON(&requestData); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "Invalid JSON format",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, "Invalid JSON format", gin.H{"error": err.Error()})
 		return
 	}
 
 	// 检查data字段是否为空
 	if requestData.Data == "" {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "Missing 'data' field in request body",
-			"error":   "data field is required",
-		})
+		respondError(c, http.StatusBadRequest, "Missing 'data' field in request body", gin.H{"error": "data field is required"})
 		return
 	}
 
@@ -148,11 +134,7 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 	// 解析data字段中的JSON字符串到SystemConfig结构体
 	var config SystemConfig
 	if err := json.Unmarshal([]byte(requestData.Data), &config); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "Invalid system configuration data",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, "Invalid system configuration data", gin.H{"error": err.Error()})
 		return
 	}
 
@@ -163,8 +145,5 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 	configs.Cfg.DefaultPrompt = config.Prompt
 
 	configs.Cfg.SaveToDB(database.GetServerConfigDB())
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "System configuration saved successfully",
-	})
+	respondSuccess(c, http.StatusOK, nil, "System configuration saved successfully")
 }

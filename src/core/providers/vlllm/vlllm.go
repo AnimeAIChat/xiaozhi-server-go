@@ -118,19 +118,21 @@ func (p *Provider) Initialize() error {
 		if p.config.BaseURL == "" {
 			p.config.BaseURL = "http://localhost:11434" // 默认Ollama地址
 		}
-		p.logger.Debug("Ollama VLLLM初始化成功 %v", map[string]interface{}{
-			"base_url": p.config.BaseURL,
-			"model":    p.config.ModelName,
-		})
+		p.logger.Debug(
+			"Ollama VLLLM初始化成功: base_url=%s model=%s",
+			p.config.BaseURL,
+			p.config.ModelName,
+		)
 
 	default:
 		return fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
 	}
 
-	p.logger.Debug("VLLLM Provider初始化成功 %v", map[string]interface{}{
-		"type":       p.config.Type,
-		"model_name": p.config.ModelName,
-	})
+	p.logger.Debug(
+		"VLLLM Provider初始化成功: type=%s model_name=%s",
+		p.config.Type,
+		p.config.ModelName,
+	)
 
 	return nil
 }
@@ -139,7 +141,7 @@ func (p *Provider) Initialize() error {
 func (p *Provider) Cleanup() error {
 	// 清理图片处理器
 	if err := p.imageProcessor.Cleanup(); err != nil {
-		p.logger.Warn("清理图片处理器失败", err)
+		p.logger.Warn("清理图片处理器失败: %v", err)
 	}
 
 	p.logger.Info("VLLLM Provider清理完成")
@@ -154,12 +156,13 @@ func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, mess
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
-	p.logger.Debug("开始调用多模态API %v", map[string]interface{}{
-		"type":       p.config.Type,
-		"model_name": p.config.ModelName,
-		"text":       text,
-		"image_size": len(base64Image),
-	})
+	p.logger.Debug(
+		"开始调用多模态API: type=%s model_name=%s text_length=%d image_size=%d",
+		p.config.Type,
+		p.config.ModelName,
+		len(text),
+		len(base64Image),
+	)
 
 	// 根据类型调用对应的多模态API
 	switch strings.ToLower(p.config.Type) {
@@ -297,7 +300,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		requestBody, err := json.Marshal(request)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【请求序列化失败: %v】", err)
-			p.logger.Error("Ollama请求序列化失败", err)
+			p.logger.Error("Ollama请求序列化失败: %v", err)
 			return
 		}
 
@@ -306,32 +309,34 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
 		if err != nil {
 			responseChan <- fmt.Sprintf("【创建请求失败: %v】", err)
-			p.logger.Error("创建Ollama请求失败", err)
+			p.logger.Error("创建Ollama请求失败: %v", err)
 			return
 		}
 
 		req.Header.Set("Content-Type", "application/json")
 
-		p.logger.Info("向Ollama发送多模态请求", map[string]interface{}{
-			"url":   url,
-			"model": p.config.ModelName,
-			"text":  text,
-		})
+		p.logger.Info(
+			"向Ollama发送多模态请求: url=%s model=%s text_length=%d",
+			url,
+			p.config.ModelName,
+			len(text),
+		)
 
 		resp, err := p.httpClient.Do(req)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【Ollama API调用失败: %v】", err)
-			p.logger.Error("Ollama API调用失败", err)
+			p.logger.Error("Ollama API调用失败: %v", err)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			responseChan <- fmt.Sprintf("【Ollama API返回错误: %d】", resp.StatusCode)
-			p.logger.Error("Ollama API返回错误", map[string]interface{}{
-				"status_code": resp.StatusCode,
-				"status":      resp.Status,
-			})
+			p.logger.Error(
+				"Ollama API返回错误: status_code=%d status=%s",
+				resp.StatusCode,
+				resp.Status,
+			)
 			return
 		}
 
@@ -345,7 +350,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 			var response OllamaResponse
 			if err := decoder.Decode(&response); err != nil {
 				if err.Error() != "EOF" {
-					p.logger.Error("解析Ollama响应失败", err)
+					p.logger.Error("解析Ollama响应失败: %v", err)
 				}
 				break
 			}

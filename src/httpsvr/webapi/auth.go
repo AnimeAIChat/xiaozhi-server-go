@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
@@ -33,14 +34,14 @@ func AuthMiddleware() gin.HandlerFunc {
 				userID, exists := c.Get("user_id")
 				if !exists {
 					utils.DefaultLogger.Error("API Token验证通过，但未设置user_id")
-					c.JSON(401, gin.H{"status": "error", "message": "需要设置user_id"})
+					respondError(c, http.StatusUnauthorized, "需要设置user_id", nil)
 					c.Abort()
 					return
 				}
 				username, exists := c.Get("username")
 				if !exists {
 					utils.DefaultLogger.Error("API Token验证通过，但未设置username")
-					c.JSON(401, gin.H{"status": "error", "message": "需要设置username"})
+					respondError(c, http.StatusUnauthorized, "需要设置username", nil)
 					c.Abort()
 					return
 				}
@@ -48,7 +49,7 @@ func AuthMiddleware() gin.HandlerFunc {
 				user, err := database.GetUserByID(database.GetDB(), userID.(uint))
 				if err != nil || user == nil || user.Username != username.(string) {
 					utils.DefaultLogger.Error("API Token验证通过，但user_id和username不匹配")
-					c.JSON(401, gin.H{"status": "error", "message": "user_id和username不匹配"})
+					respondError(c, http.StatusUnauthorized, "user_id和username不匹配", nil)
 					c.Abort()
 					return
 				}
@@ -63,7 +64,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		token := c.GetHeader("Authorization")
 		if token == "" {
 			utils.DefaultLogger.Error("未提供认证token")
-			c.JSON(401, gin.H{"status": "error", "message": "未提供认证token"})
+			respondError(c, http.StatusUnauthorized, "未提供认证token", nil)
 			c.Abort()
 			return
 		}
@@ -73,7 +74,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		claims, err := VerifyJWT(token)
 		if err != nil {
 			utils.DefaultLogger.Error("无效的token: %v", err)
-			c.JSON(401, gin.H{"status": "error", "message": "无效的token"})
+			respondError(c, http.StatusUnauthorized, "无效的token", gin.H{"error": err.Error()})
 			c.Abort()
 			return
 		}
@@ -91,14 +92,14 @@ func AdminMiddleware() gin.HandlerFunc {
 		userID, exists := c.Get("user_id")
 		if !exists {
 			fmt.Println("未认证")
-			c.JSON(401, gin.H{"status": "error", "message": "未认证"})
+			respondError(c, http.StatusUnauthorized, "未认证", nil)
 			c.Abort()
 			return
 		}
 		user, err := database.GetUserByID(database.GetDB(), userID.(uint))
 		if err != nil || user == nil {
 			fmt.Println("权限不足，未找到用户信息")
-			c.JSON(403, gin.H{"status": "error", "message": "权限不足"})
+			respondError(c, http.StatusForbidden, "权限不足", nil)
 			c.Abort()
 			return
 		}
@@ -110,14 +111,14 @@ func AdminMiddleware() gin.HandlerFunc {
 				return
 			}
 			fmt.Println("权限不足，必须是管理员或观察员账号（只读）")
-			c.JSON(403, gin.H{"status": "error", "message": "请使用管理员或观察员账号进行查看操作"})
+			respondError(c, http.StatusForbidden, "请使用管理员或观察员账号进行查看操作", nil)
 			c.Abort()
 			return
 		}
 		// 非 GET 方法仅允许 admin
 		if user.Role != "admin" {
 			fmt.Println("权限不足，必须是管理员账号")
-			c.JSON(403, gin.H{"status": "error", "message": "请使用管理员账号进行操作"})
+			respondError(c, http.StatusForbidden, "请使用管理员账号进行操作", nil)
 			c.Abort()
 			return
 		}

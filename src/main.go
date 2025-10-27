@@ -134,7 +134,7 @@ func StartTransportServer(
 	// 初始化资源池管理器
 	poolManager, err := pool.NewPoolManager(config, logger)
 	if err != nil {
-		logger.Error(fmt.Sprintf("初始化资源池管理器失败: %v", err))
+		logger.Error("初始化资源池管理器失败: %v", err)
 		return nil, fmt.Errorf("初始化资源池管理器失败: %v", err)
 	}
 
@@ -251,7 +251,12 @@ func StartHttpServer(
 	router.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/api") {
-			c.JSON(404, gin.H{"error": "api Not found"})
+			c.JSON(http.StatusNotFound, cfg.APIResponse{
+				Success: false,
+				Data:    gin.H{},
+				Message: "api Not found",
+				Code:    http.StatusNotFound,
+			})
 			return
 		}
 
@@ -261,7 +266,7 @@ func StartHttpServer(
 	// 启动OTA服务
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("OTA 服务启动失败", err)
+		logger.Error("OTA 服务启动失败: %v", err)
 		return nil, err
 	}
 
@@ -311,7 +316,12 @@ func StartHttpServer(
 		doc, err := swag.ReadDoc()
 		if err != nil {
 			logger.Error("生成 OpenAPI 文档失败 %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate openapi spec"})
+			c.JSON(http.StatusInternalServerError, cfg.APIResponse{
+				Success: false,
+				Data:    gin.H{"error": err.Error()},
+				Message: "failed to generate openapi spec",
+				Code:    http.StatusInternalServerError,
+			})
 			return
 		}
 		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(doc))
@@ -326,7 +336,6 @@ func StartHttpServer(
 		logger.Info("[Gin] 访问地址: http://localhost:%d", config.Web.Port)
 		logger.Info("[Gin] [OTA] 访问地址: http://localhost:%d/api/ota/", config.Web.Port)
 		logger.Info("[API文档] 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
-		
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {
@@ -417,7 +426,7 @@ func main() {
 	// 初始化认证管理器
 	authManager, err := initAuthManager(config, logger)
 	if err != nil {
-		logger.Error("初始化认证管理器失败:", err)
+		logger.Error("初始化认证管理器失败: %v", err)
 		os.Exit(1)
 	}
 

@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"net/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -35,17 +36,11 @@ func (s *DefaultCfgService) Start(ctx context.Context, engine *gin.Engine, apiGr
 }
 
 func (s *DefaultCfgService) handleGet(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "Cfg service is running",
-	})
+	respondSuccess(c, http.StatusOK, nil, "Cfg service is running")
 }
 
 func (s *DefaultCfgService) handlePost(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "Cfg service is running",
-	})
+	respondSuccess(c, http.StatusOK, nil, "Cfg service is running")
 }
 
 func (s *DefaultCfgService) handleOptions(c *gin.Context) {
