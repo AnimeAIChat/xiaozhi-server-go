@@ -190,7 +190,7 @@ func (cfg *Config) SaveToDB(dbi ConfigDBInterface) error {
 // LoadConfig 加载配置
 // 完全从数据库加载配置，如果数据库为空则使用默认配置并初始化数据库
 func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
-	bUseDatabaseCfg := false
+	bUseDatabaseCfg := true
 	// 尝试从数据库加载配置
 	cfgStr, err := dbi.LoadServerConfig()
 	if err != nil {
