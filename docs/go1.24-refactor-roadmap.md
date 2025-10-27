@@ -16,21 +16,22 @@
 
 ## 里程碑计划
 
-### Phase 0 · 骨架奠定（约 1 周）
-- 创建新入口与 `bootstrap`，迁移旧 `main.go` 功能。
-- 实施 `internal/platform/logging`，封装 `slog`，适配旧日志接口。
-- `internal/config`：实现 Loader/Schema/Defaults/Validate，保留数据库写回桥接。
-- 引入 `internal/platform/runtime.App`，统一 `errgroup.WithContext`、`signal.NotifyContext`、`errors.Join` 处理。
-- 确认旧业务在新骨架下可启动，记录暂存的 TODO。
+### Phase 0 —— 启动基线（约 1 周）
+- ✅ 确认新建 `bootstrap`，迁移原 `main.go` 逻辑。
+- ✅ 施行 `internal/platform/logging`，封装 `slog` 与 legacy 日志接口。
+- ✅ `internal/platform/config` 实现 Loader/Schema/Defaults/Validate，并迁移数据库写入逻辑。
+- ✅ 搭建 `internal/platform/runtime.App`，统一 `errgroup.WithContext`、`signal.NotifyContext`、`errors.Join` 调用。
+- ✅ 确认旧业务模块的关键清单及阶段性记录 TODO。
 
-### Phase 1 · 横切资源整合（约 1-2 周）
-- ✅ 初始化 `internal/platform/config` Loader，并通过 `internal/platform/storage` 抽象配置存储
-- ✅ 引入 `internal/platform/logging`，统一使用 slog 包装旧日志（兼容 `utils.Logger`）
-- ◻️ `internal/platform/observability` 集成 OpenTelemetry、Prometheus，编写 Gin/WebSocket 中间件
-- ◻️ 建立统一错误模型（`internal/platform/errors`），替换配置、数据库初始化的原始打印
-- ◻️ 调整 `bootstrap` 启动顺序，生成依赖拓扑图
-- ◻️ 新增冒烟测试（`go test ./internal/bootstrap -run Smoke`），验证启动/关闭流程
-
+### Phase 1 —— 平台能力铺设（约 1-2 周）
+- ✅ 启动 `internal/platform/config` Loader，打通 `internal/platform/storage` 配置存储。
+- ✅ 落地 `internal/platform/logging`，统一使用 slog 封装替换 `utils.Logger`。
+- ✅ 整理 Swagger 生成，Makefile + `.swagignore` 控制扫描范围，压缩冗余输出。
+- ✅ 提炼统一错误模型并接入 `internal/platform/errors`，完善 bootstrap 适配。
+- ✅ 搭建可观测性脚手架，`internal/platform/observability` 在 Run 阶段预留关闭链路。
+- ✅ 添加 bootstrap smoke test，确保 `go test ./internal/bootstrap` 可通过。
+- ✅ 对齐 `bootstrap` 启动顺序与依赖图文档。
+- ✅ 抽离 observability/错误骨架到下游模块，确保可测试的骨架。
 ### Phase 2 · 传输与资源池重塑（约 2 周）
 - `internal/transport/ws`：提炼 Session/Hub/Router，使用 `atomic.Bool`、`context.WithTimeoutCause` 管理生命周期。
 - `internal/domain/providers`：定义 Provider 接口、注册表、统一初始化；`pool` 改用 `sync.Pool` + `maps.Clone`。
@@ -51,7 +52,7 @@
 - 协作机制：制定迁移 Checklist、周度同步，维护路线图进展。
 
 ## 关键交付物
-- `docs/ADR-0001-architecture.md`：目标架构与依赖流描述。
+- `docs/ADR-0001-architecture.md、docs/ADR-0002-bootstrap-deps.md`：目标架构与依赖流描述。
 - `cmd/internal` 新目录结构与最小可运行应用。
 - 统一日志、配置、观测模块与对应测试。
 - Provider & Transport 重构后的接口文档与示例。
@@ -69,4 +70,6 @@
 2. 撰写 ADR 草稿并在团队评审，统一目标结构。
 3. 建立模块映射表与负责人分工，评估工作量。
 4. 搭建初始 `Makefile` 任务（`run`, `test`, `lint`），为后续迭代铺路。
+
+
 

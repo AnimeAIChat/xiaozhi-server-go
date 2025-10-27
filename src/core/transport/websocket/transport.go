@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"xiaozhi-server-go/internal/platform/observability"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/utils"
@@ -103,55 +104,93 @@ func (t *WebSocketTransport) GetType() string {
 
 // handleWebSocket 处理WebSocket连接
 func (t *WebSocketTransport) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	ctx, spanEnd := observability.StartSpan(r.Context(), "transport.websocket", "handle")
+	var spanErr error
+	defer func() {
+		spanEnd(spanErr)
+	}()
+
+	r = r.WithContext(ctx)
+
 	conn, err := t.upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		spanErr = err
+		observability.RecordMetric(ctx, "websocket.upgrade.error", 1, map[string]string{
+			"component": "transport.websocket",
+		})
 		t.logger.Error("WebSocket升级失败: %v", err)
 		return
 	}
+	observability.RecordMetric(ctx, "websocket.upgrade.success", 1, map[string]string{
+		"component": "transport.websocket",
+	})
 
 	deviceID := r.Header.Get("Device-Id")
 	clientID := r.Header.Get("Client-Id")
 	if deviceID == "" {
-		// 尝试从url中获取
+		// 尝试从url里获取
 		deviceID = r.URL.Query().Get("device-id")
 		r.Header.Set("Device-Id", deviceID)
 		t.logger.Info("尝试从URL获取Device-Id: %v", r.URL)
 	}
 	if clientID == "" {
-		// 尝试从url中获取
+		// 尝试从url里获取
 		clientID = r.URL.Query().Get("client-id")
 		r.Header.Set("Client-Id", clientID)
 	}
 	if clientID == "" {
 		clientID = fmt.Sprintf("%p", conn)
 	}
-	t.logger.Info("[WebSocket] [连接请求 %s/%s]", deviceID, clientID)
+	t.logger.Info("[WebSocket] [请求连接 %s/%s]", deviceID, clientID)
 	wsConn := NewWebSocketConnection(clientID, conn)
 
 	if t.connHandler == nil {
-		t.logger.Error("连接处理器工厂未设置")
+		spanErr = fmt.Errorf("connection handler not configured")
+		observability.RecordMetric(ctx, "websocket.connection.error", 1, map[string]string{
+			"component": "transport.websocket",
+			"reason":    "handler_not_configured",
+		})
+		t.logger.Error("连接处理器尚未配置")
 		conn.Close()
 		return
 	}
 
 	handler := t.connHandler.CreateHandler(wsConn, r)
 	if handler == nil {
+		spanErr = fmt.Errorf("connection handler creation failed")
+		observability.RecordMetric(ctx, "websocket.connection.error", 1, map[string]string{
+			"component": "transport.websocket",
+			"reason":    "handler_creation_failed",
+		})
 		t.logger.Error("创建连接处理器失败")
 		conn.Close()
 		return
 	}
 
 	t.activeConnections.Store(clientID, handler)
-	t.logger.Info("[WebSocket] [连接建立 %s] 资源已分配", clientID)
+	t.logger.Info("[WebSocket] [连接建立 %s] 资源已就绪", clientID)
+	observability.RecordMetric(ctx, "websocket.connection.opened", 1, map[string]string{
+		"component": "transport.websocket",
+		"client_id": clientID,
+		"device_id": deviceID,
+	})
 
-	// 启动连接处理，并在结束时清理资源
-	go func() {
+	// 连接处理器在退出时回收资源
+	go func(baseCtx context.Context, id, device string, h transport.ConnectionHandler) {
+		sessionCtx, sessionEnd := observability.StartSpan(baseCtx, "transport.websocket", "session")
+		defer sessionEnd(nil)
+
 		defer func() {
 			// 连接结束时清理
-			t.activeConnections.Delete(clientID)
-			handler.Close()
+			t.activeConnections.Delete(id)
+			h.Close()
+			observability.RecordMetric(sessionCtx, "websocket.connection.closed", 1, map[string]string{
+				"component": "transport.websocket",
+				"client_id": id,
+				"device_id": device,
+			})
 		}()
 
-		handler.Handle()
-	}()
+		h.Handle()
+	}(ctx, clientID, deviceID, handler)
 }
