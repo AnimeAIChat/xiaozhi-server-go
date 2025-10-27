@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"sync/atomic"
+	"time"
+
+	"xiaozhi-server-go/internal/transport/ws"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/pool"
@@ -21,8 +24,8 @@ type ConnectionContextAdapter struct {
 	logger      *utils.Logger
 	conn        Connection
 	ctx         context.Context
-	cancel      context.CancelFunc
-	closed      int32 // 原子操作标志，0=活跃，1=已关闭
+	cancel      context.CancelCauseFunc
+	closed      atomic.Bool // 原子操作标志，0=活跃，1=已关闭
 }
 
 // NewConnectionContextAdapter 创建新的连接上下文适配器
@@ -36,7 +39,7 @@ func NewConnectionContextAdapter(
 	req *http.Request,
 ) *ConnectionContextAdapter {
 	clientID := conn.GetID()
-	connCtx, connCancel := context.WithCancel(context.Background())
+	connCtx, connCancel := context.WithCancelCause(context.Background())
 
 	// 创建ConnectionHandler
 	handler := core.NewConnectionHandler(config, providerSet, logger, req, connCtx)
@@ -50,7 +53,6 @@ func NewConnectionContextAdapter(
 		conn:        conn,
 		ctx:         connCtx,
 		cancel:      connCancel,
-		closed:      0,
 	}
 
 	// 设置TaskManager和回调
@@ -69,13 +71,13 @@ func (a *ConnectionContextAdapter) Handle() {
 // Close 实现ConnectionHandler接口的Close方法，完全兼容原有逻辑
 func (a *ConnectionContextAdapter) Close() {
 	// 使用原子操作标记为已关闭
-	if !atomic.CompareAndSwapInt32(&a.closed, 0, 1) {
+	if !a.closed.CompareAndSwap(false, true) {
 		a.logger.Info("客户端 %s 连接已关闭，跳过重复关闭", a.clientID)
 		return // 已经关闭过了
 	}
 
 	// 取消上下文，通知所有相关操作停止
-	a.cancel()
+	a.cancel(ws.ErrSessionShutdown)
 
 	// 先关闭连接处理器
 	if a.handler != nil {
@@ -89,7 +91,14 @@ func (a *ConnectionContextAdapter) Close() {
 
 	// 归还资源到池中
 	if a.providerSet != nil && a.poolManager != nil {
-		if err := a.poolManager.ReturnProviderSet(a.providerSet); err != nil {
+		releaseCtx, releaseCancel := context.WithTimeoutCause(
+			context.Background(),
+			3*time.Second,
+			ws.ErrSessionShutdown,
+		)
+		defer releaseCancel()
+
+		if err := a.providerSet.ReleaseWithContext(releaseCtx); err != nil {
 			a.logger.Error("客户端 %s 归还资源失败: %v", a.clientID, err)
 		} else {
 			a.logger.Info("客户端 %s 资源已成功归还到池中", a.clientID)
@@ -104,7 +113,7 @@ func (a *ConnectionContextAdapter) GetSessionID() string {
 
 // IsActive 检查连接是否仍然活跃
 func (a *ConnectionContextAdapter) IsActive() bool {
-	return atomic.LoadInt32(&a.closed) == 0
+	return !a.closed.Load()
 }
 
 // GetContext 获取上下文（用于取消操作）
