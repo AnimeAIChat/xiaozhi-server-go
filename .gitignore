@@ -1,13 +1,15 @@
-xiaozhi-server
 /logs
 /tmp
 /.config.yaml
 /.mcp_server_settings.json
-xiaozhi-server-go
 .mcp_server_settings copy.json
 .DS_Store
 wake_replay
 /uploads
 .env
-config.db
+*.db
 /ota_bin
+xiaozhi-server
+!cmd/
+!cmd/xiaozhi-server/
+!cmd/xiaozhi-server/main.go

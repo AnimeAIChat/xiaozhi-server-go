@@ -5,10 +5,13 @@ import (
 	"strconv"
 	"time"
 	"xiaozhi-server-go/src/configs/database"
+	models "xiaozhi-server-go/src/models"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+type DeviceDoc = models.Device
 
 // DeviceBindRequest 设备绑定请求体
 // @Description 绑定设备到指定Agent
@@ -16,7 +19,7 @@ import (
 // @Accept json
 // @Produce json
 // @Param data body DeviceBindRequest true "设备绑定参数"
-// @Success 200 {object} models.Device "绑定成功返回设备信息"
+// @Success 200 {object} DeviceDoc "绑定成功返回设备信息"
 // @Router /user/device/bind [post]
 type DeviceBindRequest struct {
 	AgentID  uint   `json:"agentID"`
@@ -29,7 +32,7 @@ type DeviceBindRequest struct {
 // @Accept json
 // @Produce json
 // @Param data body DeviceUpdateRequest true "设备更新参数"
-// @Success 200 {object} models.Device "更新后的设备信息"
+// @Success 200 {object} DeviceDoc "更新后的设备信息"
 // @Router /user/device/{id} [put]
 type DeviceUpdateRequest struct {
 	Online         *bool      `json:"online,omitempty"`
@@ -44,7 +47,7 @@ type DeviceUpdateRequest struct {
 // @Description 获取当前Agent的所有设备
 // @Tags Device
 // @Produce json
-// @Success 200 {object} []models.Device "设备列表"
+// @Success 200 {object} []DeviceDoc "设备列表"
 // @Router /user/device/list [get]
 func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
 	// userID := c.GetUint("user_id")
@@ -67,7 +70,7 @@ func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
 // @Description 获取当前用户的所有设备
 // @Tags Device
 // @Produce json
-// @Success 200 {object} []models.Device "设备列表"
+// @Success 200 {object} []DeviceDoc "设备列表"
 // @Router /user/device/list [get]
 func (s *DefaultUserService) handleDeviceListByUser(c *gin.Context) {
 	userID := c.GetUint("user_id")
@@ -88,7 +91,7 @@ func (s *DefaultUserService) handleDeviceListByUser(c *gin.Context) {
 // @Tags Device
 // @Produce json
 // @Param id path int true "设备ID"
-// @Success 200 {object} models.Device "设备信息"
+// @Success 200 {object} DeviceDoc "设备信息"
 // @Router /user/device/{id} [get]
 func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
 	userID := c.GetUint("user_id")
@@ -115,7 +118,7 @@ func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
 // @Produce json
 // @Param id path int true "设备ID"
 // @Param data body DeviceUpdateRequest true "设备更新参数"
-// @Success 200 {object} models.Device "更新后的设备信息"
+// @Success 200 {object} DeviceDoc "更新后的设备信息"
 // @Router /user/device/{id} [put]
 func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 	userID := c.GetUint("user_id")
