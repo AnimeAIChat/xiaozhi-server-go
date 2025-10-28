@@ -44,7 +44,7 @@ type CustomTextHandler struct {
 
 var (
 	colorReset  = "\x1b[0m"
-	colorTime   = "\x1b[93m" // 时间：浅黄色 (Bright Yellow)
+	colorTime   = "\x1b[90m" // 时间：灰色
 	colorDebug  = "\x1b[36m" // DEBUG：青色
 	colorInfo   = "\x1b[32m" // INFO：绿色
 	colorWarn   = "\x1b[33m" // WARN：黄色
