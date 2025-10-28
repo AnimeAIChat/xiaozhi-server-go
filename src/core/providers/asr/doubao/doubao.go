@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/core/providers/asr"
+	"xiaozhi-server-go/internal/transport/ws"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gorilla/websocket"
@@ -61,6 +62,7 @@ type Provider struct {
 	chunkDuration int
 	connectID     string
 	logger        *utils.Logger // 添加日志记录器
+	session       *ws.Session
 
 	// 配置
 	modelName     string
@@ -81,7 +83,7 @@ type Provider struct {
 }
 
 // NewProvider 创建豆包ASR提供者实例
-func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Provider, error) {
+func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, session *ws.Session) (*Provider, error) {
 	base := asr.NewBaseProvider(config, deleteFile)
 
 	// 从config.Data中获取配置
@@ -130,6 +132,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 		chunkDuration: 200, // 固定使用200ms分片
 		connectID:     connectID,
 		logger:        logger, // 使用简单的logger
+		session:       session, // 添加 session
 
 		// 默认配置
 		modelName:     "bigmodel",
@@ -412,6 +415,12 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 func (p *Provider) StartStreaming(ctx context.Context) error {
 	p.logger.InfoTag("ASR", "流式识别开始")
 	p.ResetStartListenTime()
+
+	// 调用 session 的 ResetLLMContext 方法
+	if p.session != nil {
+		p.session.ResetLLMContext()
+	}
+
 	// 加锁保护连接初始化
 	p.connMutex.Lock()
 	defer p.connMutex.Unlock()
@@ -764,9 +773,20 @@ func (p *Provider) CloseConnection() error {
 	return nil
 }
 
+// 添加占位实现以避免空指针错误
+// 定义一个空的 SessionHandler 实现
+type emptySessionHandler struct{}
+
+func (h *emptySessionHandler) Handle() {}
+func (h *emptySessionHandler) Close() {}
+func (h *emptySessionHandler) GetSessionID() string { return "empty-session" }
+
 func init() {
 	// 注册豆包ASR提供者
 	asr.Register("doubao", func(config *asr.Config, deleteFile bool, logger *utils.Logger) (asr.Provider, error) {
-		return NewProvider(config, deleteFile, logger)
+		handler := &emptySessionHandler{} // 使用占位实现
+		conn := &ws.Connection{}         // 使用空的 Connection 实例
+		session := ws.NewSession(context.Background(), handler, conn, logger)
+		return NewProvider(config, deleteFile, logger, session)
 	})
 }

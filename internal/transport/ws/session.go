@@ -27,12 +27,24 @@ type Session struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
+    llmCtx    context.Context
+    llmCancel context.CancelFunc
+
 	closed atomic.Bool
 }
 
 // NewSession constructs a managed websocket session.
+
+// ResetLLMContext 供ASR流程开始时调用，取消旧LLM回复并生成新context
+func (s *Session) ResetLLMContext() {
+	if s.llmCancel != nil {
+		s.llmCancel()
+	}
+	s.llmCtx, s.llmCancel = context.WithCancel(context.Background())
+}
 func NewSession(parent context.Context, handler SessionHandler, conn *Connection, logger *utils.Logger) *Session {
 	sessionCtx, cancel := context.WithCancelCause(parent)
+	llmCtx, llmCancel := context.WithCancel(context.Background())
 	return &Session{
 		id:      handler.GetSessionID(),
 		handler: handler,
@@ -40,6 +52,8 @@ func NewSession(parent context.Context, handler SessionHandler, conn *Connection
 		logger:  logger,
 		ctx:     sessionCtx,
 		cancel:  cancel,
+		llmCtx:  llmCtx,
+		llmCancel: llmCancel,
 	}
 }
 
@@ -74,6 +88,11 @@ func (s *Session) Close(reason error) {
 
 	if !s.closed.CompareAndSwap(false, true) {
 		return
+	}
+
+	// 关闭LLM回复协程
+	if s.llmCancel != nil {
+		s.llmCancel()
 	}
 
 	if s.cancel != nil {
