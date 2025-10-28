@@ -235,13 +235,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "$ref": "#/definitions/ota.OtaFirmwareResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "$ref": "#/definitions/ota.ErrorResponse"
                         }
                     }
                 }
@@ -1011,6 +1011,19 @@ const docTemplate = `{
                 }
             }
         },
+        "ota.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "缺少 device-id"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
         "ota.FirmwareInfo": {
             "type": "object",
             "properties": {
@@ -1190,6 +1203,46 @@ const docTemplate = `{
                 },
                 "websocket": {
                     "$ref": "#/definitions/ota.WebSocketInfo"
+                }
+            }
+        },
+        "ota.OtaFirmwareResponse": {
+            "type": "object",
+            "properties": {
+                "firmware": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "example": "/ota_bin/1.0.3.bin"
+                        },
+                        "version": {
+                            "type": "string",
+                            "example": "1.0.3"
+                        }
+                    }
+                },
+                "server_time": {
+                    "type": "object",
+                    "properties": {
+                        "timestamp": {
+                            "type": "integer",
+                            "example": 1688443200000
+                        },
+                        "timezone_offset": {
+                            "type": "integer",
+                            "example": 480
+                        }
+                    }
+                },
+                "websocket": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "example": "wss://example.com/ota"
+                        }
+                    }
                 }
             }
         },

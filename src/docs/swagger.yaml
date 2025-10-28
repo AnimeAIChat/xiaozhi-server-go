@@ -90,6 +90,15 @@ definitions:
       message:
         type: string
     type: object
+  ota.ErrorResponse:
+    properties:
+      message:
+        example: 缺少 device-id
+        type: string
+      success:
+        example: false
+        type: boolean
+    type: object
   ota.FirmwareInfo:
     properties:
       url:
@@ -210,6 +219,33 @@ definitions:
         $ref: '#/definitions/ota.ServerTimeInfo'
       websocket:
         $ref: '#/definitions/ota.WebSocketInfo'
+    type: object
+  ota.OtaFirmwareResponse:
+    properties:
+      firmware:
+        properties:
+          url:
+            example: /ota_bin/1.0.3.bin
+            type: string
+          version:
+            example: 1.0.3
+            type: string
+        type: object
+      server_time:
+        properties:
+          timestamp:
+            example: 1688443200000
+            type: integer
+          timezone_offset:
+            example: 480
+            type: integer
+        type: object
+      websocket:
+        properties:
+          url:
+            example: wss://example.com/ota
+            type: string
+        type: object
     type: object
   ota.ServerTimeInfo:
     properties:
@@ -588,11 +624,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
+            $ref: '#/definitions/ota.OtaFirmwareResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
+            $ref: '#/definitions/ota.ErrorResponse'
       summary: 上传设备信息获取最新固件
       tags:
       - OTA
