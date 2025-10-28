@@ -302,7 +302,7 @@ func initLoggingStep(_ context.Context, state *appState) error {
 	if state.logger != nil {
 		state.logger.InfoTag(
 			"引导",
-			"日志模块就绪 level=%s config_path=%s",
+			"日志模块就绪 [%s] %s",
 			state.config.Log.LogLevel,
 			state.configPath,
 		)

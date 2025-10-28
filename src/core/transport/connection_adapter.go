@@ -2,7 +2,6 @@ package transport
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -191,12 +190,12 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 		if mgr := holder.GetMCPManager(); mgr != nil {
 			f.poolManager.ReturnMcpManager(providerSet.MCP)
 			providerSet.MCP = mgr
-			fmt.Println("使用已有的MCPManager创建handler")
+			f.logger.InfoTag("连接", "使用已有的MCPManager创建handler")
 		} else {
-			fmt.Println("连接没有已有的MCPManager")
+			f.logger.InfoTag("连接", "连接没有已有的MCPManager")
 		}
 	} else {
-		fmt.Println("连接没有MCPManagerHolder接口")
+		f.logger.InfoTag("连接", "连接没有MCPManagerHolder接口")
 	}
 
 	// 创建连接上下文适配器
