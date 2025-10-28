@@ -25,6 +25,10 @@ func (l *testLogger) Debug(format string, args ...any) { l.logf(format, args...)
 func (l *testLogger) Info(format string, args ...any)  { l.logf(format, args...) }
 func (l *testLogger) Warn(format string, args ...any)  { l.logf(format, args...) }
 func (l *testLogger) Error(format string, args ...any) { l.logf(format, args...) }
+func (l *testLogger) DebugTag(tag string, format string, args ...any) { l.logf("["+tag+"] "+format, args...) }
+func (l *testLogger) InfoTag(tag string, format string, args ...any)  { l.logf("["+tag+"] "+format, args...) }
+func (l *testLogger) WarnTag(tag string, format string, args ...any)  { l.logf("["+tag+"] "+format, args...) }
+func (l *testLogger) ErrorTag(tag string, format string, args ...any) { l.logf("["+tag+"] "+format, args...) }
 
 type fakeClient struct {
 	tools       []openai.Tool
