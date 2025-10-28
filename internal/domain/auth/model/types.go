@@ -21,4 +21,8 @@ type Logger interface {
 	Info(format string, args ...any)
 	Warn(format string, args ...any)
 	Error(format string, args ...any)
+	DebugTag(tag string, format string, args ...any)
+	InfoTag(tag string, format string, args ...any)
+	WarnTag(tag string, format string, args ...any)
+	ErrorTag(tag string, format string, args ...any)
 }
