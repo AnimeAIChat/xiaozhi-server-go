@@ -84,7 +84,7 @@ func TestLogBootstrapGraphOutput(t *testing.T) {
 		t.Fatalf("read log file: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "bootstrap dependency graph:") {
+	if !strings.Contains(content, "初始化依赖关系概览") {
 		t.Fatalf("graph header missing in log output: %s", content)
 	}
 	for _, id := range []string{
