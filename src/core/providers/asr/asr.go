@@ -173,11 +173,6 @@ func (p *BaseProvider) PublishAsrResult(text string, isFinal bool) {
 
 	// 发布同步事件
 	eventbus.Publish(eventbus.EventASRResult, eventData)
-
-	// 如果有listener，保持向后兼容
-	if p.listener != nil {
-		p.listener.OnAsrResult(text, isFinal)
-	}
 }
 
 // PublishAsrError 发布ASR错误事件

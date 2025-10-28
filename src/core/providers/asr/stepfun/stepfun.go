@@ -295,12 +295,8 @@ func (p *Provider) readLoop() {
 				} else if text != "" {
 					p.BaseProvider.SilenceCount = 0
 				}
-				// 发布ASR结果事件
-				p.PublishAsrResult(text, true)
-				// 如果有listener，保持向后兼容
-				if finished := listener.OnAsrResult(text, true); finished {
-					return
-				}
+				// 直接调用listener.OnAsrResult，不再通过事件总线
+				listener.OnAsrResult(text, true)
 			}
 		default:
 			// 其他事件忽略
