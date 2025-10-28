@@ -759,10 +759,21 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		_ = msg
 		//msg.Print()
 	}
+
+	// 发布LLM开始事件
+	if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
+		publisher.SetSessionID(h.sessionID)
+		publisher.PublishLLMResponse("", false, round, nil) // 开始事件
+	}
+
 	// 使用LLM生成回复
 	tools := h.functionRegister.GetAllFunctions()
 	responses, err := h.providers.llm.ResponseWithFunctions(ctx, h.sessionID, messages, tools)
 	if err != nil {
+		// 发布LLM错误事件
+		if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
+			publisher.PublishLLMError(err, round)
+		}
 		return fmt.Errorf("LLM生成回复失败: %v", err)
 	}
 
@@ -854,6 +865,11 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 					h.LogError(fmt.Sprintf("播放LLM回复分段失败: %v", err))
 				}
 				processedChars += charsCnt
+
+				// 发布LLM响应事件
+				if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
+					publisher.PublishLLMResponse(segment, false, round, nil)
+				}
 			}
 		}
 	}
@@ -941,6 +957,11 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			Role:    "assistant",
 			Content: content,
 		})
+	}
+
+	// 发布LLM完成事件
+	if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
+		publisher.PublishLLMResponse(content, true, round, nil)
 	}
 
 	return nil
@@ -1117,6 +1138,11 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	hasAudio = true
 	h.logger.DebugTag("TTS", "转换成功 text=%s index=%d 文件=%s", logText, textIndex, filepath)
 
+	// 发布TTS完成事件
+	if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
+		publisher.PublishTTSCompleted(text, textIndex, round, filepath)
+	}
+
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.LogInfo(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", logText))
 		// 服务端语音停止时，根据配置删除已生成的音频文件
@@ -1136,6 +1162,12 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 
 // speakAndPlay 合成并播放语音
 func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
+	// 发布TTS说话事件
+	if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
+		publisher.SetSessionID(h.sessionID)
+		publisher.PublishTTSSpeak(text, textIndex, round)
+	}
+
 	defer func() {
 		// 将任务加入队列，不阻塞当前流程
 		h.ttsQueue <- struct {

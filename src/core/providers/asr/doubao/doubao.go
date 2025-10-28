@@ -623,8 +623,13 @@ func (p *Provider) ReadMessage() {
 					if text == "" && !isLastPackage {
 						continue
 					}
-					if finished := listener.OnAsrResult(text, isLastPackage); finished {
-						return
+					// 发布ASR结果事件
+					p.PublishAsrResult(text, isLastPackage)
+					// 如果有listener，保持向后兼容
+					if listener != nil {
+						if finished := listener.OnAsrResult(text, isLastPackage); finished {
+							return
+						}
 					}
 				}
 			} else if errorData, hasError := payloadMsg["error"]; hasError {

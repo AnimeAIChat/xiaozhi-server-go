@@ -295,6 +295,9 @@ func (p *Provider) readLoop() {
 				} else if text != "" {
 					p.BaseProvider.SilenceCount = 0
 				}
+				// 发布ASR结果事件
+				p.PublishAsrResult(text, true)
+				// 如果有listener，保持向后兼容
 				if finished := listener.OnAsrResult(text, true); finished {
 					return
 				}
