@@ -128,7 +128,7 @@ func SetLogger(logger *xiaozhi_utils.Logger) {
 
 	var version string
 	DB.Raw("SELECT sqlite_version()").Scan(&version)
-	logger.Info("[SQLite] 版本: %s", version)
+	logger.InfoTag("SQLite", "检测到 SQLite 版本: %s", version)
 }
 
 // migrateTables 自动迁移模型表结构

@@ -200,7 +200,7 @@ func NewConnectionHandler(
 		if key == "Transport-Type" {
 			handler.transportType = values[0] // 传输类型
 		}
-		logger.Debug("[HTTP] [头部 %s] %s", key, values[0])
+		logger.DebugTag("HTTP", "请求头 %s: %s", key, values[0])
 	}
 
 	if handler.sessionID == "" {
@@ -341,7 +341,7 @@ func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config
 		}
 		h.initialVoice = h.voiceName // 保存初始语音名称
 	}
-	h.logger.Info("使用TTS提供者: %s, 语音名称: %s", h.ttsProviderName, h.voiceName)
+	h.logger.InfoTag("TTS", "使用 TTS 提供者 %s，语音 %s", h.ttsProviderName, h.voiceName)
 
 }
 
@@ -499,23 +499,42 @@ func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, resul
 	h.LogInfo(fmt.Sprintf("任务 %s 完成，ID: %s, %v", task.Type, id, result))
 }
 
+func (h *ConnectionHandler) normalizeLogMessage(msg string) string {
+	trimmed := strings.TrimSpace(msg)
+	if trimmed == "" {
+		return "[Connection]"
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		return trimmed
+	}
+	return "[Connection] " + trimmed
+}
+
 func (h *ConnectionHandler) LogInfo(msg string) {
 	if h.logger != nil {
-		h.logger.Info(msg, map[string]interface{}{
+		h.logger.Info(h.normalizeLogMessage(msg), map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
 }
 func (h *ConnectionHandler) LogDebug(msg string) {
 	if h.logger != nil {
-		h.logger.Debug(msg, map[string]interface{}{
+		h.logger.Debug(h.normalizeLogMessage(msg), map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
 }
 func (h *ConnectionHandler) LogError(msg string) {
 	if h.logger != nil {
-		h.logger.Error(msg, map[string]interface{}{
+		h.logger.Error(h.normalizeLogMessage(msg), map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
+
+func (h *ConnectionHandler) LogWarn(msg string) {
+	if h.logger != nil {
+		h.logger.Warn(h.normalizeLogMessage(msg), map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
@@ -678,7 +697,7 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 // handleChatMessage 处理聊天消息
 func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) error {
 	if text == "" {
-		h.logger.Warn("收到空聊天消息，忽略")
+		h.LogWarn("收到空聊天消息，忽略")
 		h.clientAbortChat()
 		return fmt.Errorf("聊天消息为空")
 	}
@@ -995,7 +1014,7 @@ func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, fu
 
 func (h *ConnectionHandler) SystemSpeak(text string) error {
 	if text == "" {
-		h.logger.Warn("SystemSpeak 收到空文本，无法合成语音")
+		h.LogWarn("[SystemSpeak] 收到空文本，无法合成语音")
 		return errors.New("收到空文本，无法合成语音")
 	}
 	texts := utils.SplitByPunctuation(text)
@@ -1047,7 +1066,7 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 	if err := os.Remove(filepath); err != nil {
 		h.LogError(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
 	} else {
-		h.logger.Debug(reason+" 已删除音频文件: %s", filepath)
+		h.LogDebug(fmt.Sprintf("%s 已删除音频文件: %s", reason, filepath))
 	}
 }
 
@@ -1064,7 +1083,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 				textIndex int
 			}{filepath, text, round, textIndex}
 		} else {
-			h.logger.Debug("[TTS] [跳过音频任务] index=%d, 无可播放内容", textIndex)
+			h.logger.DebugTag("TTS", "跳过音频任务，样本索引=%d，暂无可播放内容", textIndex)
 		}
 	}()
 
@@ -1080,7 +1099,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	cleanText = utils.RemoveParentheses(cleanText)
 
 	if cleanText == "" {
-		h.logger.Warn("[TTS] [警告] 收到空文本 index=%d", textIndex)
+		h.logger.WarnTag("TTS", "收到空文本，索引=%d", textIndex)
 		return
 	}
 
@@ -1096,7 +1115,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 
 	filepath = generatedFile
 	hasAudio = true
-	h.logger.Debug("TTS转换成功: text(%s), index(%d) %s", logText, textIndex, filepath)
+	h.logger.DebugTag("TTS", "转换成功 text=%s index=%d 文件=%s", logText, textIndex, filepath)
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.LogInfo(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", logText))
@@ -1227,7 +1246,7 @@ func (h *ConnectionHandler) Close() {
 
 // genResponseByVLLM 使用VLLLM处理包含图片的消息
 func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData domainimage.ImageData, text string, round int) error {
-	h.logger.Info("开始生成VLLLM回复 %v", map[string]interface{}{
+	h.logger.InfoTag("VLLLM", "开始生成回复 %v", map[string]interface{}{
 		"text":          text,
 		"has_url":       imageData.URL != "",
 		"has_data":      imageData.Data != "",

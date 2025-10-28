@@ -67,7 +67,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	if s.logger != nil {
-		s.logger.Info("[WebSocket] listening on %s%s", s.cfg.Addr, s.cfg.Path)
+		s.logger.InfoTag("WebSocket", "监听地址 %s%s", s.cfg.Addr, s.cfg.Path)
 	}
 
 	err := s.httpSrv.ListenAndServe()

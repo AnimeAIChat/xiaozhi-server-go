@@ -283,7 +283,7 @@ func (p *Provider) readLoop() {
 			}
 			// 读取转写结果
 			text := e.Transcript
-			p.logger.Debug("[DEBUG] Step识别结果: %s", text)
+			p.logger.DebugTag("ASR", "Step 识别结果: %s", text)
 			p.connMutex.Lock()
 			p.result = text
 			p.connMutex.Unlock()

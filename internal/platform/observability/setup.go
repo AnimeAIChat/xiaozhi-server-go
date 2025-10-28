@@ -35,9 +35,9 @@ func Setup(ctx context.Context, cfg Config, logger *slog.Logger) (ShutdownFunc, 
 
 	if logger != nil {
 		if cfg.Enabled {
-			logger.InfoContext(ctx, "observability scaffolding enabled")
+			logger.InfoContext(ctx, "[OBSERVABILITY][SETUP] scaffolding enabled")
 		} else {
-			logger.InfoContext(ctx, "observability disabled")
+			logger.InfoContext(ctx, "[OBSERVABILITY][SETUP] disabled")
 		}
 	}
 	return func(context.Context) error { return nil }, nil
