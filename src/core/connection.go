@@ -12,13 +12,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	domainauth "xiaozhi-server-go/internal/domain/auth"
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
-	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
-	"xiaozhi-server-go/src/core/mcp"
+	coremcp "xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -71,7 +72,7 @@ type ConnectionHandler struct {
 	conn             Connection
 	closeOnce        sync.Once
 	taskMgr          *task.TaskManager
-	authManager      *auth.AuthManager // 认证管理器
+	authManager      *domainauth.AuthManager // 认证管理器
 	safeCallbackFunc func(func(*ConnectionHandler)) func()
 	providers        struct {
 		asr   providers.ASRProvider
@@ -145,7 +146,7 @@ type ConnectionHandler struct {
 	roundStartTime time.Time // 轮次开始时间
 	// functions
 	functionRegister *function.FunctionRegistry
-	mcpManager       *mcp.Manager
+	mcpManager       *domainmcp.Manager
 
 	mcpResultHandlers map[string]func(interface{}) // MCP处理器映射
 	ctx               context.Context
@@ -558,7 +559,12 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 			"client_id":  h.clientId,
 			"token":      h.config.Server.Token,
 		}
-		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
+		legacyConn, ok := any(conn).(coremcp.Conn)
+		if !ok {
+			h.LogError("当前连接不支持 MCP 绑定")
+			return
+		}
+		if err := h.mcpManager.BindConnection(legacyConn, h.functionRegister, params); err != nil {
 			h.LogError(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
 			return
 		}

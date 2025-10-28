@@ -8,8 +8,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/mcp"
+	coremcp "xiaozhi-server-go/src/core/mcp"
 	coreproviders "xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -28,7 +29,7 @@ type Set struct {
 	LLM   coreproviders.LLMProvider
 	TTS   coreproviders.TTSProvider
 	VLLLM *vlllm.Provider
-	MCP   *mcp.Manager
+	MCP   *domainmcp.Manager
 }
 
 // ReleaseWithContext returns the providers held by the set back to the manager.
@@ -71,7 +72,7 @@ type Manager struct {
 	llmPool   *providerPool[coreproviders.LLMProvider]
 	ttsPool   *providerPool[coreproviders.TTSProvider]
 	vlllmPool *providerPool[*vlllm.Provider]
-	mcpPool   *providerPool[*mcp.Manager]
+	mcpPool   *providerPool[*domainmcp.Manager]
 
 	closed atomic.Bool
 }
@@ -168,7 +169,7 @@ func (m *Manager) Acquire(ctx context.Context) (*Set, error) {
 }
 
 // AcquireMCP retrieves a standalone MCP manager from the underlying pool.
-func (m *Manager) AcquireMCP(ctx context.Context) (*mcp.Manager, error) {
+func (m *Manager) AcquireMCP(ctx context.Context) (*domainmcp.Manager, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -179,7 +180,7 @@ func (m *Manager) AcquireMCP(ctx context.Context) (*mcp.Manager, error) {
 }
 
 // ReleaseMCP returns an MCP manager to the pool.
-func (m *Manager) ReleaseMCP(ctx context.Context, manager *mcp.Manager) error {
+func (m *Manager) ReleaseMCP(ctx context.Context, manager *domainmcp.Manager) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -596,20 +597,28 @@ func newVLLLMPool(
 func newMCPPool(
 	cfg *configs.Config,
 	logger *utils.Logger,
-) (*providerPool[*mcp.Manager], error) {
-	create := func(ctx context.Context) (*mcp.Manager, error) {
-		manager := mcp.NewManagerForPool(logger, cfg)
-		return manager, nil
+) (*providerPool[*domainmcp.Manager], error) {
+	create := func(ctx context.Context) (*domainmcp.Manager, error) {
+		legacy := coremcp.NewManagerForPool(logger, cfg)
+		domainManager, err := domainmcp.NewManager(domainmcp.Options{
+			Logger:     logger,
+			AutoReturn: legacy.AutoReturnToPool,
+			Legacy:     legacy,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return domainManager, nil
 	}
 
-	reset := func(ct context.Context, manager *mcp.Manager) error {
+	reset := func(ct context.Context, manager *domainmcp.Manager) error {
 		if manager == nil {
 			return nil
 		}
 		return manager.Reset()
 	}
 
-	destroy := func(manager *mcp.Manager) error {
+	destroy := func(manager *domainmcp.Manager) error {
 		if manager == nil {
 			return nil
 		}

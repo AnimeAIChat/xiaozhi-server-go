@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	domainauth "xiaozhi-server-go/internal/domain/auth"
+	authstore "xiaozhi-server-go/internal/domain/auth/store"
 	platformconfig "xiaozhi-server-go/internal/platform/config"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
@@ -20,8 +22,6 @@ import (
 	httptransport "xiaozhi-server-go/internal/transport/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
-	"xiaozhi-server-go/src/core/auth"
-	"xiaozhi-server-go/src/core/auth/store"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/transport/websocket"
@@ -88,7 +88,7 @@ type appState struct {
 	logger                *utils.Logger
 	slogger               *slog.Logger
 	observabilityShutdown platformobservability.ShutdownFunc
-	authManager           *auth.AuthManager
+	authManager           *domainauth.AuthManager
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -370,14 +370,80 @@ func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	return state.config, state.logger, nil
 }
 
-func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthManager, error) {
-	storeConfig := &store.StoreConfig{
-		Type:     config.Server.Auth.Store.Type,
-		ExpiryHr: config.Server.Auth.Store.Expiry,
-		Config:   make(map[string]interface{}),
+func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.AuthManager, error) {
+	storeType := strings.ToLower(strings.TrimSpace(config.Server.Auth.Store.Type))
+	storeCfg := authstore.Config{
+		Driver: storeType,
+		TTL:    time.Duration(config.Server.Auth.Store.Expiry) * time.Hour,
 	}
 
-	authManager, err := auth.NewAuthManager(storeConfig, logger)
+	if storeCfg.Driver == "" || storeCfg.Driver == "database" || storeCfg.Driver == "sqlite" {
+		storeCfg.Driver = authstore.DriverSQLite
+	}
+
+	cleanupInterval := parseDurationOrWarn(
+		logger,
+		config.Server.Auth.Store.Cleanup,
+		"auth store cleanup interval",
+	)
+
+	switch storeCfg.Driver {
+	case authstore.DriverMemory:
+		if config.Server.Auth.Store.Memory.Cleanup != "" {
+			if d := parseDurationOrWarn(
+				logger,
+				config.Server.Auth.Store.Memory.Cleanup,
+				"auth memory cleanup interval",
+			); d > 0 {
+				cleanupInterval = d
+			}
+		}
+		storeCfg.Memory = &authstore.MemoryConfig{
+			GCInterval: cleanupInterval,
+		}
+	case authstore.DriverSQLite:
+		storeCfg.SQLite = &authstore.SQLiteConfig{
+			DSN: config.Server.Auth.Store.Sqlite.DSN,
+		}
+	case authstore.DriverRedis:
+		storeCfg.Redis = &authstore.RedisConfig{
+			Addr:     config.Server.Auth.Store.Redis.Addr,
+			Username: config.Server.Auth.Store.Redis.Username,
+			Password: config.Server.Auth.Store.Redis.Password,
+			DB:       config.Server.Auth.Store.Redis.DB,
+			Prefix:   config.Server.Auth.Store.Redis.Prefix,
+		}
+		if storeCfg.Redis.Addr == "" {
+			return nil, platformerrors.Wrap(
+				platformerrors.KindBootstrap,
+				"auth:init-manager",
+				errors.New("redis store addr is required"),
+			)
+		}
+	default:
+		logger.Warn("unsupported auth store type %s, falling back to memory", storeType)
+		storeCfg.Driver = authstore.DriverMemory
+		storeCfg.Memory = &authstore.MemoryConfig{GCInterval: cleanupInterval}
+	}
+
+	storeDeps := authstore.Dependencies{
+		SQLiteDB: database.GetDB(),
+	}
+	authStore, err := authstore.New(storeCfg, storeDeps)
+	if err != nil {
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
+	}
+
+	crypto := domainauth.NewMemoryCryptoManager(logger, storeCfg.TTL)
+	opts := domainauth.Options{
+		Store:           authStore,
+		Logger:          logger,
+		Crypto:          crypto,
+		SessionTTL:      storeCfg.TTL,
+		CleanupInterval: cleanupInterval,
+	}
+
+	authManager, err := domainauth.NewManager(opts)
 	if err != nil {
 		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
 	}
@@ -385,10 +451,27 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*auth.AuthMa
 	return authManager, nil
 }
 
+func parseDurationOrWarn(logger *utils.Logger, value string, field string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		logger.Warn("invalid %s: %s (%v)", field, value, err)
+		return 0
+	}
+	if duration <= 0 {
+		logger.Warn("non-positive %s: %s", field, value)
+		return 0
+	}
+	return duration
+}
+
 func startTransportServer(
 	config *configs.Config,
 	logger *utils.Logger,
-	_ *auth.AuthManager,
+	_ *domainauth.AuthManager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
@@ -609,7 +692,7 @@ func waitForShutdown(
 func startServices(
 	config *configs.Config,
 	logger *utils.Logger,
-	authManager *auth.AuthManager,
+	authManager *domainauth.AuthManager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {

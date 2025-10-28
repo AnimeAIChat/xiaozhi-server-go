@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	domainproviders "xiaozhi-server-go/internal/domain/providers"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -51,7 +51,7 @@ func (pm *PoolManager) ReturnProviderSet(set *ProviderSet) error {
 
 // GetMcpManager provides compatibility for legacy transport code that expects
 // to borrow a standalone MCP manager.
-func (pm *PoolManager) GetMcpManager() (*mcp.Manager, error) {
+func (pm *PoolManager) GetMcpManager() (*domainmcp.Manager, error) {
 	if pm == nil || pm.manager == nil {
 		return nil, fmt.Errorf("pool manager not initialised")
 	}
@@ -59,7 +59,7 @@ func (pm *PoolManager) GetMcpManager() (*mcp.Manager, error) {
 }
 
 // ReturnMcpManager returns a borrowed MCP manager.
-func (pm *PoolManager) ReturnMcpManager(m *mcp.Manager) error {
+func (pm *PoolManager) ReturnMcpManager(m *domainmcp.Manager) error {
 	if pm == nil || pm.manager == nil || m == nil {
 		return nil
 	}
