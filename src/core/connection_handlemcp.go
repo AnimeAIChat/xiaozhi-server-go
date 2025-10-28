@@ -111,8 +111,19 @@ func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) {
 
 func (h *ConnectionHandler) mcp_handler_exit(args interface{}) {
 	if text, ok := args.(string); ok {
-		h.closeAfterChat = true
-		h.SystemSpeak(text)
+		h.logger.Info("用户请求退出，立即断开连接: %s", text)
+
+		// 先重置ASR，确保设备端正确结束说话状态
+		if h.providers.asr != nil {
+			h.providers.asr.Reset()
+			h.logger.Info("[ASR] [状态] 已重置")
+		}
+
+		// 停止服务端说话
+		h.stopServerSpeak()
+
+		// 立即关闭连接，不等待TTS播放完毕
+		h.Close()
 	} else {
 		h.logger.Error("mcp_handler_exit: args is not a string")
 	}
