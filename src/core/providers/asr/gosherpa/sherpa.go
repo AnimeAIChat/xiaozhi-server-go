@@ -38,13 +38,8 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 			messageType, p, _ := conn.ReadMessage()
 			if messageType == websocket.TextMessage {
 				text := string(p)
-				// 发布ASR结果事件
+				// 发布ASR结果事件（通过事件总线分发）
 				provider.PublishAsrResult(text, true)
-				// 如果有listener，保持向后兼容
-				if listener := provider.GetListener(); listener != nil {
-					if finished := listener.OnAsrResult(text, true); finished {
-					}
-				}
 			}
 		}
 	}()

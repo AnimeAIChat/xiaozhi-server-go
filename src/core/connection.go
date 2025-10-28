@@ -102,6 +102,7 @@ type ConnectionHandler struct {
 	tools        []openai.Tool // 缓存的工具列表
 	// 语音处理相关
 	serverVoiceStop int32 // 1表示true服务端语音停止, 不再下发语音数据
+	asrPause         int32 // 1 表示暂停将来自客户端的音频发送到 ASR（例如 TTS 播放期间）
 
 	opusDecoder *utils.OpusDecoder // Opus解码器
 
@@ -115,6 +116,9 @@ type ConnectionHandler struct {
 	stopChan         chan struct{}
 	clientAudioQueue chan []byte
 	clientTextQueue  chan string
+
+	// ASR结果队列 - 用于避免重复识别导致的并发处理
+	asrResultQueue chan string
 
 	// TTS任务队列
 	ttsQueue chan struct {
@@ -156,6 +160,7 @@ func NewConnectionHandler(
 		stopChan:         make(chan struct{}),
 		clientAudioQueue: make(chan []byte, 100),
 		clientTextQueue:  make(chan string, 100),
+		asrResultQueue:   make(chan string, 10), // ASR结果队列，缓冲大小为10
 		ttsQueue: make(chan struct {
 			text      string
 			round     int // 轮次
@@ -549,8 +554,11 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 	// 启动消息处理协程
 	go h.processClientAudioMessagesCoroutine() // 添加客户端音频消息处理协程
 	go h.processClientTextMessagesCoroutine()  // 添加客户端文本消息处理协程
+	go h.processASRResultQueueCoroutine()      // 添加ASR结果队列处理协程
 	go h.processTTSQueueCoroutine()            // 添加TTS队列处理协程
 	go h.sendAudioMessageCoroutine()           // 添加音频消息发送协程
+
+	h.LogInfo("[协程] 所有消息处理协程已启动")
 
 	// 优化后的MCP管理器处理
 	if h.mcpManager == nil {
@@ -573,13 +581,16 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 		}
 		// Skip redundant re-initialisation because the pool performed it during acquire.
 		h.LogInfo("[MCP] connection attached; reuse existing session bootstrap")
+		h.LogInfo("[连接] 开始监听客户端消息...")
 		for {
+			h.LogDebug("[连接] 等待客户端消息...")
 			messageType, message, err := conn.ReadMessage(h.stopChan)
 			if err != nil {
 				h.LogError(fmt.Sprintf("读取消息失败: %v, 退出消息循环", err))
 				return
 			}
 
+			h.LogDebug(fmt.Sprintf("[连接] 收到消息类型: %d, 消息长度: %d", messageType, len(message)))
 			if err := h.handleMessage(messageType, message); err != nil {
 				h.LogError(fmt.Sprintf("处理消息失败: %v", err))
 			}
@@ -587,15 +598,40 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 	}
 }
 
-// processClientTextMessagesCoroutine 处理文本消息队列
-func (h *ConnectionHandler) processClientTextMessagesCoroutine() {
+// processASRResultQueueCoroutine 处理ASR结果队列
+func (h *ConnectionHandler) processASRResultQueueCoroutine() {
+	h.LogInfo("[协程] [ASR队列] ASR结果处理协程启动")
+	defer h.LogInfo("[协程] [ASR队列] ASR结果处理协程退出")
+
 	for {
 		select {
 		case <-h.stopChan:
+			h.LogDebug("[协程] [ASR队列] 收到停止信号，退出协程")
+			return
+		case asrText := <-h.asrResultQueue:
+			h.LogInfo(fmt.Sprintf("[协程] [ASR队列] 处理ASR结果: %s", utils.SanitizeForLog(asrText)))
+			if err := h.handleChatMessage(context.Background(), asrText); err != nil {
+				h.LogError(fmt.Sprintf("[协程] [ASR队列] 处理ASR结果失败: %v", err))
+			} else {
+				h.LogDebug(fmt.Sprintf("[协程] [ASR队列] ASR结果处理完成: %s", utils.SanitizeForLog(asrText)))
+			}
+		}
+	}
+}
+
+// processClientTextMessagesCoroutine 处理客户端文本消息队列
+func (h *ConnectionHandler) processClientTextMessagesCoroutine() {
+	h.LogInfo("[协程] [文本队列] 客户端文本消息处理协程启动")
+	defer h.LogInfo("[协程] [文本队列] 客户端文本消息处理协程退出")
+
+	for {
+		select {
+		case <-h.stopChan:
+			h.LogDebug("[协程] [文本队列] 收到停止信号，退出协程")
 			return
 		case text := <-h.clientTextQueue:
 			if err := h.processClientTextMessage(context.Background(), text); err != nil {
-				h.LogError(fmt.Sprintf("处理文本数据失败: %v", err))
+				h.LogError(fmt.Sprintf("[协程] [文本队列] 处理文本消息失败: %v", err))
 			}
 		}
 	}
@@ -603,11 +639,20 @@ func (h *ConnectionHandler) processClientTextMessagesCoroutine() {
 
 // processClientAudioMessagesCoroutine 处理音频消息队列
 func (h *ConnectionHandler) processClientAudioMessagesCoroutine() {
+	h.LogInfo("[协程] [音频队列] 客户端音频消息处理协程启动")
+	defer h.LogInfo("[协程] [音频队列] 客户端音频消息处理协程退出")
+
 	for {
 		select {
 		case <-h.stopChan:
+			h.LogDebug("[协程] [音频队列] 收到停止信号，退出协程")
 			return
 		case audioData := <-h.clientAudioQueue:
+			// 如果已设置为在播放服务端语音时暂停ASR，则跳过发送到ASR
+			if atomic.LoadInt32(&h.asrPause) == 1 {
+				h.LogDebug("[协程] [音频队列] 当前处于ASR暂停状态，跳过发送客户端音频到ASR")
+				continue
+			}
 			if h.closeAfterChat {
 				continue
 			}
@@ -619,9 +664,13 @@ func (h *ConnectionHandler) processClientAudioMessagesCoroutine() {
 }
 
 func (h *ConnectionHandler) sendAudioMessageCoroutine() {
+	h.LogInfo("[协程] [音频发送] 音频消息发送协程启动")
+	defer h.LogInfo("[协程] [音频发送] 音频消息发送协程退出")
+
 	for {
 		select {
 		case <-h.stopChan:
+			h.LogDebug("[协程] [音频发送] 收到停止信号，退出协程")
 			return
 		case task := <-h.audioMessagesQueue:
 			h.sendAudioMessage(task.filepath, task.text, task.textIndex, task.round)
@@ -643,12 +692,24 @@ func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool 
 			return false
 		}
 		h.LogInfo(fmt.Sprintf("[ASR] [识别结果 %s/%s]", h.clientListenMode, utils.SanitizeForLog(result)))
-		h.handleChatMessage(context.Background(), result)
+		// 将ASR结果放入队列，避免并发处理
+		select {
+		case h.asrResultQueue <- result:
+			h.LogDebug(fmt.Sprintf("[ASR] [队列] 已将结果放入队列: %s", utils.SanitizeForLog(result)))
+		default:
+			h.LogWarn(fmt.Sprintf("[ASR] [队列] 队列已满，丢弃结果: %s", utils.SanitizeForLog(result)))
+		}
 		return true
 	} else if h.clientListenMode == "manual" {
 		h.client_asr_text += result
 		if isFinalResult {
-			h.handleChatMessage(context.Background(), h.client_asr_text)
+			// 将ASR结果放入队列，避免并发处理
+			select {
+			case h.asrResultQueue <- h.client_asr_text:
+				h.LogDebug(fmt.Sprintf("[ASR] [队列] 已将手动结果放入队列: %s", utils.SanitizeForLog(h.client_asr_text)))
+			default:
+				h.LogWarn(fmt.Sprintf("[ASR] [队列] 队列已满，丢弃手动结果: %s", utils.SanitizeForLog(h.client_asr_text)))
+			}
 			return true
 		}
 		return false
@@ -659,7 +720,13 @@ func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool 
 		h.stopServerSpeak()
 		h.providers.asr.Reset() // 重置ASR状态，准备下一次识别
 		h.LogInfo(fmt.Sprintf("[ASR] [识别结果 %s/%s]", h.clientListenMode, utils.SanitizeForLog(result)))
-		h.handleChatMessage(context.Background(), result)
+		// 将ASR结果放入队列，避免并发处理
+		select {
+		case h.asrResultQueue <- result:
+			h.LogDebug(fmt.Sprintf("[ASR] [队列] 已将实时结果放入队列: %s", utils.SanitizeForLog(result)))
+		default:
+			h.LogWarn(fmt.Sprintf("[ASR] [队列] 队列已满，丢弃实时结果: %s", utils.SanitizeForLog(result)))
+		}
 		return true
 	}
 	return false
@@ -706,6 +773,24 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		return fmt.Errorf("用户请求退出对话")
 	}
 
+	// 记录正在处理对话的状态
+	h.LogInfo(fmt.Sprintf("[对话] [开始处理] 文本: %s", utils.SanitizeForLog(text)))
+
+	// 清空音频队列，防止后续音频数据触发新的ASR识别
+	queueCleared := false
+	for {
+		select {
+		case <-h.clientAudioQueue:
+			if !queueCleared {
+				h.LogDebug("[对话] [队列清理] 清空音频队列")
+				queueCleared = true
+			}
+		default:
+			goto clearedAudioQueue
+		}
+	}
+clearedAudioQueue:
+
 	// 增加对话轮次
 	h.talkRound++
 	h.roundStartTime = time.Now()
@@ -751,6 +836,8 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			h.tts_last_text_index = 1 // 重置文本索引
 			h.SpeakAndPlay(errorMsg, 1, round)
 		}
+		// 对话处理完成，记录日志
+		h.LogInfo(fmt.Sprintf("[对话] [轮次 %d] 处理完成", round))
 	}()
 
 	llmStartTime := time.Now()
@@ -1055,9 +1142,13 @@ func (h *ConnectionHandler) isNeedAuth() bool {
 
 // processTTSQueueCoroutine 处理TTS队列
 func (h *ConnectionHandler) processTTSQueueCoroutine() {
+	h.LogInfo("[协程] [TTS队列] TTS队列处理协程启动")
+	defer h.LogInfo("[协程] [TTS队列] TTS队列处理协程退出")
+
 	for {
 		select {
 		case <-h.stopChan:
+			h.LogDebug("[协程] [TTS队列] 收到停止信号，退出协程")
 			return
 		case task := <-h.ttsQueue:
 			h.processTTSTask(task.text, task.textIndex, task.round, task.filepath)
@@ -1083,9 +1174,20 @@ func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason stri
 		return
 	}
 
+	// 检查文件是否存在，避免重复删除
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		h.LogDebug(fmt.Sprintf(reason+" 文件不存在，无需删除: %s", filepath))
+		return
+	}
+
 	// 删除非缓存音频文件
 	if err := os.Remove(filepath); err != nil {
-		h.LogError(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
+		// 如果文件不存在，这是正常的（可能已被其他地方删除）
+		if os.IsNotExist(err) {
+			h.LogDebug(fmt.Sprintf(reason+" 文件已被删除: %s", filepath))
+		} else {
+			h.LogError(fmt.Sprintf(reason+" 删除音频文件失败: %v", err))
+		}
 	} else {
 		h.LogDebug(fmt.Sprintf("%s 已删除音频文件: %s", reason, filepath))
 	}
@@ -1168,7 +1270,11 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 		publisher.PublishTTSSpeak(text, textIndex, round)
 	}
 
+	// 暂停将客户端音频发送到ASR（避免TTS播放期间触发ASR导致服务端sequence冲突）
+	atomic.StoreInt32(&h.asrPause, 1)
+
 	defer func() {
+		// 在函数返回时不立即恢复；实际恢复在音频发送完成的地方处理（sendAudioMessage defer）
 		// 将任务加入队列，不阻塞当前流程
 		h.ttsQueue <- struct {
 			text      string
@@ -1273,6 +1379,8 @@ func (h *ConnectionHandler) Close() {
 			}
 		}
 		h.cleanTTSAndAudioQueue(true)
+		// 确保解除ASR暂停标志，避免遗留状态
+		atomic.StoreInt32(&h.asrPause, 0)
 	})
 }
 

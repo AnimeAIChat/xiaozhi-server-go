@@ -601,7 +601,7 @@ func (p *Provider) ReadMessage() {
 
 				p.logger.DebugTag("ASR", "识别成功，文本='%s'", text)
 
-				p.connMutex.Lock()
+				p.connMutex.Lock() 
 				p.result = text
 				p.connMutex.Unlock()
 				isLastPackage := false
@@ -623,14 +623,8 @@ func (p *Provider) ReadMessage() {
 					if text == "" && !isLastPackage {
 						continue
 					}
-					// 发布ASR结果事件
-					p.PublishAsrResult(text, isLastPackage)
-					// 如果有listener，保持向后兼容
-					if listener != nil {
-						if finished := listener.OnAsrResult(text, isLastPackage); finished {
-							return
-						}
-					}
+					// 直接调用listener.OnAsrResult，不再通过事件总线
+					listener.OnAsrResult(text, isLastPackage)
 				}
 			} else if errorData, hasError := payloadMsg["error"]; hasError {
 				// 处理错误响应中的 error 字段

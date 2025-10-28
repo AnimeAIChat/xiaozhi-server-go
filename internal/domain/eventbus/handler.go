@@ -36,6 +36,8 @@ func (h *DefaultEventHandler) Handle(eventType string, data interface{}) {
 
 // handleASRResult 处理ASR结果事件
 func (h *DefaultEventHandler) handleASRResult(data ASREventData) {
+	// ASR结果现在直接通过listener.OnAsrResult处理，不再通过事件总线
+	// 这里保留日志记录用于调试
 	fmt.Printf("[事件处理器] ASR结果: 会话=%s, 文本=%s, 最终=%v\n",
 		data.SessionID, data.Text, data.IsFinal)
 }

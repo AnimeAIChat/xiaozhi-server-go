@@ -94,21 +94,26 @@ func (h *ConnectionHandler) sendEmotionMessage(emotion string) error {
 func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textIndex int, round int) {
 	logText := utils.SanitizeForLog(text)
 	startTime := time.Now() // 记录发送任务开始时间
+	fileDeleted := false // 标记文件是否已被删除
 	defer func() {
 		// 音频发送完成后，根据配置决定是否删除文件
-		h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
+		if !fileDeleted {
+			h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
+		}
 
 		spentTime := time.Since(startTime).Milliseconds()
 		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, logText))
 		h.providers.asr.ResetStartListenTime()
-		if h.tts_last_audio_index >= 0 && textIndex == h.tts_last_audio_index {
-			h.sendTTSMessage("stop", "", textIndex)
-			if h.closeAfterChat {
-				h.Close()
-			} else {
-				h.clearSpeakStatus()
+			if h.tts_last_audio_index >= 0 && textIndex == h.tts_last_audio_index {
+				h.sendTTSMessage("stop", "", textIndex)
+				// 恢复ASR接收
+				atomic.StoreInt32(&h.asrPause, 0)
+				if h.closeAfterChat {
+					h.Close()
+				} else {
+					h.clearSpeakStatus()
+				}
 			}
-		}
 	}()
 
 	if len(filepath) == 0 {
@@ -120,6 +125,7 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 			round, h.talkRound, logText))
 		// 即使跳过，也要根据配置删除音频文件
 		h.deleteAudioFileIfNeeded(filepath, "跳过过期轮次")
+		fileDeleted = true
 		return
 	}
 
