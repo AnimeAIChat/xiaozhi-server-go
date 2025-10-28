@@ -10,7 +10,6 @@ import (
 
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
-	coremcp "xiaozhi-server-go/src/core/mcp"
 	coreproviders "xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -599,16 +598,7 @@ func newMCPPool(
 	logger *utils.Logger,
 ) (*providerPool[*domainmcp.Manager], error) {
 	create := func(ctx context.Context) (*domainmcp.Manager, error) {
-		legacy := coremcp.NewManagerForPool(logger, cfg)
-		domainManager, err := domainmcp.NewManager(domainmcp.Options{
-			Logger:     logger,
-			AutoReturn: legacy.AutoReturnToPool,
-			Legacy:     legacy,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return domainManager, nil
+		return domainmcp.NewFromConfig(cfg, logger)
 	}
 
 	reset := func(ct context.Context, manager *domainmcp.Manager) error {

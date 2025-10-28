@@ -12,14 +12,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/sashabaranov/go-openai"
+	"gorm.io/gorm"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
-	"xiaozhi-server-go/src/core/image"
-	coremcp "xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -29,29 +31,16 @@ import (
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/models"
 	"xiaozhi-server-go/src/task"
-
-	"github.com/google/uuid"
-	"github.com/sashabaranov/go-openai"
-	"gorm.io/gorm"
 )
 
-// Connection 统一连接接口
 type Connection interface {
-	// 发送消息
-	WriteMessage(messageType int, data []byte) error
-	// 读取消息
+	domainmcp.Conn
 	ReadMessage(stopChan <-chan struct{}) (messageType int, data []byte, err error)
-	// 关闭连接
 	Close() error
-	// 获取连接ID
 	GetID() string
-	// 获取连接类型
 	GetType() string
-	// 检查连接状态
 	IsClosed() bool
-	// 获取最后活跃时间
 	GetLastActiveTime() time.Time
-	// 检查是否过期
 	IsStale(timeout time.Duration) bool
 }
 
@@ -559,21 +548,12 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 			"client_id":  h.clientId,
 			"token":      h.config.Server.Token,
 		}
-		legacyConn, ok := any(conn).(coremcp.Conn)
-		if !ok {
-			h.LogError("当前连接不支持 MCP 绑定")
+		if err := h.mcpManager.BindConnection(conn, h.functionRegister, params); err != nil {
+			h.LogError(fmt.Sprintf("[MCP] bind connection failed: %v", err))
 			return
 		}
-		if err := h.mcpManager.BindConnection(legacyConn, h.functionRegister, params); err != nil {
-			h.LogError(fmt.Sprintf("绑定MCP管理器连接失败: %v", err))
-			return
-		}
-		// 不需要重新初始化服务器，只需要确保连接相关的服务正常
-		h.LogInfo("[MCP] [绑定] 连接绑定完成，跳过重复初始化")
-	}
-
-	// 主消息循环
-	for {
+		// Skip redundant re-initialisation because the pool performed it during acquire.
+		h.LogInfo("[MCP] connection attached; reuse existing session bootstrap")
 		select {
 		case <-h.stopChan:
 			return
@@ -1249,7 +1229,7 @@ func (h *ConnectionHandler) Close() {
 }
 
 // genResponseByVLLM 使用VLLLM处理包含图片的消息
-func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData image.ImageData, text string, round int) error {
+func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []providers.Message, imageData domainimage.ImageData, text string, round int) error {
 	h.logger.Info("开始生成VLLLM回复 %v", map[string]interface{}{
 		"text":          text,
 		"has_url":       imageData.URL != "",

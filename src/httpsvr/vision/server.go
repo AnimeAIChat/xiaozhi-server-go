@@ -11,8 +11,8 @@ import (
 	"time"
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
@@ -364,7 +364,7 @@ func (s *DefaultVisionService) processVisionRequest(req *VisionRequest) (string,
 	imageBase64 := base64.StdEncoding.EncodeToString(req.Image)
 
 	// 创建ImageData结构
-	imageData := image.ImageData{
+	imageData := domainimage.ImageData{
 		Data:   imageBase64,
 		Format: s.detectImageFormat(req.Image),
 	}
