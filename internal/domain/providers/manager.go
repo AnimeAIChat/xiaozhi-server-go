@@ -485,7 +485,22 @@ func newLLMPool(
 		if err != nil {
 			return nil, err
 		}
+
+		// 初始化提供者
+		if initializer, ok := any(provider).(interface{ Initialize() error }); ok {
+			if err := initializer.Initialize(); err != nil {
+				return nil, fmt.Errorf("failed to initialize LLM provider %s: %w", name, err)
+			}
+		}
+
 		return provider, nil
+	}
+
+	reset := func(ct context.Context, provider coreproviders.LLMProvider) error {
+		if resetter, ok := any(provider).(interface{ Reset() error }); ok {
+			return resetter.Reset()
+		}
+		return nil
 	}
 
 	destroy := func(provider coreproviders.LLMProvider) error {
@@ -498,7 +513,7 @@ func newLLMPool(
 		return nil
 	}
 
-	return newProviderPool("llm:"+name, logger, create, nil, destroy), nil
+	return newProviderPool("llm:"+name, logger, create, reset, destroy), nil
 }
 
 func newTTSPool(
