@@ -554,13 +554,10 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 		}
 		// Skip redundant re-initialisation because the pool performed it during acquire.
 		h.LogInfo("[MCP] connection attached; reuse existing session bootstrap")
-		select {
-		case <-h.stopChan:
-			return
-		default:
+		for {
 			messageType, message, err := conn.ReadMessage(h.stopChan)
 			if err != nil {
-				h.LogError(fmt.Sprintf("读取消息失败: %v, 退出主消息循环", err))
+				h.LogError(fmt.Sprintf("读取消息失败: %v, 退出消息循环", err))
 				return
 			}
 
