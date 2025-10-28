@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	"xiaozhi-server-go/src/core/chat"
-	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 )
@@ -234,7 +234,7 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 		return fmt.Errorf("缺少图片数据")
 	}
 
-	imageData := image.ImageData{}
+	imageData := domainimage.ImageData{}
 	if url, ok := imageDataMap["url"].(string); ok {
 		imageData.URL = url
 	}

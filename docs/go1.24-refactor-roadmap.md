@@ -39,9 +39,9 @@
  - ✅ 旧 core/transport 已切换至新实现并保留兼容层，保障迁移期稳定性。
 
 ### Phase 3 · 业务域迁移（约 3 周）
-- `internal/domain/auth`：重写 AuthManager，使用 `time.Duration`、pluggable Store（memory/sqlite/redis）。
-- `internal/domain/mcp`：拆分客户端、工具注册、调用执行模块，利用 `maps`/`slices` 提升安全与可读性。
-- `internal/domain/vision`、`image`：引入 Validator/Pipeline，使用 `io.Reader`/`io.Pipe` 控制内存；统一 Provider 调用。
+- [x] `internal/domain/auth`����д AuthManager��ʹ�� `time.Duration`��pluggable Store��memory/sqlite/redis����
+- [x] `internal/domain/mcp`����ֿͻ��ˡ�����ע�ᡢ����ִ��ģ�飬���� `maps`/`slices` ������ȫ��ɶ��ԡ�
+- [x] `internal/domain/vision`��`image`������ Validator/Pipeline��ʹ�� `io.Reader`/`io.Pipe` �����ڴ棻ͳһ Provider ���á�
 - 对话管理模块抽象为 `internal/domain/chat/dialogue`，补齐 streaming/历史管理测试。
 - 每个领域迁移后补齐单元 + 端到端测试，确保回归稳定。
 

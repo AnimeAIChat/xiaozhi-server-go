@@ -2,8 +2,9 @@ package pool
 
 import (
 	"fmt"
+
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -69,8 +70,11 @@ func (f *ProviderFactory) createProvider() (interface{}, error) {
 		return vlllm.Create(cfg.Type, cfg, f.logger)
 	case "mcp":
 		cfg := f.config.(*configs.Config)
-		logger := f.logger
-		return mcp.NewManagerForPool(logger, cfg), nil
+		manager, err := domainmcp.NewFromConfig(cfg, f.logger)
+		if err != nil {
+			return nil, err
+		}
+		return manager, nil
 	default:
 		return nil, fmt.Errorf("未知的提供者类型: %s", f.providerType)
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
-	coremcp "xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/types"
 )
 
@@ -20,7 +19,24 @@ type Options struct {
 	Clients    map[string]Client
 	AutoStart  bool
 	AutoReturn bool
-	Legacy     *coremcp.Manager
+	Legacy     legacyBridge
+}
+
+// Conn captures the minimal connection behaviour required by MCP clients.
+type Conn interface {
+	WriteMessage(messageType int, data []byte) error
+}
+
+type legacyBridge interface {
+	ExecuteTool(ctx context.Context, name string, args map[string]any) (any, error)
+	ToolNames() []string
+	BindConnection(conn Conn, fh types.FunctionRegistryInterface, params any) error
+	Cleanup() error
+	CleanupAll(ctx context.Context)
+	Reset() error
+	AutoReturn() bool
+	IsMCPTool(name string) bool
+	HandleXiaoZhiMCPMessage(msg map[string]any) error
 }
 
 // Manager coordinates MCP clients and tool execution.
@@ -33,7 +49,7 @@ type Manager struct {
 	clients   map[string]Client
 
 	autoReturn bool
-	legacy     *coremcp.Manager
+	legacy     legacyBridge
 }
 
 // NewManager constructs a new manager instance.
@@ -47,6 +63,10 @@ func NewManager(opts Options) (*Manager, error) {
 		clients:    make(map[string]Client),
 		autoReturn: opts.AutoReturn,
 		legacy:     opts.Legacy,
+	}
+
+	if !manager.autoReturn && manager.legacy != nil {
+		manager.autoReturn = manager.legacy.AutoReturn()
 	}
 
 	if len(opts.Clients) > 0 {
@@ -145,7 +165,7 @@ func (m *Manager) RegisterTools(tools []Tool) error {
 
 // ExecuteTool executes a tool by name across known clients.
 func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]any) (any, error) {
-	if m.legacy != nil && len(m.clients) == 0 {
+	if len(m.clients) == 0 && m.legacy != nil {
 		return m.legacy.ExecuteTool(ctx, name, args)
 	}
 	if name == "" {
@@ -181,7 +201,7 @@ func (m *Manager) ToolNames() []string {
 		return m.registry.list()
 	}
 	if m.legacy != nil {
-		return m.legacy.GetAllToolsNames()
+		return m.legacy.ToolNames()
 	}
 	return nil
 }
@@ -224,14 +244,14 @@ func (m *Manager) AutoReturn() bool {
 		return true
 	}
 	if m.legacy != nil {
-		return m.legacy.AutoReturnToPool
+		return m.legacy.AutoReturn()
 	}
 	return false
 }
 
 // BindConnection attaches the websocket connection to the MCP clients.
 func (m *Manager) BindConnection(
-	conn coremcp.Conn,
+	conn Conn,
 	fh types.FunctionRegistryInterface,
 	params any,
 ) error {
@@ -304,7 +324,7 @@ func (m *Manager) refreshToolRegistry() {
 	if m.legacy == nil {
 		return
 	}
-	names := m.legacy.GetAllToolsNames()
+	names := m.legacy.ToolNames()
 	if len(names) == 0 {
 		return
 	}
