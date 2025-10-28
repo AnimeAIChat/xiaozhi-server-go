@@ -293,6 +293,9 @@ func (p *Provider) ReadMessage() {
 									} else if p.result != "" {
 										p.BaseProvider.SilenceCount = 0
 									}
+									// 发布ASR结果事件
+									p.PublishAsrResult(p.result, true)
+									// 如果有listener，保持向后兼容
 									if finished := listener.OnAsrResult(p.result, true); finished {
 										return
 									}

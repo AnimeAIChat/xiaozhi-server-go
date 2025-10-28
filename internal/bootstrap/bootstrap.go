@@ -14,6 +14,7 @@ import (
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
+	"xiaozhi-server-go/internal/domain/eventbus"
 	platformconfig "xiaozhi-server-go/internal/platform/config"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
@@ -307,6 +308,9 @@ func initLoggingStep(_ context.Context, state *appState) error {
 			state.configPath,
 		)
 	}
+
+	// 设置事件处理器
+	eventbus.SetupEventHandlers()
 
 	database.SetLogger(state.logger)
 	database.InsertDefaultConfigIfNeeded(database.GetDB())

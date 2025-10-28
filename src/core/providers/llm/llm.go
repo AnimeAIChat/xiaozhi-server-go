@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/eventbus"
 )
 
 // Config LLM配置结构
@@ -28,6 +29,9 @@ type BaseProvider struct {
 	config    *Config
 	SessionID string // 当前会话ID
 }
+
+// BaseProvider 实现 EventPublisher 接口
+var _ EventPublisher = (*BaseProvider)(nil)
 
 // Config 获取配置
 func (p *BaseProvider) Config() *Config {
@@ -55,8 +59,53 @@ func (p *BaseProvider) GetSessionID() string {
 	return p.SessionID
 }
 
+func (p *BaseProvider) SetSessionID(sessionID string) {
+	p.SessionID = sessionID
+}
+
+// PublishLLMResponse 发布LLM回复事件
+func (p *BaseProvider) PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{}) {
+	eventData := eventbus.LLMEventData{
+		SessionID: p.SessionID,
+		Round:     round,
+		Content:   content,
+		IsFinal:   isFinal,
+		ToolCalls: toolCalls,
+	}
+	eventbus.Publish(eventbus.EventLLMResponse, eventData)
+}
+
+// PublishLLMError 发布LLM错误事件
+func (p *BaseProvider) PublishLLMError(err error, round int) {
+	eventData := eventbus.SystemEventData{
+		Level:   "error",
+		Message: fmt.Sprintf("LLM error: %v", err),
+		Data: map[string]interface{}{
+			"session_id": p.SessionID,
+			"round":      round,
+			"error":      err.Error(),
+		},
+	}
+	eventbus.Publish(eventbus.EventLLMError, eventData)
+}
+
 func (p *BaseProvider) SetIdentityFlag(idType string, flag string) {
 	// 默认实现，子类可以覆盖
+}
+
+// EventPublisher 事件发布接口
+type EventPublisher interface {
+	SetSessionID(sessionID string)
+	PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{})
+	PublishLLMError(err error, round int)
+}
+
+// GetEventPublisher 获取事件发布器
+func GetEventPublisher(provider Provider) EventPublisher {
+	if p, ok := provider.(EventPublisher); ok {
+		return p
+	}
+	return nil
 }
 
 // Factory LLM工厂函数类型
@@ -79,10 +128,6 @@ func Create(name string, config *Config) (Provider, error) {
 	provider, err := factory(config)
 	if err != nil {
 		return nil, fmt.Errorf("创建LLM提供者失败: %v", err)
-	}
-
-	if err := provider.Initialize(); err != nil {
-		return nil, fmt.Errorf("初始化LLM提供者失败: %v", err)
 	}
 
 	return provider, nil
