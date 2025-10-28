@@ -406,6 +406,43 @@ func containsFormatPlaceholders(s string) bool {
 	return strings.Contains(s, "%")
 }
 
+// FormatLog 构造带单一分类标签的日志消息。例如：FormatLog("引导", "服务已启动") -> "[引导] 服务已启动"
+// 如果传入的 message 已经以 "[" 开头（表示可能已包含标签），则直接返回原文。
+func FormatLog(tag, message string) string {
+	tag = strings.TrimSpace(tag)
+	message = strings.TrimSpace(message)
+	if tag == "" {
+		return message
+	}
+	if strings.HasPrefix(message, "[") {
+		return message
+	}
+	return fmt.Sprintf("[%s] %s", tag, message)
+}
+
+func (l *Logger) logWithTag(level slog.Level, tag, msg string, args ...interface{}) {
+	switch level {
+	case slog.LevelDebug:
+		l.Debug(FormatLog(tag, msg), args...)
+	case slog.LevelInfo:
+		l.Info(FormatLog(tag, msg), args...)
+	case slog.LevelWarn:
+		l.Warn(FormatLog(tag, msg), args...)
+	case slog.LevelError:
+		l.Error(FormatLog(tag, msg), args...)
+	default:
+		l.Info(FormatLog(tag, msg), args...)
+	}
+}
+
+// DebugTag 记录带分类标签的调试日志
+func (l *Logger) DebugTag(tag, msg string, args ...interface{}) {
+	if l == nil {
+		return
+	}
+	l.logWithTag(slog.LevelDebug, tag, msg, args...)
+}
+
 // Info 记录信息级别日志
 func (l *Logger) Info(msg string, args ...interface{}) {
 	// 检测是否为格式化模式
@@ -437,6 +474,30 @@ func (l *Logger) Error(msg string, args ...interface{}) {
 	} else {
 		l.log(slog.LevelError, msg, args...)
 	}
+}
+
+// InfoTag 记录带分类标签的信息日志
+func (l *Logger) InfoTag(tag, msg string, args ...interface{}) {
+	if l == nil {
+		return
+	}
+	l.logWithTag(slog.LevelInfo, tag, msg, args...)
+}
+
+// WarnTag 记录带分类标签的警告日志
+func (l *Logger) WarnTag(tag, msg string, args ...interface{}) {
+	if l == nil {
+		return
+	}
+	l.logWithTag(slog.LevelWarn, tag, msg, args...)
+}
+
+// ErrorTag 记录带分类标签的错误日志
+func (l *Logger) ErrorTag(tag, msg string, args ...interface{}) {
+	if l == nil {
+		return
+	}
+	l.logWithTag(slog.LevelError, tag, msg, args...)
 }
 
 // InfoASR 记录ASR阶段信息日志

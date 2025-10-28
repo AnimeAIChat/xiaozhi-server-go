@@ -213,7 +213,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	p.isStreaming = true
 	p.reqID = fmt.Sprintf("%d", time.Now().UnixNano())
 
-	p.logger.Debug("[DEBUG] Streaming initialized successfully, reqID=%s", p.reqID)
+	p.logger.DebugTag("ASR", "流式识别初始化成功，reqID=%s", p.reqID)
 
 	go p.ReadMessage()
 	return nil
@@ -318,16 +318,16 @@ func (p *Provider) parseResponse(data []byte) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 
-	p.logger.Debug("[DEBUG] parseResponse: JSON parsed successfully, data=%v", response)
+	p.logger.DebugTag("ASR", "解析响应成功 data=%v", response)
 
 	// Log additional debug info for error responses
 	if responseType, ok := response["type"].(string); ok && responseType == "Error" {
-		p.logger.Debug("[DEBUG] Received error response: %v", response)
+		p.logger.DebugTag("ASR", "收到错误响应: %v", response)
 		if desc, ok := response["description"].(string); ok {
-			p.logger.Debug("[DEBUG] Error description: %s", desc)
+			p.logger.DebugTag("ASR", "错误描述: %s", desc)
 		}
 		if msg, ok := response["message"].(string); ok {
-			p.logger.Debug("[DEBUG] Error message: %s", msg)
+			p.logger.DebugTag("ASR", "错误信息: %s", msg)
 		}
 	}
 
@@ -366,7 +366,7 @@ func (p *Provider) closeConnection() {
 
 // sendAudioData sends audio data to Deepgram
 func (p *Provider) sendAudioData(data []byte, isLast bool) error {
-	p.logger.Debug("[DEBUG] sendAudioData: data length=%d, isLast=%t, sendDataCnt=%d", len(data), isLast, p.sendDataCnt)
+	p.logger.DebugTag("ASR", "发送音频数据 length=%d isLast=%t sendDataCnt=%d", len(data), isLast, p.sendDataCnt)
 	if len(data) == 0 && !isLast {
 		return nil
 	}

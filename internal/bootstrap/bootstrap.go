@@ -126,7 +126,7 @@ func Run(ctx context.Context) error {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := shutdown(shutdownCtx); err != nil {
-				logger.Warn("[bootstrap] observability shutdown failed: %v", err)
+				logger.WarnTag("引导", "可观测性未正常关闭: %v", err)
 			}
 		}()
 	}
@@ -134,7 +134,7 @@ func Run(ctx context.Context) error {
 	defer func() {
 		if authManager != nil {
 			if closeErr := authManager.Close(); closeErr != nil {
-				logger.Error("认证管理器关闭失败: %v", closeErr)
+				logger.ErrorTag("认证", "认证管理器未正常关闭: %v", closeErr)
 			}
 		}
 	}()
@@ -156,7 +156,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("服务已成功启动")
+	logger.InfoTag("引导", "服务已成功启动")
 	logger.Close()
 	return nil
 }
@@ -165,15 +165,15 @@ func logBootstrapGraph(logger *utils.Logger, steps []initStep) {
 	if logger == nil {
 		return
 	}
-	logger.Info("bootstrap dependency graph:")
+	logger.InfoTag("引导", "初始化依赖关系概览")
 	for _, step := range steps {
 		if len(step.DependsOn) == 0 {
-			logger.Info("  %s (%s)", step.ID, step.Title)
+			logger.InfoTag("引导", "根步骤 %s（%s）", step.ID, step.Title)
 			continue
 		}
-		logger.Info("  %s (%s) depends on %s", step.ID, step.Title, strings.Join(step.DependsOn, ", "))
+		logger.InfoTag("引导", "%s（%s） 依赖 %s", step.ID, step.Title, strings.Join(step.DependsOn, ", "))
 	}
-	logger.Info("  startServices -> transports/http")
+	logger.InfoTag("引导", "startServices 依赖 transports/http")
 }
 
 func executeInitSteps(ctx context.Context, steps []initStep, state *appState) error {
@@ -300,7 +300,12 @@ func initLoggingStep(_ context.Context, state *appState) error {
 	utils.DefaultLogger = state.logger
 
 	if state.logger != nil {
-		state.logger.Info("[bootstrap] logger ready level=%s config_path=%s", state.config.Log.LogLevel, state.configPath)
+		state.logger.InfoTag(
+			"引导",
+			"日志模块就绪 level=%s config_path=%s",
+			state.config.Log.LogLevel,
+			state.configPath,
+		)
 	}
 
 	database.SetLogger(state.logger)
@@ -421,7 +426,7 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 			)
 		}
 	default:
-		logger.Warn("unsupported auth store type %s, falling back to memory", storeType)
+		logger.WarnTag("认证", "不支持的存储类型 %s，已自动回退至内存模式", storeType)
 		storeCfg.Driver = authstore.DriverMemory
 		storeCfg.Memory = &authstore.MemoryConfig{GCInterval: cleanupInterval}
 	}
@@ -458,11 +463,11 @@ func parseDurationOrWarn(logger *utils.Logger, value string, field string) time.
 	}
 	duration, err := time.ParseDuration(value)
 	if err != nil {
-		logger.Warn("invalid %s: %s (%v)", field, value, err)
+		logger.WarnTag("配置", "无法解析 %s，原始值 %s（%v）", field, value, err)
 		return 0
 	}
 	if duration <= 0 {
-		logger.Warn("non-positive %s: %s", field, value)
+		logger.WarnTag("配置", "%s 必须为正数，当前值为 %s", field, value)
 		return 0
 	}
 	return duration
@@ -477,7 +482,7 @@ func startTransportServer(
 ) (*transport.TransportManager, error) {
 	poolManager, err := pool.NewPoolManager(config, logger)
 	if err != nil {
-		logger.Error("初始化资源池管理器失败: %v", err)
+		logger.ErrorTag("引导", "初始化资源池管理器失败: %v", err)
 		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
 	}
 
@@ -503,23 +508,23 @@ func startTransportServer(
 		wsTransport.SetConnectionHandler(handlerFactory)
 		transportManager.RegisterTransport("websocket", wsTransport)
 		enabledTransports = append(enabledTransports, "WebSocket")
-		logger.Debug("WebSocket传输层已注册")
+		logger.DebugTag("传输", "WebSocket 驱动已注册")
 	}
 
 	if len(enabledTransports) == 0 {
-		return nil, fmt.Errorf("没有启用任何传输层")
+		return nil, fmt.Errorf("未启用任何传输驱动")
 	}
 
-	logger.Info("[传输层] [启用 %v]", enabledTransports)
+	logger.InfoTag("传输", "已启用的传输驱动: %v", enabledTransports)
 
 	g.Go(func() error {
 		go func() {
 			<-groupCtx.Done()
-			logger.Info("收到关闭信号，开始关闭所有传输层...")
+			logger.InfoTag("传输", "收到关闭信号，正在依次关闭传输驱动")
 			if err := transportManager.StopAll(); err != nil {
-				logger.Error("关闭传输层失败: %v", err)
+				logger.ErrorTag("传输", "关闭传输驱动失败: %v", err)
 			} else {
-				logger.Info("所有传输层已优雅关闭")
+				logger.InfoTag("传输", "所有传输驱动已优雅关闭")
 			}
 		}()
 
@@ -527,13 +532,13 @@ func startTransportServer(
 			if groupCtx.Err() != nil {
 				return nil
 			}
-			logger.Error("传输层运行失败: %v", err)
+			logger.ErrorTag("传输", "传输驱动运行失败: %v", err)
 			return err
 		}
 		return nil
 	})
 
-	logger.Debug("传输层服务已成功启动")
+	logger.DebugTag("传输", "传输服务已成功启动")
 	return transportManager, nil
 }
 
@@ -570,37 +575,37 @@ func startHTTPServer(
 
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("OTA 服务启动失败: %v", err)
+		logger.ErrorTag("OTA", "OTA 服务启动失败: %v", err)
 		return nil, err
 	}
 
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
-		logger.Error("Vision 服务初始化失败:%v", err)
+		logger.ErrorTag("视觉", "Vision 服务初始化失败: %v", err)
 		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:new-service", err)
 	}
 	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("Vision 服务启动失败 %v", err)
+		logger.ErrorTag("视觉", "Vision 服务启动失败: %v", err)
 		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:start-service", err)
 	}
 
 	cfgServer, err := cfg.NewDefaultAdminService(config, logger)
 	if err != nil {
-		logger.Error("Admin 服务初始化失败:%v", err)
+		logger.ErrorTag("管理后台", "Admin 服务初始化失败: %v", err)
 		return nil, err
 	}
 	if err := cfgServer.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("Admin 服务启动失败 %v", err)
+		logger.ErrorTag("管理后台", "Admin 服务启动失败: %v", err)
 		return nil, err
 	}
 
 	userServer, err := cfg.NewDefaultUserService(config, logger)
 	if err != nil {
-		logger.Error("用户服务初始化失败:%v", err)
+		logger.ErrorTag("用户服务", "用户服务初始化失败: %v", err)
 		return nil, err
 	}
 	if err := userServer.Start(groupCtx, router, apiGroup); err != nil {
-		logger.Error("用户服务启动失败 %v", err)
+		logger.ErrorTag("用户服务", "用户服务启动失败: %v", err)
 		return nil, err
 	}
 
@@ -615,7 +620,7 @@ func startHTTPServer(
 	router.GET("/openapi.json", func(c *gin.Context) {
 		doc, err := swag.ReadDoc()
 		if err != nil {
-			logger.Error("生成 OpenAPI 文档失败 %v", err)
+			logger.ErrorTag("HTTP", "生成 OpenAPI 文档失败: %v", err)
 			c.JSON(http.StatusInternalServerError, cfg.APIResponse{
 				Success: false,
 				Data:    gin.H{"error": err.Error()},
@@ -632,9 +637,9 @@ func startHTTPServer(
 	})
 
 	g.Go(func() error {
-		logger.Info("[Gin] 访问地址: http://localhost:%d", config.Web.Port)
-		logger.Info("[Gin] [OTA] 访问地址: http://localhost:%d/api/ota/", config.Web.Port)
-		logger.Info("[API文档] 服务已启动，访问地址: http://localhost:%d/docs", config.Web.Port)
+		logger.InfoTag("HTTP", "Gin 服务已启动，访问地址 http://localhost:%d", config.Web.Port)
+		logger.InfoTag("HTTP", "OTA 服务入口: http://localhost:%d/api/ota/", config.Web.Port)
+		logger.InfoTag("HTTP", "在线文档入口: http://localhost:%d/docs", config.Web.Port)
 
 		go func() {
 			<-groupCtx.Done()
@@ -642,14 +647,14 @@ func startHTTPServer(
 			defer cancel()
 
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				logger.Error("HTTP服务关闭失败 %v", err)
+				logger.ErrorTag("HTTP", "HTTP 服务关闭失败: %v", err)
 			} else {
-				logger.Info("HTTP服务已优雅关闭")
+				logger.InfoTag("HTTP", "HTTP 服务已优雅关闭")
 			}
 		}()
 
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("HTTP 服务启动失败 %v", err)
+			logger.ErrorTag("HTTP", "HTTP 服务启动失败: %v", err)
 			return err
 		}
 		return nil
@@ -665,7 +670,7 @@ func waitForShutdown(
 	g *errgroup.Group,
 ) error {
 	<-ctx.Done()
-	logger.Info("收到系统信号: %v，开始进行资源清理", context.Cause(ctx))
+	logger.InfoTag("引导", "收到系统信号 %v，正在进行资源清理", context.Cause(ctx))
 
 	cancel()
 
@@ -677,13 +682,13 @@ func waitForShutdown(
 	select {
 	case err := <-done:
 		if err != nil {
-			logger.Error("服务关闭过程中出现错误: %v", err)
+			logger.ErrorTag("引导", "服务关闭过程中出现错误: %v", err)
 			return err
 		}
-		logger.Info("所有服务已成功关闭")
+		logger.InfoTag("引导", "所有服务已成功关闭")
 	case <-time.After(15 * time.Second):
 		timeoutErr := errors.New("服务关闭超时")
-		logger.Error("服务关闭超时，强制退出")
+		logger.ErrorTag("引导", "服务关闭超时，已强制退出")
 		return timeoutErr
 	}
 	return nil

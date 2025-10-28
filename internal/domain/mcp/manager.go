@@ -115,7 +115,7 @@ func (m *Manager) registerClient(name string, client Client, autoStart bool) err
 	m.clients[name] = client
 	m.clientsMu.Unlock()
 
-	m.logger.Info("[mcp] registered client %s (tools=%d)", name, len(client.GetAvailableTools()))
+	m.logger.InfoTag("MCP", "注册客户端 %s（工具数量=%d）", name, len(client.GetAvailableTools()))
 	m.refreshToolRegistry()
 	return nil
 }
@@ -184,7 +184,7 @@ func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]
 		if client == nil || !client.HasTool(name) {
 			continue
 		}
-		m.logger.Debug("[mcp] executing tool %s via client %s", name, clientName)
+		m.logger.DebugTag("MCP", "执行工具 %s，来自客户端 %s", name, clientName)
 		result, err := client.CallTool(ctx, name, args)
 		if err != nil {
 			return nil, fmt.Errorf("client %s failed: %w", clientName, err)

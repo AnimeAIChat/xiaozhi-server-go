@@ -67,7 +67,7 @@ func (s *DefaultUserService) Start(
 
 	}
 
-	s.logger.Info("[HTTP] [用户] 服务路由注册完成")
+	s.logger.InfoTag("HTTP", "用户服务路由注册完成")
 	return nil
 }
 

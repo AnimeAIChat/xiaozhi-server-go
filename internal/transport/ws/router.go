@@ -91,14 +91,14 @@ func (r *Router) Handle(w http.ResponseWriter, req *http.Request) {
 			},
 		)
 		if r.logger != nil {
-			r.logger.Error("WebSocket handshake failed: %v", err)
+			r.logger.ErrorTag("WebSocket", "握手失败: %v", err)
 		}
 		return
 	}
 
 	deviceID, clientID := resolveIdentifiers(req, conn)
 	if r.logger != nil {
-		r.logger.Info("[WebSocket] [connect %s/%s]", deviceID, clientID)
+		r.logger.InfoTag("WebSocket", "建立连接 device=%s client=%s", deviceID, clientID)
 	}
 
 	wsConn := NewConnection(clientID, conn)
@@ -124,7 +124,7 @@ func (r *Router) Handle(w http.ResponseWriter, req *http.Request) {
 			},
 		)
 		if r.logger != nil {
-			r.logger.Error("failed to create connection handler: %v", err)
+			r.logger.ErrorTag("WebSocket", "创建连接处理器失败: %v", err)
 		}
 		_ = wsConn.Close()
 		return
@@ -147,7 +147,7 @@ func (r *Router) Handle(w http.ResponseWriter, req *http.Request) {
 	go session.Run(func(runErr error) {
 		r.hub.Unregister(session.ID())
 		if runErr != nil && r.logger != nil {
-			r.logger.Warn("session %s ended with error: %v", session.ID(), runErr)
+			r.logger.WarnTag("WebSocket", "会话 %s 异常结束: %v", session.ID(), runErr)
 		}
 		observability.RecordMetric(
 			session.Context(),

@@ -31,7 +31,7 @@ func (s *DefaultCfgService) Start(ctx context.Context, engine *gin.Engine, apiGr
 	apiGroup.POST("/cfg", s.handlePost)
 	apiGroup.OPTIONS("/cfg", s.handleOptions)
 
-	s.logger.Info("[Cfg] [服务] HTTP路由注册完成")
+	s.logger.InfoTag("HTTP", "配置服务路由注册完成")
 	return nil
 }
 

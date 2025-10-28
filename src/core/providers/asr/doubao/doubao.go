@@ -363,7 +363,7 @@ func (p *Provider) parseResponse(data []byte) (map[string]interface{}, error) {
 			if err := json.Unmarshal(payloadMsg, &jsonData); err != nil {
 				return nil, fmt.Errorf("解析JSON响应失败: %v", err)
 			}
-			p.logger.Debug("[DEBUG] parseResponse: JSON解析成功, 数据=%v", jsonData)
+			p.logger.DebugTag("ASR", "解析响应成功，数据=%v", jsonData)
 			result["payload_msg"] = jsonData
 		} else if serializationMethod != noSerialization {
 			result["payload_msg"] = string(payloadMsg)
@@ -410,7 +410,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) StartStreaming(ctx context.Context) error {
-	p.logger.Info("[ASR] [流式识别] 开始")
+	p.logger.InfoTag("ASR", "流式识别开始")
 	p.ResetStartListenTime()
 	// 加锁保护连接初始化
 	p.connMutex.Lock()
@@ -506,7 +506,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("读取响应失败: %v", err)
 	} else {
-		p.logger.Debug("[DEBUG] 流式识别: 收到WebSocket消息长度=%d", len(response))
+		p.logger.DebugTag("ASR", "流式识别收到 WebSocket 数据长度=%d", len(response))
 	}
 
 	initialResult, err := p.parseResponse(response)
@@ -523,7 +523,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	}
 
 	p.isStreaming = true
-	p.logger.Debug("[DEBUG] 流式识别初始化成功, connectID=%s, reqID=%s", p.connectID, p.reqID)
+	p.logger.DebugTag("ASR", "流式识别初始化成功 connectID=%s reqID=%s", p.connectID, p.reqID)
 	// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 	go func() {
 		p.ReadMessage()
@@ -532,7 +532,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 }
 
 func (p *Provider) ReadMessage() {
-	p.logger.Info("[ASR] [doubao] 流式识别协程已启动")
+	p.logger.InfoTag("ASR", "Doubao 流式识别协程启动")
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Error("流式识别协程发生错误: %v", r)
@@ -543,7 +543,7 @@ func (p *Provider) ReadMessage() {
 			p.closeConnection()
 		}
 		p.connMutex.Unlock()
-		p.logger.Info("[ASR] [doubao] 流式识别协程已结束")
+		p.logger.InfoTag("ASR", "Doubao 流式识别协程结束")
 	}()
 
 	for {
@@ -590,7 +590,7 @@ func (p *Provider) ReadMessage() {
 					text = textData
 				}
 
-				p.logger.Debug("[DEBUG] 流式识别: 识别成功, 文本='%s'", text)
+				p.logger.DebugTag("ASR", "识别成功，文本='%s'", text)
 
 				p.connMutex.Lock()
 				p.result = text
@@ -666,8 +666,9 @@ func (p *Provider) SendLastAudio(data []byte) error {
 
 // sendAudioData 直接发送音频数据，替代之前的sendCurrentBuffer
 func (p *Provider) sendAudioData(data []byte, isLast bool) error {
-	p.logger.Debug(
-		"[DEBUG] sendAudioData: 数据长度=%d, isLast=%t, sendDataCnt=%d",
+	p.logger.DebugTag(
+		"ASR",
+		"发送音频数据 数据长度=%d isLast=%t sendDataCnt=%d",
 		len(data),
 		isLast,
 		p.sendDataCnt,
@@ -731,7 +732,7 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	p.logger.Info("[ASR] [状态] 已重置")
+	p.logger.InfoTag("ASR", "状态已重置")
 
 	return nil
 }
@@ -754,7 +755,7 @@ func (p *Provider) Cleanup() error {
 	// 确保WebSocket连接关闭
 	p.closeConnection()
 
-	p.logger.Info("ASR资源已清理")
+	p.logger.InfoTag("ASR", "资源已清理")
 
 	return nil
 }

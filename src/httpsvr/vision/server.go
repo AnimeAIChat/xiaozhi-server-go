@@ -59,7 +59,7 @@ func (s *DefaultVisionService) initVLLMProviders() error {
 	// 先看配置中的VLLLM provider
 	selected_vlllm := s.config.SelectedModule["VLLLM"]
 	if selected_vlllm == "" {
-		s.logger.Warn("请设置好VLLLM provider配置")
+		s.logger.WarnTag("VLLLM", "请先设置 VLLLM provider 配置")
 		return fmt.Errorf("请设置好VLLLM provider配置")
 	}
 
@@ -80,19 +80,19 @@ func (s *DefaultVisionService) initVLLMProviders() error {
 	// 创建provider实例
 	provider, err := vlllm.NewProvider(providerConfig, s.logger)
 	if err != nil {
-		s.logger.Warn("创建VLLLM provider 失败: %v", err)
+		s.logger.WarnTag("VLLLM", "创建 provider 失败: %v", err)
 	}
 
 	// 初始化provider
 	if err := provider.Initialize(); err != nil {
-		s.logger.Warn("初始化VLLLM provider失败: %v", err)
+		s.logger.WarnTag("VLLLM", "初始化 provider 失败: %v", err)
 	}
 
 	s.vlllmMap[selected_vlllm] = provider
-	s.logger.Info("[VLLLM] [初始化 %s] 成功", selected_vlllm)
+	s.logger.InfoTag("VLLLM", "初始化完成: %s", selected_vlllm)
 
 	if len(s.vlllmMap) == 0 {
-		s.logger.Error("没有可用的VLLLM provider，请检查配置")
+		s.logger.ErrorTag("VLLLM", "没有可用的 provider，请检查配置")
 		return fmt.Errorf("没有可用的VLLLM provider")
 	}
 
@@ -110,13 +110,13 @@ func (s *DefaultVisionService) Start(
 	apiGroup.POST("/vision", s.handlePost)
 	apiGroup.OPTIONS("/vision", s.handleOptions)
 
-	s.logger.Info("[HTTP] [Vision] 注册完成")
+	s.logger.InfoTag("HTTP", "Vision 服务路由注册完成")
 	return nil
 }
 
 // handleOptions 处理OPTIONS请求（CORS）
 func (s *DefaultVisionService) handleOptions(c *gin.Context) {
-	s.logger.Info("收到Vision CORS预检请求 options")
+	s.logger.InfoTag("Vision", "收到 CORS 预检请求 (OPTIONS)")
 	s.addCORSHeaders(c)
 	c.Status(http.StatusOK)
 }
@@ -387,7 +387,7 @@ func (s *DefaultVisionService) processVisionRequest(req *VisionRequest) (string,
 	for content := range responseChan {
 		result.WriteString(content)
 	}
-	s.logger.Info("VLLLM分析结果: %s", result.String())
+	s.logger.InfoTag("VLLLM", "分析结果: %s", result.String())
 
 	return result.String(), nil
 }
@@ -494,9 +494,9 @@ func (s *DefaultVisionService) respondError(c *gin.Context, statusCode int, mess
 func (s *DefaultVisionService) Cleanup() error {
 	for name, provider := range s.vlllmMap {
 		if err := provider.Cleanup(); err != nil {
-			s.logger.Warn("清理VLLLM provider %s 失败: %v", name, err)
+			s.logger.WarnTag("VLLLM", "清理 provider %s 失败: %v", name, err)
 		}
 	}
-	s.logger.Info("Vision服务清理完成")
+	s.logger.InfoTag("Vision", "服务清理完成")
 	return nil
 }
