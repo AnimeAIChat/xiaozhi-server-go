@@ -16,8 +16,14 @@ type Config struct {
 		Token string `json:"token"`
 		Auth  struct {
 			Store struct {
-				Type   string `yaml:"type" json:"type"`     // memory/file/redis
-				Expiry int    `yaml:"expiry" json:"expiry"` // 过期时间(小时)
+				Type           string            `yaml:"type" json:"type"`                   // memory/sqlite/redis
+				Expiry         int               `yaml:"expiry" json:"expiry"`               // 过期时间(小时)
+				Cleanup        string            `yaml:"cleanup,omitempty" json:"cleanup"`   // 数据清理周期 (duration string)
+				Redis          AuthRedisStore    `yaml:"redis,omitempty" json:"redis"`       // Redis 配置
+				Sqlite         AuthSQLiteStore   `yaml:"sqlite,omitempty" json:"sqlite"`     // SQLite 配置
+				Memory         AuthMemoryStore   `yaml:"memory,omitempty" json:"memory"`     // 内存配置
+				CustomMetadata map[string]any    `yaml:"metadata,omitempty" json:"metadata"` // 额外元数据
+				Labels         map[string]string `yaml:"labels,omitempty" json:"labels"`     // 默认标签
 			} `yaml:"store" json:"store"`
 		} `yaml:"auth" json:"auth"`
 	} `yaml:"server" json:"server"`
@@ -86,6 +92,22 @@ type LocalMCPFun struct {
 	Name        string `yaml:"name"         json:"name"`        // 函数名称
 	Description string `yaml:"description"  json:"description"` // 函数描述
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
+}
+
+type AuthRedisStore struct {
+	Addr     string `yaml:"addr" json:"addr"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+	DB       int    `yaml:"db,omitempty" json:"db,omitempty"`
+	Prefix   string `yaml:"prefix,omitempty" json:"prefix,omitempty"`
+}
+
+type AuthSQLiteStore struct {
+	DSN string `yaml:"dsn,omitempty" json:"dsn,omitempty"`
+}
+
+type AuthMemoryStore struct {
+	Cleanup string `yaml:"cleanup,omitempty" json:"cleanup,omitempty"`
 }
 
 type Role struct {

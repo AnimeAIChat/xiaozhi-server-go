@@ -8,7 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"xiaozhi-server-go/src/core/mcp"
+	"xiaozhi-server-go/internal/domain/mcp"
 )
 
 // Connection wraps a gorilla websocket connection and implements the

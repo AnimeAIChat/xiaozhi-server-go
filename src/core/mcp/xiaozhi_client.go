@@ -7,7 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"xiaozhi-server-go/src/core/auth"
+
+	domainauth "xiaozhi-server-go/internal/domain/auth"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -75,7 +76,7 @@ func (c *XiaoZhiMCPClient) SetID(deviceID string, clientID string) {
 }
 
 func (c *XiaoZhiMCPClient) SetToken(token string) {
-	auth := auth.NewAuthToken(token)
+	auth := domainauth.NewAuthToken(token)
 	visionToken, err := auth.GenerateToken(c.deviceID)
 	if err != nil {
 		c.logger.Error("生成Vision Token失败: %v", err)

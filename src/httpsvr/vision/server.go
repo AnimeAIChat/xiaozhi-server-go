@@ -9,8 +9,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	domainauth "xiaozhi-server-go/internal/domain/auth"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/vlllm"
@@ -29,7 +30,7 @@ type DefaultVisionService struct {
 	logger    *utils.Logger
 	config    *configs.Config
 	vlllmMap  map[string]*vlllm.Provider // 支持多个VLLLM provider
-	authToken *auth.AuthToken            // 认证工具
+	authToken *domainauth.AuthToken      // 认证工具
 }
 
 // NewDefaultVisionService 构造函数
@@ -43,7 +44,7 @@ func NewDefaultVisionService(
 		vlllmMap: make(map[string]*vlllm.Provider),
 	}
 
-	service.authToken = auth.NewAuthToken(config.Server.Token)
+	service.authToken = domainauth.NewAuthToken(config.Server.Token)
 
 	// 初始化VLLLM providers
 	if err := service.initVLLMProviders(); err != nil {

@@ -3,8 +3,8 @@ package transport
 import (
 	"context"
 	"net/http"
+	"xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/core"
-	"xiaozhi-server-go/src/core/mcp"
 )
 
 // Transport 传输层接口
