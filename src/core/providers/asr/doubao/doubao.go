@@ -740,7 +740,7 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	p.logger.InfoTag("ASR", "状态已重置")
+	p.logger.DebugTag("ASR", "状态已重置")
 
 	return nil
 }
