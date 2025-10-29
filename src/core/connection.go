@@ -1463,6 +1463,8 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 	h.tts_last_text_index = -1
 	h.tts_last_audio_index = -1
 	h.providers.asr.Reset() // 重置ASR状态
+	// 恢复ASR接收，避免打断后无法重新启动ASR
+	atomic.StoreInt32(&h.asrPause, 0)
 }
 
 func (h *ConnectionHandler) closeOpusDecoder() {
