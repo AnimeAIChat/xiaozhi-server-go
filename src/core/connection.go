@@ -893,10 +893,28 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	// 转换消息格式
 	interMessages := make([]domainllminter.Message, len(messages))
 	for i, msg := range messages {
-		interMessages[i] = domainllminter.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
+		interMsg := domainllminter.Message{
+			Role:       msg.Role,
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
 		}
+		
+		// 转换ToolCalls
+		if len(msg.ToolCalls) > 0 {
+			interMsg.ToolCalls = make([]domainllminter.ToolCall, len(msg.ToolCalls))
+			for j, tc := range msg.ToolCalls {
+				interMsg.ToolCalls[j] = domainllminter.ToolCall{
+					ID:   tc.ID,
+					Type: tc.Type,
+					Function: domainllminter.ToolCallFunction{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+		}
+		
+		interMessages[i] = interMsg
 	}
 
 	// 转换工具格式
