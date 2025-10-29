@@ -1366,7 +1366,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	cleanText = utils.RemoveParentheses(cleanText)
 
 	if cleanText == "" {
-		h.logger.WarnTag("TTS", "收到空文本，索引=%d", textIndex)
+		h.logger.DebugTag("TTS", "收到空文本，索引=%d", textIndex)
 		return
 	}
 
@@ -1439,8 +1439,9 @@ func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) 
 	text = utils.RemoveAllEmoji(text)
 	text = utils.RemoveMarkdownSyntax(text) // 移除Markdown语法
 	if text == "" {
-		h.logger.Warn("SpeakAndPlay 收到空文本，无法合成语音, %d, text:%s.", textIndex, utils.SanitizeForLog(originText))
-		return errors.New("收到空文本，无法合成语音")
+		// 如果清理后的文本为空，可能是纯表情符号或纯Markdown，跳过语音合成
+		h.logger.Debug("SpeakAndPlay 跳过空文本分段，原始文本: %s, 索引: %d", utils.SanitizeForLog(originText), textIndex)
+		return nil // 不报错，直接跳过
 	}
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
