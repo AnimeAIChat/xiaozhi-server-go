@@ -67,10 +67,29 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 	// 转换消息格式
 	coreMessages := make([]types.Message, len(messages))
 	for i, msg := range messages {
-		coreMessages[i] = types.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
+		coreMsg := types.Message{
+			Role:       msg.Role,
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
 		}
+		
+		// 转换ToolCalls
+		if len(msg.ToolCalls) > 0 {
+			coreMsg.ToolCalls = make([]types.ToolCall, len(msg.ToolCalls))
+			for j, tc := range msg.ToolCalls {
+				coreMsg.ToolCalls[j] = types.ToolCall{
+					ID:   tc.ID,
+					Type: tc.Type,
+					Function: types.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+					Index: j, // 使用数组索引作为Index
+				}
+			}
+		}
+		
+		coreMessages[i] = coreMsg
 	}
 
 	// 转换工具格式
