@@ -942,9 +942,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				if textIndex == 1 {
 					now := time.Now()
 					llmSpentTime := now.Sub(llmStartTime)
-					h.LogInfo(fmt.Sprintf("[LLM] [回复 %s/%d] 第一句话: %s", llmSpentTime, round, logSegment))
+					h.logger.InfoLLM("[回复 %s/%d] 第一句话: %s", llmSpentTime, round, logSegment)
 				} else {
-					h.LogInfo(fmt.Sprintf("[LLM] [分段 %d/%d] %s", textIndex, round, logSegment))
+					h.logger.InfoLLM("[分段 %d/%d] %s", textIndex, round, logSegment)
 				}
 				h.tts_last_text_index = textIndex
 				err := h.SpeakAndPlay(segment, textIndex, round)
@@ -1027,7 +1027,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		remainingText := fullResponse[processedChars:]
 		if remainingText != "" {
 			textIndex++
-			h.LogInfo(fmt.Sprintf("[LLM] [分段 剩余文本 %d/%d] %s", textIndex, round, utils.SanitizeForLog(remainingText)))
+			h.logger.InfoLLM("[分段 剩余文本 %d/%d] %s", textIndex, round, utils.SanitizeForLog(remainingText))
 			h.tts_last_text_index = textIndex
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}

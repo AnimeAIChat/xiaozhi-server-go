@@ -2,7 +2,7 @@ package eventbus
 
 import (
 	"fmt"
-	"log"
+	"xiaozhi-server-go/src/core/utils"
 )
 
 // EventHandler 事件处理器接口
@@ -30,7 +30,7 @@ func (h *DefaultEventHandler) Handle(eventType string, data interface{}) {
 	case EventASRError, EventLLMError, EventTTSError:
 		h.handleError(data.(SystemEventData))
 	default:
-		log.Printf("未处理的事件类型: %s", eventType)
+		utils.DefaultLogger.Info(fmt.Sprintf("[事件处理器] 未处理的事件类型: %s", eventType))
 	}
 }
 
@@ -38,26 +38,22 @@ func (h *DefaultEventHandler) Handle(eventType string, data interface{}) {
 func (h *DefaultEventHandler) handleASRResult(data ASREventData) {
 	// ASR结果现在直接通过listener.OnAsrResult处理，不再通过事件总线
 	// 这里保留日志记录用于调试
-	fmt.Printf("[事件处理器] ASR结果: 会话=%s, 文本=%s, 最终=%v\n",
-		data.SessionID, data.Text, data.IsFinal)
+	utils.DefaultLogger.InfoASR("[事件处理器] ASR结果: 文本=%s, 最终=%v", data.Text, data.IsFinal)
 }
 
 // handleLLMResponse 处理LLM响应事件
 func (h *DefaultEventHandler) handleLLMResponse(data LLMEventData) {
-	fmt.Printf("[事件处理器] LLM响应: 会话=%s, 轮次=%d, 内容=%s, 最终=%v\n",
-		data.SessionID, data.Round, data.Content, data.IsFinal)
+	utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] LLM响应: %s, 最终=%v", data.Round, data.Content, data.IsFinal)
 }
 
 // handleTTSSpeak 处理TTS说话事件
 func (h *DefaultEventHandler) handleTTSSpeak(data TTSEventData) {
-	fmt.Printf("[事件处理器] TTS说话: 会话=%s, 轮次=%d, 文本索引=%d, 文本=%s\n",
-		data.SessionID, data.Round, data.TextIndex, data.Text)
+	utils.DefaultLogger.InfoTTS("[事件处理器] [轮次 %d] [文本索引 %d] TTS说话: %s", data.Round, data.TextIndex, data.Text)
 }
 
 // handleError 处理错误事件
 func (h *DefaultEventHandler) handleError(data SystemEventData) {
-	fmt.Printf("[事件处理器] 系统错误: 级别=%s, 消息=%s\n",
-		data.Level, data.Message)
+	utils.DefaultLogger.Info(fmt.Sprintf("[事件处理器] 系统错误: 级别=%s, 消息=%s", data.Level, data.Message))
 }
 
 // SetupEventHandlers 设置事件处理器
