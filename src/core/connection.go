@@ -777,6 +777,9 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 		if cleand_text == cmd {
 			h.LogInfo("[客户端] [退出意图] 收到，准备结束对话")
 			h.Close() // 直接关闭连接
+			if h.conn != nil {
+				h.conn.Close() // 强制关闭连接，让消息循环退出
+			}
 			return true
 		}
 	}
@@ -792,7 +795,7 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	}
 
 	if h.QuitIntent(text) {
-		return fmt.Errorf("用户请求退出对话")
+		return nil
 	}
 
 	// 检测是否是唤醒词，实现快速响应
