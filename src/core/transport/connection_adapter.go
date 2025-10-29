@@ -179,6 +179,11 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 	conn Connection,
 	req *http.Request,
 ) ConnectionHandler {
+	if f.poolManager == nil {
+		f.logger.Error("池管理器未初始化")
+		return nil
+	}
+
 	// 从资源池获取提供者集合
 	providerSet, err := f.poolManager.GetProviderSet()
 	if err != nil {
@@ -210,4 +215,9 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 	)
 
 	return adapter
+}
+
+// SetPoolManager 设置池管理器（用于异步初始化）
+func (f *DefaultConnectionHandlerFactory) SetPoolManager(poolManager *pool.PoolManager) {
+	f.poolManager = poolManager
 }

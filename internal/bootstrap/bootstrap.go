@@ -517,14 +517,27 @@ func startTransportServer(
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
-	poolManager, err := pool.NewPoolManagerWithMCP(config, logger, mcpManager)
-	if err != nil {
-		logger.ErrorTag("引导", "初始化资源池管理器失败: %v", err)
-		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
-	}
+	var poolManager *pool.PoolManager
+	var poolErr error
+
+	// 异步初始化资源池管理器
+	poolInitDone := make(chan struct{})
+	go func() {
+		defer close(poolInitDone)
+		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, mcpManager)
+		if poolErr != nil {
+			logger.ErrorTag("引导", "初始化资源池管理器失败: %v", poolErr)
+			return
+		}
+
+		// 预热资源池以减少首次请求延迟
+		if err := poolManager.Warmup(context.Background()); err != nil {
+			logger.WarnTag("引导", "资源池预热失败: %v", err)
+		}
+	}()
 
 	taskMgr := task.NewTaskManager(task.ResourceConfig{
-		MaxWorkers:        12,
+		MaxWorkers:        8,
 		MaxTasksPerClient: 20,
 	})
 	taskMgr.Start()
@@ -533,7 +546,7 @@ func startTransportServer(
 
 	handlerFactory := transport.NewDefaultConnectionHandlerFactory(
 		config,
-		poolManager,
+		nil, // poolManager will be set later
 		taskMgr,
 		logger,
 	)
@@ -564,6 +577,15 @@ func startTransportServer(
 				logger.InfoTag("传输", "所有传输驱动已优雅关闭")
 			}
 		}()
+
+		// 等待池管理器初始化完成
+		<-poolInitDone
+		if poolErr != nil {
+			return poolErr
+		}
+
+		// 更新处理器工厂的池管理器
+		handlerFactory.SetPoolManager(poolManager)
 
 		if err := transportManager.StartAll(groupCtx); err != nil {
 			if groupCtx.Err() != nil {
