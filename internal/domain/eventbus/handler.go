@@ -43,7 +43,11 @@ func (h *DefaultEventHandler) handleASRResult(data ASREventData) {
 
 // handleLLMResponse 处理LLM响应事件
 func (h *DefaultEventHandler) handleLLMResponse(data LLMEventData) {
-	utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] LLM响应: %s, 最终=%v", data.Round, utils.SanitizeForLog(data.Content), data.IsFinal)
+	if data.IsFinal {
+		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s (最终)", data.Round, utils.SanitizeForLog(data.Content))
+	} else {
+		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s", data.Round, utils.SanitizeForLog(data.Content))
+	}
 }
 
 // handleTTSSpeak 处理TTS说话事件
