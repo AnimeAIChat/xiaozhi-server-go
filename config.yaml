@@ -94,6 +94,11 @@ selected_module:
   LLM: OllamaLLM
   VLLLM: ChatGLMVLLM
 
+vad:
+  type: webrtc
+  sample_rate: 16000
+  pool_size: 10  # 启用池化
+
 # ASR配置
 ASR:
   DoubaoASR:
