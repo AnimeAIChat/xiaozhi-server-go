@@ -41,7 +41,7 @@ func (s *DefaultUserService) Start(
 
 	// 需要认证的用户接口
 	authGroup := apiGroup.Group("/user")
-	authGroup.Use(AuthMiddleware())
+	authGroup.Use(AuthMiddleware(s.config))
 	{
 		authGroup.GET("/profile", s.handleGetProfile)
 		authGroup.PUT("/profile", s.handleUpdateProfile)

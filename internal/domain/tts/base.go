@@ -13,13 +13,15 @@ type Manager struct {
 	mu     sync.RWMutex
 	tts    interface{} // Eino TTS component
 	config inter.TTSConfig
+	globalConfig *configs.Config // 全局配置
 	provider inter.TTSProvider // 实际的TTS提供商
 }
 
 // NewManager 创建TTS管理器
-func NewManager(config inter.TTSConfig) *Manager {
+func NewManager(config inter.TTSConfig, globalConfig *configs.Config) *Manager {
 	return &Manager{
-		config: config,
+		config:       config,
+		globalConfig: globalConfig,
 	}
 }
 
@@ -39,11 +41,11 @@ func (m *Manager) GetTTS() interface{} {
 
 // ToTTS 将文本转换为语音
 func (m *Manager) ToTTS(text string) (string, error) {
-	return m.ToTTSWithConfig(text, m.config)
+	return m.ToTTSWithConfig(text, m.config, m.globalConfig)
 }
 
 // ToTTSWithConfig 使用指定配置转换文本
-func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig) (string, error) {
+func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig, globalConfig *configs.Config) (string, error) {
 	// 创建TTS配置
 	ttsConfig := &tts.Config{
 		Type:            config.Provider,
@@ -57,7 +59,7 @@ func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig) (string, 
 	switch config.Provider {
 	case "doubao":
 		// 从配置中获取DoubaoTTS的实际配置
-		if doubaoCfg, ok := configs.Cfg.TTS["DoubaoTTS"]; ok {
+		if doubaoCfg, ok := globalConfig.TTS["DoubaoTTS"]; ok {
 			ttsConfig.AppID = doubaoCfg.AppID
 			ttsConfig.Token = doubaoCfg.Token
 			ttsConfig.Cluster = doubaoCfg.Cluster

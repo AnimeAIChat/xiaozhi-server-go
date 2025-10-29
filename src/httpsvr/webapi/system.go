@@ -7,6 +7,7 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/domain/config/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,6 +15,7 @@ import (
 type DefaultAdminService struct {
 	logger *utils.Logger
 	config *configs.Config
+	repo   types.Repository
 }
 
 // NewDefaultAdminService 构造函数
@@ -24,6 +26,7 @@ func NewDefaultAdminService(
 	service := &DefaultAdminService{
 		logger: logger,
 		config: config,
+		repo:   nil, // 暂时设为nil，后续需要修改调用处传入Repository
 	}
 
 	return service, nil
@@ -40,12 +43,12 @@ func (s *DefaultAdminService) Start(
 	// 需要登录和管理员权限的分组
 	adminGroup := apiGroup.Group("")
 	// 查看模型不需要管理员权限
-	adminGroup.Use(AuthMiddleware())
+	adminGroup.Use(AuthMiddleware(s.config))
 	{
 		adminGroup.GET("/admin/system", s.handleSystemGet)
 		adminGroup.GET("/admin/system/providers/:type", s.handleSystemProvidersType)
 	}
-	adminGroup.Use(AuthMiddleware(), AdminMiddleware())
+	adminGroup.Use(AuthMiddleware(s.config), AdminMiddleware())
 	{
 		adminGroup.POST("/admin/system", s.handleSystemPost)
 
@@ -84,11 +87,11 @@ type SystemConfig struct {
 // @Router /admin/system [get]
 func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
 	var config SystemConfig
-	config.SelectedASR = configs.Cfg.SelectedModule["ASR"]
-	config.SelectedTTS = configs.Cfg.SelectedModule["TTS"]
-	config.SelectedLLM = configs.Cfg.SelectedModule["LLM"]
-	config.SelectedVLLLM = configs.Cfg.SelectedModule["VLLLM"]
-	config.Prompt = configs.Cfg.DefaultPrompt
+	config.SelectedASR = s.config.SelectedModule["ASR"]
+	config.SelectedTTS = s.config.SelectedModule["TTS"]
+	config.SelectedLLM = s.config.SelectedModule["LLM"]
+	config.SelectedVLLLM = s.config.SelectedModule["VLLLM"]
+	config.Prompt = s.config.DefaultPrompt
 
 	var data map[string]interface{}
 	tmp, _ := json.Marshal(config)
@@ -138,12 +141,21 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 		return
 	}
 
-	configs.Cfg.SelectedModule["ASR"] = config.SelectedASR
-	configs.Cfg.SelectedModule["TTS"] = config.SelectedTTS
-	configs.Cfg.SelectedModule["LLM"] = config.SelectedLLM
-	configs.Cfg.SelectedModule["VLLM"] = config.SelectedVLLLM
-	configs.Cfg.DefaultPrompt = config.Prompt
+	s.config.SelectedModule["ASR"] = config.SelectedASR
+	s.config.SelectedModule["TTS"] = config.SelectedTTS
+	s.config.SelectedModule["LLM"] = config.SelectedLLM
+	s.config.SelectedModule["VLLM"] = config.SelectedVLLLM
+	s.config.DefaultPrompt = config.Prompt
 
-	configs.Cfg.SaveToDB(database.GetServerConfigDB())
+	if s.repo != nil {
+		if err := s.repo.SaveConfig(s.config); err != nil {
+			s.logger.Error("保存系统配置失败: %v", err)
+			respondError(c, http.StatusInternalServerError, "保存系统配置失败", gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		// 回退到旧方法
+		s.config.SaveToDB(database.GetServerConfigDB())
+	}
 	respondSuccess(c, http.StatusOK, nil, "System configuration saved successfully")
 }

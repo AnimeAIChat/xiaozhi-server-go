@@ -13,10 +13,10 @@ func CreateAgent(tx *gorm.DB, agent *models.Agent) error {
 	return tx.Create(agent).Error
 }
 
-func CreateDefaultAgent(tx *gorm.DB, userID uint) (*models.Agent, error) {
+func CreateDefaultAgent(tx *gorm.DB, userID uint, config *configs.Config) (*models.Agent, error) {
 	agent := &models.Agent{
 		Name:   "默认智能体",
-		LLM:    configs.Cfg.SelectedModule["LLM"],
+		LLM:    config.SelectedModule["LLM"],
 		Voice:  "zh_female_wanwanxiaohe_moon_bigtts",
 		UserID: userID,
 	}
