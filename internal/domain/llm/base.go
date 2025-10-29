@@ -6,6 +6,10 @@ import (
 	"sync"
 
 	"xiaozhi-server-go/internal/domain/llm/inter"
+	"xiaozhi-server-go/src/core/providers/llm"
+	"xiaozhi-server-go/src/core/types"
+
+	"github.com/sashabaranov/go-openai"
 )
 
 // Manager LLM管理器 - 基于 Eino 框架
@@ -13,6 +17,7 @@ type Manager struct {
 	mu     sync.RWMutex
 	llm    interface{} // Eino LLM component
 	config inter.LLMConfig
+	provider inter.LLMProvider // 实际的LLM提供商
 }
 
 // NewManager 创建LLM管理器
@@ -38,8 +43,101 @@ func (m *Manager) GetLLM() interface{} {
 
 // Response 生成回复
 func (m *Manager) Response(ctx context.Context, sessionID string, messages []inter.Message, tools []inter.Tool) (<-chan inter.ResponseChunk, error) {
-	// TODO: 实现 Eino LLM 调用
-	return nil, fmt.Errorf("eino LLM integration not implemented yet")
+	// 创建LLM配置
+	llmConfig := &llm.Config{
+		Type:        m.config.Provider,
+		ModelName:   m.config.Model,
+		BaseURL:     m.config.BaseURL,
+		APIKey:      m.config.APIKey,
+		Temperature: float64(m.config.Temperature),
+		MaxTokens:   m.config.MaxTokens,
+	}
+
+	// 创建LLM提供商
+	provider, err := llm.Create(m.config.Provider, llmConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LLM provider: %w", err)
+	}
+
+	// 初始化提供商
+	if err := provider.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize LLM provider: %w", err)
+	}
+
+	// 转换消息格式
+	coreMessages := make([]types.Message, len(messages))
+	for i, msg := range messages {
+		coreMessages[i] = types.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+
+	// 转换工具格式
+	coreTools := make([]openai.Tool, len(tools))
+	for i, tool := range tools {
+		coreTools[i] = openai.Tool{
+			Type: openai.ToolType(tool.Type),
+			Function: &openai.FunctionDefinition{
+				Name:        tool.Function.Name,
+				Description: tool.Function.Description,
+				Parameters:  tool.Function.Parameters,
+			},
+		}
+	}
+
+	// 调用提供商的ResponseWithFunctions方法
+	responseChan, err := provider.ResponseWithFunctions(ctx, sessionID, coreMessages, coreTools)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get LLM response: %w", err)
+	}
+
+	// 创建输出通道
+	outChan := make(chan inter.ResponseChunk, 10)
+
+	// 启动goroutine转换响应格式
+	go func() {
+		defer close(outChan)
+		defer provider.Cleanup()
+
+		for response := range responseChan {
+			chunk := inter.ResponseChunk{
+				Content: response.Content,
+				IsDone:  response.StopReason != "", // 假设有StopReason表示完成
+				// Usage字段在types.Response中不存在，暂时设为nil
+				Usage: nil,
+			}
+
+			// 转换工具调用
+			if len(response.ToolCalls) > 0 {
+				chunk.ToolCalls = make([]inter.ToolCall, len(response.ToolCalls))
+				for i, tc := range response.ToolCalls {
+					chunk.ToolCalls[i] = inter.ToolCall{
+						ID:   tc.ID,
+						Type: tc.Type,
+						Function: inter.ToolCallFunction{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					}
+				}
+			}
+
+			// 检查是否完成
+			if response.StopReason != "" {
+				chunk.IsDone = true
+			}
+
+			outChan <- chunk
+
+			// 如果是最后一块，退出
+			if chunk.IsDone {
+				break
+			}
+		}
+	}()
+
+	return outChan, nil
 }
 
 // ResponseWithFunctions 生成带函数调用的回复 (兼容旧接口)

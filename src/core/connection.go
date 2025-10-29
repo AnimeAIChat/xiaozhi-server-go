@@ -17,7 +17,11 @@ import (
 	"gorm.io/gorm"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	domainimage "xiaozhi-server-go/internal/domain/image"
+	domainllm "xiaozhi-server-go/internal/domain/llm"
+	domainllminter "xiaozhi-server-go/internal/domain/llm/inter"
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
+	domaintts "xiaozhi-server-go/internal/domain/tts"
+	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/chat"
@@ -69,6 +73,10 @@ type ConnectionHandler struct {
 		tts   providers.TTSProvider
 		vlllm *vlllm.Provider // VLLLM提供者，可选
 	}
+
+	// 新架构管理器
+	llmManager *domainllm.Manager
+	ttsManager *domaintts.Manager
 
 	initialVoice    string // 初始语音名称
 	ttsProviderName string // 默认TTS提供者名称
@@ -228,6 +236,9 @@ func NewConnectionHandler(
 	agent, prompt := handler.InitWithAgent()
 	handler.checkTTSProvider(agent, config) // 检查TTS提供者
 	handler.checkLLMProvider(agent, config) // 检查LLM提供者是否匹配
+
+	// 初始化新架构的 LLM 和 TTS Manager
+	handler.initManagers(config)
 
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
@@ -863,7 +874,30 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 使用LLM生成回复
 	tools := h.functionRegister.GetAllFunctions()
-	responses, err := h.providers.llm.ResponseWithFunctions(ctx, h.sessionID, messages, tools)
+
+	// 转换消息格式
+	interMessages := make([]domainllminter.Message, len(messages))
+	for i, msg := range messages {
+		interMessages[i] = domainllminter.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+
+	// 转换工具格式
+	interTools := make([]domainllminter.Tool, len(tools))
+	for i, tool := range tools {
+		interTools[i] = domainllminter.Tool{
+			Type: string(tool.Type),
+			Function: domainllminter.ToolFunction{
+				Name:        tool.Function.Name,
+				Description: tool.Function.Description,
+				Parameters:  tool.Function.Parameters,
+			},
+		}
+	}
+
+	responses, err := h.llmManager.Response(ctx, h.sessionID, interMessages, interTools)
 	if err != nil {
 		// 发布LLM错误事件
 		if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
@@ -890,8 +924,8 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		content := response.Content
 		toolCall := response.ToolCalls
 
-		if response.Error != "" {
-			h.LogError(fmt.Sprintf("LLM响应错误: %s", response.Error))
+		if response.Error != nil {
+			h.LogError(fmt.Sprintf("LLM响应错误: %s", response.Error.Error()))
 			errorMsg := "抱歉，服务暂时不可用，请稍后再试"
 			h.tts_last_text_index = 1 // 重置文本索引
 			h.SpeakAndPlay(errorMsg, 1, round)
@@ -1301,7 +1335,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	logText := utils.SanitizeForLog(text)
 
 	// 生成语音文件
-	generatedFile, err := h.providers.tts.ToTTS(text)
+	generatedFile, err := h.ttsManager.ToTTS(text)
 	if err != nil {
 		h.LogError(fmt.Sprintf("TTS转换失败:text(%s) %v", logText, err))
 		return
@@ -1312,9 +1346,10 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	h.logger.DebugTag("TTS", "转换成功 text=%s index=%d 文件=%s", logText, textIndex, filepath)
 
 	// 发布TTS完成事件
-	if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
-		publisher.PublishTTSCompleted(text, textIndex, round, filepath)
-	}
+	// TODO: 新架构的事件发布需要重新实现
+	// if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
+	//     publisher.PublishTTSCompleted(text, textIndex, round, filepath)
+	// }
 
 	if atomic.LoadInt32(&h.serverVoiceStop) == 1 { // 服务端语音停止
 		h.LogInfo(fmt.Sprintf("processTTSTask 服务端语音停止, 不再发送音频数据：%s", logText))
@@ -1336,10 +1371,11 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 // speakAndPlay 合成并播放语音
 func (h *ConnectionHandler) SpeakAndPlay(text string, textIndex int, round int) error {
 	// 发布TTS说话事件
-	if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
-		publisher.SetSessionID(h.sessionID)
-		publisher.PublishTTSSpeak(text, textIndex, round)
-	}
+	// TODO: 新架构的事件发布需要重新实现
+	// if publisher := tts.GetEventPublisher(h.providers.tts); publisher != nil {
+	//     publisher.SetSessionID(h.sessionID)
+	//     publisher.PublishTTSSpeak(text, textIndex, round)
+	// }
 
 	// 暂停将客户端音频发送到ASR（避免TTS播放期间触发ASR导致服务端sequence冲突）
 	atomic.StoreInt32(&h.asrPause, 1)
@@ -1527,4 +1563,48 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	}))
 
 	return nil
+}
+
+// initManagers 初始化新架构的 LLM 和 TTS Manager
+func (h *ConnectionHandler) initManagers(config *configs.Config) {
+	// 初始化 LLM Manager
+	llmName := config.SelectedModule["LLM"]
+	if llmName != "" {
+		if llmCfg, ok := config.LLM[llmName]; ok {
+			llmConfig := domainllminter.LLMConfig{
+				Provider:    llmCfg.Type,
+				Model:       llmCfg.ModelName,
+				APIKey:      llmCfg.APIKey,
+				BaseURL:     llmCfg.BaseURL,
+				Temperature: float32(llmCfg.Temperature),
+				MaxTokens:   llmCfg.MaxTokens,
+				Timeout:     60, // 默认超时时间
+			}
+			h.llmManager = domainllm.NewManager(llmConfig)
+			h.LogInfo(fmt.Sprintf("已初始化 LLM Manager: %s (%s)", llmName, llmCfg.Type))
+		} else {
+			h.LogError(fmt.Sprintf("LLM 配置不存在: %s", llmName))
+		}
+	}
+
+	// 初始化 TTS Manager
+	ttsName := config.SelectedModule["TTS"]
+	if ttsName != "" {
+		if ttsCfg, ok := config.TTS[ttsName]; ok {
+			ttsConfig := domainttsinter.TTSConfig{
+				Provider:        ttsCfg.Type,
+				Voice:           ttsCfg.Voice,
+				Speed:           1.0, // 默认语速
+				Pitch:           1.0, // 默认音调
+				Volume:          1.0, // 默认音量
+				SampleRate:      24000, // 默认采样率
+				Format:          ttsCfg.Format,
+				Language:        "zh-CN", // 默认语言
+			}
+			h.ttsManager = domaintts.NewManager(ttsConfig)
+			h.LogInfo(fmt.Sprintf("已初始化 TTS Manager: %s (%s)", ttsName, ttsCfg.Type))
+		} else {
+			h.LogError(fmt.Sprintf("TTS 配置不存在: %s", ttsName))
+		}
+	}
 }

@@ -70,14 +70,15 @@ roles:
 
 # 音频处理相关设置
 delete_audio: true
-quick_reply: true
-quick_reply_words:
-  - "来了"
-  - "啥事啊"
-  - "在呢"
-  - "您好"
-  - "我在听"
-  - "请讲"
+quick_reply:
+  enabled: true
+  words:
+    - "来了"
+    - "啥事啊"
+    - "在呢"
+    - "您好"
+    - "我在听"
+    - "请讲"
 
 use_private_config: false
 
@@ -98,7 +99,7 @@ local_mcp_fun:
 # 选择使用的模块
 selected_module:
   ASR: DoubaoASR
-  TTS: EdgeTTS
+  TTS: DoubaoTTS
   LLM: OllamaLLM
   VLLLM: ChatGLMVLLM
 
@@ -207,11 +208,29 @@ TTS:
   DoubaoTTS:
     # 火山语音合成大模型 https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechSynthesis
     type: doubao
-    voice: zh_female_wanwanxiaohe_moon_bigtts # 湾湾小何
+    voice: BV001_streaming # 豆包流式语音
     output_dir: "tmp/"
     appid: "你的appid"
     token: 你的access_token
     cluster: 你的cluster
+    supported_voices:
+      [
+        {
+          name: "zh_female_wanwanxiaohe_moon_bigtts",
+          display_name: "湾湾小何",
+          sex: "女",
+          description: "台湾腔调，活泼可爱",
+          audio_url: "",
+        },
+        {
+          name: "BV001_streaming",
+          display_name: "BV001_streaming",
+          sex: "女",
+          description: "默认女声",
+          audio_url: "",
+        },
+        # 添加更多支持的音色
+      ]
   GoSherpaTTS:
     type: gosherpa
     cluster: "ws://127.0.0.1:8848/tts"

@@ -138,15 +138,8 @@ func IsSupportedVoice(voice string, supportedVoices []configs.VoiceInfo) (bool, 
 }
 
 func (p *BaseProvider) SetVoice(voice string) (error, string) {
-	isSupported, newVoice, err := IsSupportedVoice(voice, p.config.SupportedVoices)
-	if err != nil {
-		return err, ""
-	}
-	if !isSupported {
-		return fmt.Errorf("不支持的声音: %s", voice), ""
-	}
-	p.Config().Voice = newVoice
-	return nil, newVoice
+	p.Config().Voice = voice
+	return nil, voice
 }
 
 // Cleanup 清理资源
