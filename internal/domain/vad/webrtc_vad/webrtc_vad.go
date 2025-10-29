@@ -1,113 +1,233 @@
 package webrtc_vad
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
-	"xiaozhi-server-go/internal/domain/vad"
+	"time"
+
 	"xiaozhi-server-go/internal/domain/vad/inter"
+
+	"github.com/baabaaox/go-webrtcvad"
 )
 
-// WebRTCVAD WebRTC VAD实现
+const (
+	// DefaultSampleRate WebRTC VAD 支持的采样率 (8000, 16000, 32000, 48000)
+	DefaultSampleRate = 16000
+	// DefaultMode VAD 敏感度模式 (0: 最不敏感, 3: 最敏感)
+	DefaultMode = 2
+	// FrameDuration 帧持续时间 (ms)，WebRTC VAD 支持 10ms, 20ms, 30ms
+	FrameDuration = 20
+)
+
+// WebRTCVAD WebRTC VAD 实现
 type WebRTCVAD struct {
-	mu         sync.Mutex
-	config     inter.VADConfig
-	isActive   bool
-	speechCount int
-	silenceCount int
+	vadInst     webrtcvad.VadInst
+	sampleRate  int          // 采样率
+	mode        int          // VAD 模式
+	frameSize   int          // 每帧采样数
+	frameSizeBytes int       // 每帧字节数
+	initialized bool         // 是否已初始化
+	lastUsed    time.Time    // 最后使用时间
+	mu          sync.RWMutex // 读写锁
+	config      inter.VADConfig
 }
 
-// NewWebRTCVAD 创建WebRTC VAD实例
-func NewWebRTCVAD(config inter.VADConfig) (*WebRTCVAD, error) {
-	if err := vad.ValidateConfig(config); err != nil {
+// NewWebRTCVAD 创建新的 WebRTC VAD 实例
+func NewWebRTCVAD(config inter.VADConfig) (inter.VADProvider, error) {
+	if err := validateConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	return &WebRTCVAD{
-		config: config,
-	}, nil
+	vad := &WebRTCVAD{
+		sampleRate: config.SampleRate,
+		mode:       DefaultMode, // 使用默认模式，可以后续扩展配置
+		lastUsed:   time.Now(),
+		config:     config,
+	}
+
+	err := vad.init()
+	if err != nil {
+		return nil, err
+	}
+
+	return vad, nil
+}
+
+// init 初始化 WebRTC VAD
+func (w *WebRTCVAD) init() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.initialized {
+		return nil
+	}
+
+	// 计算帧大小
+	w.frameSize = w.sampleRate / 1000 * FrameDuration
+	w.frameSizeBytes = w.frameSize * 2 // 16-bit PCM
+
+	// 创建 VAD 实例
+	w.vadInst = webrtcvad.Create()
+	if w.vadInst == nil {
+		return fmt.Errorf("failed to create WebRTC VAD instance")
+	}
+
+	// 初始化 VAD
+	err := webrtcvad.Init(w.vadInst)
+	if err != nil {
+		webrtcvad.Free(w.vadInst)
+		return fmt.Errorf("failed to initialize WebRTC VAD: %w", err)
+	}
+
+	// 设置模式
+	err = webrtcvad.SetMode(w.vadInst, w.mode)
+	if err != nil {
+		webrtcvad.Free(w.vadInst)
+		return fmt.Errorf("failed to set WebRTC VAD mode: %w", err)
+	}
+
+	w.initialized = true
+	w.lastUsed = time.Now()
+	return nil
 }
 
 // ProcessAudio 处理音频数据
-func (v *WebRTCVAD) ProcessAudio(audioData []byte) (bool, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+func (w *WebRTCVAD) ProcessAudio(audioData []byte) (bool, error) {
+	if len(audioData) == 0 {
+		return false, nil
+	}
 
-	// 简单的能量检测作为VAD实现
-	// 计算音频数据的RMS能量
-	energy := calculateRMSEnergy(audioData)
+	// 更新最后使用时间
+	w.lastUsed = time.Now()
 
-	// 根据能量阈值判断是否为语音
-	isSpeech := energy > v.config.Sensitivity
+	// 将字节数据转换为 float32 (假设是 16-bit PCM)
+	pcmData := w.pcmBytesToFloat32(audioData)
 
-	if isSpeech {
-		v.speechCount++
-		v.silenceCount = 0
-		v.isActive = true
-	} else {
-		v.silenceCount++
-		if v.silenceCount > v.config.MaxSilenceLength / v.config.FrameDuration {
-			v.isActive = false
-			v.speechCount = 0
+	// 如果数据长度不够一帧，返回 false
+	if len(pcmData) < w.frameSize {
+		return false, nil
+	}
+
+	// 将 float32 数据转换为 int16 PCM 数据
+	pcmBytes := w.float32ToPCMBytes(pcmData)
+
+	// 处理多帧数据，取最后一帧的结果
+	var isActive bool
+	var err error
+
+	activityCount := 0
+	for i := 0; i+w.frameSizeBytes <= len(pcmBytes); i += w.frameSizeBytes {
+		frameData := pcmBytes[i : i+w.frameSizeBytes]
+
+		isActive, err = webrtcvad.Process(w.vadInst, w.sampleRate, frameData, w.frameSize)
+		if err != nil {
+			return false, fmt.Errorf("WebRTC VAD process error: %w", err)
+		}
+		if isActive {
+			activityCount++
 		}
 	}
 
-	// 如果检测到足够长的语音，返回true
-	return v.isActive && v.speechCount >= v.config.MinSpeechLength / v.config.FrameDuration, nil
+	frameCount := len(pcmBytes) / w.frameSizeBytes
+	isActive = activityCount >= frameCount/2
+
+	return isActive, nil
 }
 
-// Reset 重置VAD状态
-func (v *WebRTCVAD) Reset() {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.isActive = false
-	v.speechCount = 0
-	v.silenceCount = 0
+// Reset 重置检测器状态
+func (w *WebRTCVAD) Reset() {
+	// WebRTC VAD 不需要重置状态
 }
 
-// Close 关闭VAD资源
-func (v *WebRTCVAD) Close() error {
-	v.Reset()
+// Close 关闭并释放资源
+func (w *WebRTCVAD) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.initialized && w.vadInst != nil {
+		webrtcvad.Free(w.vadInst)
+		w.initialized = false
+	}
 	return nil
 }
 
 // GetConfig 获取VAD配置
-func (v *WebRTCVAD) GetConfig() inter.VADConfig {
-	return v.config
+func (w *WebRTCVAD) GetConfig() inter.VADConfig {
+	return w.config
 }
 
-// calculateRMSEnergy 计算RMS能量
-func calculateRMSEnergy(audioData []byte) float32 {
-	if len(audioData) == 0 {
-		return 0
+// float32ToPCMBytes 将 float32 数组转换为 16-bit PCM 字节数组
+func (w *WebRTCVAD) float32ToPCMBytes(samples []float32) []byte {
+	pcmBytes := make([]byte, len(samples)*2)
+
+	for i, sample := range samples {
+		// 将 float32 (-1.0 到 1.0) 转换为 int16 (-32768 到 32767)
+		var intSample int16
+		if sample > 1.0 {
+			intSample = 32767
+		} else if sample < -1.0 {
+			intSample = -32768
+		} else {
+			intSample = int16(sample * 32767)
+		}
+
+		// 小端序写入字节数组
+		binary.LittleEndian.PutUint16(pcmBytes[i*2:], uint16(intSample))
 	}
 
-	var sum float64
-	sampleCount := len(audioData) / 2 // 假设16位采样
+	return pcmBytes
+}
 
-	for i := 0; i < len(audioData); i += 2 {
-		if i+1 >= len(audioData) {
+// pcmBytesToFloat32 将 16-bit PCM 字节数组转换为 float32 数组
+func (w *WebRTCVAD) pcmBytesToFloat32(pcmBytes []byte) []float32 {
+	samples := make([]float32, len(pcmBytes)/2)
+
+	for i := 0; i < len(pcmBytes); i += 2 {
+		if i+1 >= len(pcmBytes) {
 			break
 		}
-		// 转换为16位有符号整数
-		sample := int16(audioData[i]) | (int16(audioData[i+1]) << 8)
-		sum += float64(sample) * float64(sample)
+		// 从小端序字节读取 int16
+		intSample := int16(binary.LittleEndian.Uint16(pcmBytes[i:]))
+		// 转换为 float32 (-1.0 到 1.0)
+		samples[i/2] = float32(intSample) / 32767.0
 	}
 
-	if sampleCount == 0 {
-		return 0
-	}
-
-	rms := sum / float64(sampleCount)
-	return float32(rms) / 32768.0 // 归一化到0-1范围
+	return samples
 }
 
-// AcquireVAD 创建WebRTC VAD实例（工厂方法）
+// validateConfig 验证配置
+func validateConfig(config inter.VADConfig) error {
+	if config.SampleRate <= 0 {
+		return fmt.Errorf("invalid sample rate: %d", config.SampleRate)
+	}
+	validRates := []int{8000, 16000, 32000, 48000}
+	isValid := false
+	for _, rate := range validRates {
+		if rate == config.SampleRate {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		return fmt.Errorf("unsupported sample rate: %d, supported rates: 8000, 16000, 32000, 48000", config.SampleRate)
+	}
+	if config.Channels != 1 {
+		return fmt.Errorf("WebRTC VAD only supports mono audio, got channels: %d", config.Channels)
+	}
+	return nil
+}
+
+var vadPool *WebRTCVADPool
+var once sync.Once
+
+// AcquireVAD 创建WebRTC VAD实例（工厂方法，支持池化）
 func AcquireVAD(config map[string]interface{}) (inter.VADProvider, error) {
 	vadConfig := inter.VADConfig{
-		SampleRate:      16000,
+		SampleRate:      DefaultSampleRate,
 		Channels:        1,
-		FrameDuration:   30,
-		Sensitivity:     0.3,
+		FrameDuration:   FrameDuration,
+		Sensitivity:     0.5, // WebRTC VAD 使用固定模式，不使用灵敏度
 		MinSpeechLength: 100,
 		MaxSilenceLength: 500,
 	}
@@ -119,12 +239,6 @@ func AcquireVAD(config map[string]interface{}) (inter.VADProvider, error) {
 	if channels, ok := config["channels"].(float64); ok {
 		vadConfig.Channels = int(channels)
 	}
-	if frameDuration, ok := config["frame_duration"].(float64); ok {
-		vadConfig.FrameDuration = int(frameDuration)
-	}
-	if sensitivity, ok := config["sensitivity"].(float64); ok {
-		vadConfig.Sensitivity = float32(sensitivity)
-	}
 	if minSpeechLength, ok := config["min_speech_length"].(float64); ok {
 		vadConfig.MinSpeechLength = int(minSpeechLength)
 	}
@@ -132,5 +246,38 @@ func AcquireVAD(config map[string]interface{}) (inter.VADProvider, error) {
 		vadConfig.MaxSilenceLength = int(maxSilenceLength)
 	}
 
+	// 检查是否需要池化
+	if poolSize, ok := config["pool_size"].(float64); ok && poolSize > 0 {
+		var err error
+		once.Do(func() {
+			poolConfig := DefaultPoolConfig()
+			if maxSize, ok := config["pool_max_size"].(float64); ok {
+				poolConfig.MaxSize = int(maxSize)
+			}
+			if minSize, ok := config["pool_min_size"].(float64); ok {
+				poolConfig.MinSize = int(minSize)
+			}
+			if maxIdleTime, ok := config["pool_max_idle_time"].(float64); ok {
+				poolConfig.MaxIdleTime = time.Duration(maxIdleTime) * time.Second
+			}
+			vadPool, err = NewWebRTCVADPool(vadConfig, poolConfig)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create VAD pool: %w", err)
+		}
+		if vadPool != nil {
+			return vadPool.AcquireVAD()
+		}
+	}
+
+	// 不使用池化，直接创建实例
 	return NewWebRTCVAD(vadConfig)
+}
+
+// ReleaseVAD 释放 VAD 实例（如果使用池化）
+func ReleaseVAD(vad inter.VADProvider) error {
+	if vadPool != nil {
+		return vadPool.ReleaseVAD(vad)
+	}
+	return nil
 }
