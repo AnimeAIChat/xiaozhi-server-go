@@ -223,6 +223,87 @@ func (m *Manager) GetStats() map[string]map[string]int64 {
 	return stats
 }
 
+// Warmup pre-populates the provider pools to reduce latency on first requests.
+func (m *Manager) Warmup(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	minSize := int64(2) // Default minimum pool size
+
+	// Warmup ASR pool
+	if m.asrPool != nil {
+		for i := int64(0); i < minSize; i++ {
+			provider, err := m.asrPool.acquire(ctx)
+			if err != nil {
+				m.logger.Warn("Failed to warmup ASR provider: %v", err)
+				continue
+			}
+			if err := m.asrPool.release(ctx, provider); err != nil {
+				m.logger.Warn("Failed to release warmed up ASR provider: %v", err)
+			}
+		}
+	}
+
+	// Warmup LLM pool
+	if m.llmPool != nil {
+		for i := int64(0); i < minSize; i++ {
+			provider, err := m.llmPool.acquire(ctx)
+			if err != nil {
+				m.logger.Warn("Failed to warmup LLM provider: %v", err)
+				continue
+			}
+			if err := m.llmPool.release(ctx, provider); err != nil {
+				m.logger.Warn("Failed to release warmed up LLM provider: %v", err)
+			}
+		}
+	}
+
+	// Warmup TTS pool
+	if m.ttsPool != nil {
+		for i := int64(0); i < minSize; i++ {
+			provider, err := m.ttsPool.acquire(ctx)
+			if err != nil {
+				m.logger.Warn("Failed to warmup TTS provider: %v", err)
+				continue
+			}
+			if err := m.ttsPool.release(ctx, provider); err != nil {
+				m.logger.Warn("Failed to release warmed up TTS provider: %v", err)
+			}
+		}
+	}
+
+	// Warmup VLLLM pool
+	if m.vlllmPool != nil {
+		for i := int64(0); i < minSize; i++ {
+			provider, err := m.vlllmPool.acquire(ctx)
+			if err != nil {
+				m.logger.Warn("Failed to warmup VLLLM provider: %v", err)
+				continue
+			}
+			if err := m.vlllmPool.release(ctx, provider); err != nil {
+				m.logger.Warn("Failed to release warmed up VLLLM provider: %v", err)
+			}
+		}
+	}
+
+	// Warmup MCP pool
+	if m.mcpPool != nil {
+		for i := int64(0); i < minSize; i++ {
+			manager, err := m.mcpPool.acquire(ctx)
+			if err != nil {
+				m.logger.Warn("Failed to warmup MCP manager: %v", err)
+				continue
+			}
+			if err := m.mcpPool.release(ctx, manager); err != nil {
+				m.logger.Warn("Failed to release warmed up MCP manager: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (m *Manager) release(ctx context.Context, set *Set) error {
 	var errs []error
 

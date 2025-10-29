@@ -102,3 +102,11 @@ func (pm *PoolManager) GetStats() map[string]map[string]int {
 func (pm *PoolManager) GetDetailedStats() map[string]map[string]int {
 	return pm.GetStats()
 }
+
+// Warmup pre-populates the provider pools to reduce latency on first requests.
+func (pm *PoolManager) Warmup(ctx context.Context) error {
+	if pm == nil || pm.manager == nil {
+		return nil
+	}
+	return pm.manager.Warmup(ctx)
+}
