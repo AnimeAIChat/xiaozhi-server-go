@@ -15,7 +15,6 @@ import (
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
 	"xiaozhi-server-go/internal/domain/eventbus"
-	platformconfig "xiaozhi-server-go/internal/platform/config"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
 	platformobservability "xiaozhi-server-go/internal/platform/observability"
@@ -109,6 +108,7 @@ func Run(ctx context.Context) error {
 		return platformerrors.Wrap(
 			platformerrors.KindBootstrap,
 			"bootstrap state validation",
+			"config/logger not initialised",
 			errors.New("config/logger not initialised"),
 		)
 	}
@@ -118,16 +118,17 @@ func Run(ctx context.Context) error {
 		return platformerrors.Wrap(
 			platformerrors.KindBootstrap,
 			"bootstrap state validation",
+			"auth manager not initialised",
 			errors.New("auth manager not initialised"),
 		)
 	}
 
 	mcpManager := state.mcpManager
 	if mcpManager == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"bootstrap state validation",
-			errors.New("mcp manager not initialised"),
+			"mcp manager not initialised",
 		)
 	}
 
@@ -190,10 +191,10 @@ func logBootstrapGraph(logger *utils.Logger, steps []initStep) {
 
 func executeInitSteps(ctx context.Context, steps []initStep, state *appState) error {
 	if state == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"execute init steps",
-			errors.New("nil bootstrap state"),
+			"nil bootstrap state",
 		)
 	}
 
@@ -201,18 +202,18 @@ func executeInitSteps(ctx context.Context, steps []initStep, state *appState) er
 	for _, step := range steps {
 		for _, dep := range step.DependsOn {
 			if _, ok := completed[dep]; !ok {
-				return platformerrors.Wrap(
+				return platformerrors.New(
 					platformerrors.KindBootstrap,
 					step.ID,
-					fmt.Errorf("dependency %s not satisfied", dep),
+					fmt.Sprintf("dependency %s not satisfied", dep),
 				)
 			}
 		}
 		if step.Execute == nil {
-			return platformerrors.Wrap(
+			return platformerrors.New(
 				platformerrors.KindBootstrap,
 				step.ID,
-				errors.New("missing execute function"),
+				"missing execute function",
 			)
 		}
 		if err := step.Execute(ctx, state); err != nil {
@@ -225,7 +226,7 @@ func executeInitSteps(ctx context.Context, steps []initStep, state *appState) er
 			if kind == "" {
 				kind = platformerrors.KindBootstrap
 			}
-			return platformerrors.Wrap(kind, step.ID, err)
+			return platformerrors.Wrap(kind, step.ID, "bootstrap step failed", err)
 		}
 		completed[step.ID] = struct{}{}
 	}
@@ -280,27 +281,27 @@ func InitGraph() []initStep {
 
 func initStorageStep(_ context.Context, _ *appState) error {
 	if err := platformstorage.InitConfigStore(); err != nil {
-		return platformerrors.Wrap(platformerrors.KindStorage, "storage:init-config-store", err)
+		return platformerrors.Wrap(platformerrors.KindStorage, "storage:init-config-store", "failed to initialize config store", err)
 	}
 	return nil
 }
 
 func loadConfigStep(_ context.Context, state *appState) error {
-	result, err := platformconfig.NewLoader().Load()
+	config, path, err := configs.LoadConfig(platformstorage.ConfigStore())
 	if err != nil {
-		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-runtime", err)
+		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-runtime", "failed to load config", err)
 	}
-	state.config = result.Config
-	state.configPath = result.Path
+	state.config = config
+	state.configPath = path
 	return nil
 }
 
 func initLoggingStep(_ context.Context, state *appState) error {
 	if state == nil || state.config == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"logging:init-provider",
-			errors.New("config not loaded"),
+			"config not loaded",
 		)
 	}
 
@@ -310,7 +311,7 @@ func initLoggingStep(_ context.Context, state *appState) error {
 		Filename: state.config.Log.LogFile,
 	})
 	if err != nil {
-		return platformerrors.Wrap(platformerrors.KindBootstrap, "logging:init-provider", err)
+		return platformerrors.Wrap(platformerrors.KindBootstrap, "logging:init-provider", "failed to initialize logging provider", err)
 	}
 
 	state.logProvider = logProvider
@@ -338,10 +339,10 @@ func initLoggingStep(_ context.Context, state *appState) error {
 
 func setupObservabilityStep(ctx context.Context, state *appState) error {
 	if state == nil || state.logger == nil || state.config == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"observability:setup-hooks",
-			errors.New("config/logger not initialised"),
+			"config/logger not initialised",
 		)
 	}
 
@@ -356,7 +357,7 @@ func setupObservabilityStep(ctx context.Context, state *appState) error {
 
 	shutdown, err := platformobservability.Setup(ctx, cfg, slogger)
 	if err != nil {
-		return platformerrors.Wrap(platformerrors.KindBootstrap, "observability:setup-hooks", err)
+		return platformerrors.Wrap(platformerrors.KindBootstrap, "observability:setup-hooks", "failed to setup observability hooks", err)
 	}
 	state.observabilityShutdown = shutdown
 
@@ -365,10 +366,10 @@ func setupObservabilityStep(ctx context.Context, state *appState) error {
 
 func initAuthStep(_ context.Context, state *appState) error {
 	if state == nil || state.config == nil || state.logger == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"auth:init-manager",
-			errors.New("missing config/logger"),
+			"missing config/logger",
 		)
 	}
 
@@ -382,10 +383,10 @@ func initAuthStep(_ context.Context, state *appState) error {
 
 func initMCPManagerStep(_ context.Context, state *appState) error {
 	if state == nil || state.config == nil || state.logger == nil {
-		return platformerrors.Wrap(
+		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"mcp:init-manager",
-			errors.New("missing config/logger"),
+			"missing config/logger",
 		)
 	}
 
@@ -398,10 +399,10 @@ func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	state := &appState{}
 	graph := InitGraph()
 	if len(graph) < 3 {
-		return nil, nil, platformerrors.Wrap(
+		return nil, nil, platformerrors.New(
 			platformerrors.KindBootstrap,
 			"load config and logger",
-			errors.New("bootstrap graph missing core steps"),
+			"bootstrap graph missing core steps",
 		)
 	}
 
@@ -454,13 +455,12 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 			DB:       config.Server.Auth.Store.Redis.DB,
 			Prefix:   config.Server.Auth.Store.Redis.Prefix,
 		}
-		if storeCfg.Redis.Addr == "" {
 			return nil, platformerrors.Wrap(
 				platformerrors.KindBootstrap,
 				"auth:init-manager",
+				"redis store addr is required",
 				errors.New("redis store addr is required"),
 			)
-		}
 	default:
 		logger.WarnTag("认证", "不支持的存储类型 %s，已自动回退至内存模式", storeType)
 		storeCfg.Driver = authstore.DriverMemory
@@ -472,7 +472,7 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 	}
 	authStore, err := authstore.New(storeCfg, storeDeps)
 	if err != nil {
-		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", "failed to create auth store", err)
 	}
 
 	crypto := domainauth.NewMemoryCryptoManager(logger, storeCfg.TTL)
@@ -486,7 +486,7 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 
 	authManager, err := domainauth.NewManager(opts)
 	if err != nil {
-		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", "failed to create auth manager", err)
 	}
 
 	return authManager, nil
@@ -641,11 +641,11 @@ func startHTTPServer(
 	visionService, err := vision.NewDefaultVisionService(config, logger)
 	if err != nil {
 		logger.ErrorTag("视觉", "Vision 服务初始化失败: %v", err)
-		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:new-service", err)
+		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:new-service", "failed to create vision service", err)
 	}
 	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.ErrorTag("视觉", "Vision 服务启动失败: %v", err)
-		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:start-service", err)
+		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:start-service", "failed to start vision service", err)
 	}
 
 	cfgServer, err := cfg.NewDefaultAdminService(config, logger)
