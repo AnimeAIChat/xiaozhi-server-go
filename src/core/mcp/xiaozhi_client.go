@@ -243,6 +243,8 @@ func (c *XiaoZhiMCPClient) CallTool(
 	c.callResultsLock.Unlock()
 
 	// 构造工具调用请求
+	var arguments interface{} = args
+	
 	mcpMessage := map[string]interface{}{
 		"type":       "mcp",
 		"session_id": c.sessionID, // 使用连接的session_id
@@ -252,7 +254,7 @@ func (c *XiaoZhiMCPClient) CallTool(
 			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name":      originalName,
-				"arguments": args,
+				"arguments": arguments,
 			},
 		},
 	}
