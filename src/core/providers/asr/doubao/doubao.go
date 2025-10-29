@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/src/core/providers/asr"
+	"xiaozhi-server-go/internal/transport/ws"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gorilla/websocket"
@@ -61,6 +62,7 @@ type Provider struct {
 	chunkDuration int
 	connectID     string
 	logger        *utils.Logger // 添加日志记录器
+	session       *ws.Session
 
 	// 配置
 	modelName     string
@@ -81,7 +83,7 @@ type Provider struct {
 }
 
 // NewProvider 创建豆包ASR提供者实例
-func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Provider, error) {
+func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, session *ws.Session) (*Provider, error) {
 	base := asr.NewBaseProvider(config, deleteFile)
 
 	// 从config.Data中获取配置
@@ -130,6 +132,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 		chunkDuration: 200, // 固定使用200ms分片
 		connectID:     connectID,
 		logger:        logger, // 使用简单的logger
+		session:       session, // 添加 session
 
 		// 默认配置
 		modelName:     "bigmodel",
@@ -363,7 +366,7 @@ func (p *Provider) parseResponse(data []byte) (map[string]interface{}, error) {
 			if err := json.Unmarshal(payloadMsg, &jsonData); err != nil {
 				return nil, fmt.Errorf("解析JSON响应失败: %v", err)
 			}
-			p.logger.Debug("[DEBUG] parseResponse: JSON解析成功, 数据=%v", jsonData)
+			p.logger.DebugTag("ASR", "解析响应成功，数据=%v", jsonData)
 			result["payload_msg"] = jsonData
 		} else if serializationMethod != noSerialization {
 			result["payload_msg"] = string(payloadMsg)
@@ -410,8 +413,14 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) StartStreaming(ctx context.Context) error {
-	p.logger.Info("[ASR] [流式识别] 开始")
+	p.logger.InfoTag("ASR", "流式识别开始")
 	p.ResetStartListenTime()
+
+	// 调用 session 的 ResetLLMContext 方法
+	if p.session != nil {
+		p.session.ResetLLMContext()
+	}
+
 	// 加锁保护连接初始化
 	p.connMutex.Lock()
 	defer p.connMutex.Unlock()
@@ -506,7 +515,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("读取响应失败: %v", err)
 	} else {
-		p.logger.Debug("[DEBUG] 流式识别: 收到WebSocket消息长度=%d", len(response))
+		p.logger.DebugTag("ASR", "流式识别收到 WebSocket 数据长度=%d", len(response))
 	}
 
 	initialResult, err := p.parseResponse(response)
@@ -523,7 +532,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	}
 
 	p.isStreaming = true
-	p.logger.Debug("[DEBUG] 流式识别初始化成功, connectID=%s, reqID=%s", p.connectID, p.reqID)
+	p.logger.DebugTag("ASR", "流式识别初始化成功 connectID=%s reqID=%s", p.connectID, p.reqID)
 	// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 	go func() {
 		p.ReadMessage()
@@ -532,7 +541,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 }
 
 func (p *Provider) ReadMessage() {
-	p.logger.Info("[ASR] [doubao] 流式识别协程已启动")
+	p.logger.InfoTag("ASR", "Doubao 流式识别协程启动")
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Error("流式识别协程发生错误: %v", r)
@@ -543,7 +552,7 @@ func (p *Provider) ReadMessage() {
 			p.closeConnection()
 		}
 		p.connMutex.Unlock()
-		p.logger.Info("[ASR] [doubao] 流式识别协程已结束")
+		p.logger.InfoTag("ASR", "Doubao 流式识别协程结束")
 	}()
 
 	for {
@@ -575,6 +584,16 @@ func (p *Provider) ReadMessage() {
 			p.logger.Info("检测到code字段: 解析结果=%v", result)
 			codeValue := code.(uint32)
 			if codeValue != 0 {
+				// 对特定的超时错误进行特殊处理
+				if codeValue == 45000081 {
+					p.logger.Warn("检测到ASR会话超时错误(Code=45000081)，这可能是由于快速重启导致的，将尝试重新启动")
+					// 不立即停止，而是标记需要重启
+					p.connMutex.Lock()
+					p.isStreaming = false
+					p.closeConnection()
+					p.connMutex.Unlock()
+					return
+				}
 				p.setErrorAndStop(fmt.Errorf("ASR服务端错误: Code=%d", codeValue))
 				return
 			}
@@ -590,9 +609,9 @@ func (p *Provider) ReadMessage() {
 					text = textData
 				}
 
-				p.logger.Debug("[DEBUG] 流式识别: 识别成功, 文本='%s'", text)
+				p.logger.DebugTag("ASR", "识别成功，文本='%s'", text)
 
-				p.connMutex.Lock()
+				p.connMutex.Lock() 
 				p.result = text
 				p.connMutex.Unlock()
 				isLastPackage := false
@@ -614,9 +633,8 @@ func (p *Provider) ReadMessage() {
 					if text == "" && !isLastPackage {
 						continue
 					}
-					if finished := listener.OnAsrResult(text, isLastPackage); finished {
-						return
-					}
+					// 直接调用listener.OnAsrResult，不再通过事件总线
+					listener.OnAsrResult(text, isLastPackage)
 				}
 			} else if errorData, hasError := payloadMsg["error"]; hasError {
 				// 处理错误响应中的 error 字段
@@ -666,8 +684,9 @@ func (p *Provider) SendLastAudio(data []byte) error {
 
 // sendAudioData 直接发送音频数据，替代之前的sendCurrentBuffer
 func (p *Provider) sendAudioData(data []byte, isLast bool) error {
-	p.logger.Debug(
-		"[DEBUG] sendAudioData: 数据长度=%d, isLast=%t, sendDataCnt=%d",
+	p.logger.DebugTag(
+		"ASR",
+		"发送音频数据 数据长度=%d isLast=%t sendDataCnt=%d",
 		len(data),
 		isLast,
 		p.sendDataCnt,
@@ -731,7 +750,10 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	p.logger.Info("[ASR] [状态] 已重置")
+	// 给服务端一点时间清理会话，避免立即重启导致的超时错误
+	time.Sleep(time.Millisecond)
+
+	p.logger.DebugTag("ASR", "状态已重置")
 
 	return nil
 }
@@ -754,7 +776,7 @@ func (p *Provider) Cleanup() error {
 	// 确保WebSocket连接关闭
 	p.closeConnection()
 
-	p.logger.Info("ASR资源已清理")
+	p.logger.InfoTag("ASR", "资源已清理")
 
 	return nil
 }
@@ -763,9 +785,20 @@ func (p *Provider) CloseConnection() error {
 	return nil
 }
 
+// 添加占位实现以避免空指针错误
+// 定义一个空的 SessionHandler 实现
+type emptySessionHandler struct{}
+
+func (h *emptySessionHandler) Handle() {}
+func (h *emptySessionHandler) Close() {}
+func (h *emptySessionHandler) GetSessionID() string { return "empty-session" }
+
 func init() {
 	// 注册豆包ASR提供者
 	asr.Register("doubao", func(config *asr.Config, deleteFile bool, logger *utils.Logger) (asr.Provider, error) {
-		return NewProvider(config, deleteFile, logger)
+		handler := &emptySessionHandler{} // 使用占位实现
+		conn := &ws.Connection{}         // 使用空的 Connection 实例
+		session := ws.NewSession(context.Background(), handler, conn, logger)
+		return NewProvider(config, deleteFile, logger, session)
 	})
 }

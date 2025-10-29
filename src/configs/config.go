@@ -16,8 +16,14 @@ type Config struct {
 		Token string `json:"token"`
 		Auth  struct {
 			Store struct {
-				Type   string `yaml:"type" json:"type"`     // memory/file/redis
-				Expiry int    `yaml:"expiry" json:"expiry"` // 过期时间(小时)
+				Type           string            `yaml:"type" json:"type"`                   // memory/sqlite/redis
+				Expiry         int               `yaml:"expiry" json:"expiry"`               // 过期时间(小时)
+				Cleanup        string            `yaml:"cleanup,omitempty" json:"cleanup"`   // 数据清理周期 (duration string)
+				Redis          AuthRedisStore    `yaml:"redis,omitempty" json:"redis"`       // Redis 配置
+				Sqlite         AuthSQLiteStore   `yaml:"sqlite,omitempty" json:"sqlite"`     // SQLite 配置
+				Memory         AuthMemoryStore   `yaml:"memory,omitempty" json:"memory"`     // 内存配置
+				CustomMetadata map[string]any    `yaml:"metadata,omitempty" json:"metadata"` // 额外元数据
+				Labels         map[string]string `yaml:"labels,omitempty" json:"labels"`     // 默认标签
 			} `yaml:"store" json:"store"`
 		} `yaml:"auth" json:"auth"`
 	} `yaml:"server" json:"server"`
@@ -62,14 +68,13 @@ type Config struct {
 		ActivateText string `yaml:"activate_text" json:"activate_text"` // 发送激活码时携带的文本
 	} `yaml:"web" json:"web"`
 
-	DefaultPrompt   string        `yaml:"prompt"             json:"prompt"`
-	Roles           []Role        `yaml:"roles"              json:"roles"` // 角色列表
-	DeleteAudio     bool          `yaml:"delete_audio"       json:"delete_audio"`
-	QuickReply      bool          `yaml:"quick_reply"        json:"quick_reply"`
-	QuickReplyWords []string      `yaml:"quick_reply_words"  json:"quick_reply_words"`
-	LocalMCPFun     []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
-	SaveTTSAudio    bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
-	SaveUserAudio   bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
+	DefaultPrompt string        `yaml:"prompt"             json:"prompt"`
+	Roles         []Role        `yaml:"roles"              json:"roles"` // 角色列表
+	DeleteAudio   bool          `yaml:"delete_audio"       json:"delete_audio"`
+	QuickReply    QuickReplyConfig `yaml:"quick_reply"      json:"quick_reply"` // 快速回复配置
+	LocalMCPFun   []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
+	SaveTTSAudio  bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
+	SaveUserAudio bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
 
 	SelectedModule map[string]string `yaml:"selected_module" json:"selected_module"`
 
@@ -90,10 +95,31 @@ type LocalMCPFun struct {
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
 }
 
+type AuthRedisStore struct {
+	Addr     string `yaml:"addr" json:"addr"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+	DB       int    `yaml:"db,omitempty" json:"db,omitempty"`
+	Prefix   string `yaml:"prefix,omitempty" json:"prefix,omitempty"`
+}
+
+type AuthSQLiteStore struct {
+	DSN string `yaml:"dsn,omitempty" json:"dsn,omitempty"`
+}
+
+type AuthMemoryStore struct {
+	Cleanup string `yaml:"cleanup,omitempty" json:"cleanup,omitempty"`
+}
+
 type Role struct {
 	Name        string `yaml:"name"         json:"name"`        // 角色名称
 	Description string `yaml:"description"  json:"description"` // 角色描述
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
+}
+
+type QuickReplyConfig struct {
+	Enabled bool     `yaml:"enabled" json:"enabled"` // 是否启用快速回复
+	Words   []string `yaml:"words"   json:"words"`   // 快速回复词列表
 }
 
 type PoolConfig struct {
@@ -190,7 +216,7 @@ func (cfg *Config) SaveToDB(dbi ConfigDBInterface) error {
 // LoadConfig 加载配置
 // 完全从数据库加载配置，如果数据库为空则使用默认配置并初始化数据库
 func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
-	bUseDatabaseCfg := false
+	bUseDatabaseCfg := true
 	// 尝试从数据库加载配置
 	cfgStr, err := dbi.LoadServerConfig()
 	if err != nil {

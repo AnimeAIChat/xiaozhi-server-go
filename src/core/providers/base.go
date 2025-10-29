@@ -45,6 +45,9 @@ type ASRProvider interface {
 	ResetStartListenTime()
 
 	EnableSilenceDetection(bEnable bool)
+
+	// 获取会话ID（用于事件发布）
+	GetSessionID() string
 }
 
 // TTSProvider 语音合成提供者接口
@@ -55,11 +58,17 @@ type TTSProvider interface {
 	ToTTS(text string) (string, error)
 
 	SetVoice(voice string) (error, string)
+
+	// 获取会话ID（用于事件发布）
+	GetSessionID() string
 }
 
 // LLMProvider 大语言模型提供者接口
 type LLMProvider interface {
 	types.LLMProvider
+
+	// 获取会话ID（用于事件发布）
+	GetSessionID() string
 }
 
 // Message 对话消息

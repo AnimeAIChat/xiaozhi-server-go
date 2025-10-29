@@ -7,6 +7,7 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/domain/eventbus"
 )
 
 // Config TTS配置结构
@@ -32,6 +33,7 @@ type Provider interface {
 type BaseProvider struct {
 	config     *Config
 	deleteFile bool
+	sessionID  string // 会话ID，用于事件发布
 }
 
 // Config 获取配置
@@ -39,9 +41,53 @@ func (p *BaseProvider) Config() *Config {
 	return p.config
 }
 
-// DeleteFile 获取是否删除文件标志
-func (p *BaseProvider) DeleteFile() bool {
-	return p.deleteFile
+// GetSessionID 获取会话ID
+func (p *BaseProvider) GetSessionID() string {
+	return p.sessionID
+}
+
+// SetSessionID 设置会话ID
+func (p *BaseProvider) SetSessionID(sessionID string) {
+	p.sessionID = sessionID
+}
+
+// PublishTTSSpeak 发布TTS说话事件
+func (p *BaseProvider) PublishTTSSpeak(text string, textIndex int, round int) {
+	eventData := eventbus.TTSEventData{
+		SessionID: p.sessionID,
+		Text:      text,
+		TextIndex: textIndex,
+		Round:     round,
+	}
+	eventbus.Publish(eventbus.EventTTSSpeak, eventData)
+}
+
+// PublishTTSCompleted 发布TTS完成事件
+func (p *BaseProvider) PublishTTSCompleted(text string, textIndex int, round int, filePath string) {
+	eventData := eventbus.TTSEventData{
+		SessionID: p.sessionID,
+		Text:      text,
+		TextIndex: textIndex,
+		Round:     round,
+		FilePath:  filePath,
+	}
+	eventbus.Publish(eventbus.EventTTSCompleted, eventData)
+}
+
+// PublishTTSError 发布TTS错误事件
+func (p *BaseProvider) PublishTTSError(err error, text string, textIndex int, round int) {
+	eventData := eventbus.SystemEventData{
+		Level:   "error",
+		Message: fmt.Sprintf("TTS error: %v", err),
+		Data: map[string]interface{}{
+			"session_id": p.sessionID,
+			"text":       text,
+			"text_index": textIndex,
+			"round":      round,
+			"error":      err.Error(),
+		},
+	}
+	eventbus.Publish(eventbus.EventTTSError, eventData)
 }
 
 // NewBaseProvider 创建TTS基础提供者
@@ -92,15 +138,8 @@ func IsSupportedVoice(voice string, supportedVoices []configs.VoiceInfo) (bool, 
 }
 
 func (p *BaseProvider) SetVoice(voice string) (error, string) {
-	isSupported, newVoice, err := IsSupportedVoice(voice, p.config.SupportedVoices)
-	if err != nil {
-		return err, ""
-	}
-	if !isSupported {
-		return fmt.Errorf("不支持的声音: %s", voice), ""
-	}
-	p.Config().Voice = newVoice
-	return nil, newVoice
+	p.Config().Voice = voice
+	return nil, voice
 }
 
 // Cleanup 清理资源
@@ -117,6 +156,22 @@ func (p *BaseProvider) Cleanup() error {
 				return fmt.Errorf("删除临时文件失败: %v", err)
 			}
 		}
+	}
+	return nil
+}
+
+// EventPublisher 事件发布接口
+type EventPublisher interface {
+	SetSessionID(sessionID string)
+	PublishTTSSpeak(text string, textIndex int, round int)
+	PublishTTSCompleted(text string, textIndex int, round int, filePath string)
+	PublishTTSError(err error, text string, textIndex int, round int)
+}
+
+// GetEventPublisher 获取事件发布器
+func GetEventPublisher(provider Provider) EventPublisher {
+	if p, ok := provider.(EventPublisher); ok {
+		return p
 	}
 	return nil
 }
@@ -141,10 +196,6 @@ func Create(name string, config *Config, deleteFile bool) (Provider, error) {
 	provider, err := factory(config, deleteFile)
 	if err != nil {
 		return nil, fmt.Errorf("创建TTS提供者失败: %v", err)
-	}
-
-	if err := provider.Initialize(); err != nil {
-		return nil, fmt.Errorf("初始化TTS提供者失败: %v", err)
 	}
 
 	return provider, nil

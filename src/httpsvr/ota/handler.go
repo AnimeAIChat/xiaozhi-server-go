@@ -41,6 +41,10 @@ type ErrorResponse struct {
 	Message string `json:"message" example:"缺少 device-id"`
 }
 
+func respondError(c *gin.Context, statusCode int, message string) {
+	c.JSON(statusCode, ErrorResponse{Success: false, Message: message})
+}
+
 // HandleOTARequest 处理 OTA 请求（POST /ota/）
 //
 // @Summary 设备 OTA 请求
@@ -216,20 +220,20 @@ func (s *DefaultOTAService) Trans2OTARequestBody(raw map[string]interface{}) OTA
 // @Accept json
 // @Produce json
 // @Param device-id header string true "设备ID"
-// @Param body body OtaRequest true "请求体"
-// @Success 200 {object} OtaFirmwareResponse
-// @Failure 400 {object} ErrorResponse
+// @Param body body ota.OTARequestBody true "请求体"
+// @Success 200 {object} ota.OtaFirmwareResponse
+// @Failure 400 {object} ota.ErrorResponse
 // @Router /ota/ [post]
 func (s *DefaultOTAService) handlePostOTA(c *gin.Context) {
 	deviceID := c.GetHeader("device-id")
 	if deviceID == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Success: false, Message: "缺少 device-id"})
+		respondError(c, http.StatusBadRequest, "缺少 device-id")
 		return
 	}
 
 	var raw map[string]interface{}
 	if err := c.ShouldBindJSON(&raw); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "解析失败: " + err.Error()})
+		respondError(c, http.StatusBadRequest, "解析失败: "+err.Error())
 		utils.DefaultLogger.Error("解析 OTA 请求体失败: %v", err)
 		return
 	}
@@ -295,9 +299,10 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 					// 硬删除
 					if err := database.HardDeleteDevice(tx, deleteDevice.DeviceID); err != nil {
 						utils.DefaultLogger.Error("硬删除设备失败: %s, %v", deviceID, err)
-						c.JSON(
+						respondError(
+							c,
 							http.StatusInternalServerError,
-							gin.H{"success": false, "message": "设备状态异常，请联系管理员" + err.Error()},
+							"设备状态异常，请联系管理员: "+err.Error(),
 						)
 						return err
 					}
@@ -323,9 +328,10 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 			device.Application = string(appBytes)
 			if err := database.AddDevice(tx, device); err != nil { // 保存设备信息
 				utils.DefaultLogger.Error("保存设备信息失败: %v", err)
-				c.JSON(
+				respondError(
+					c,
 					http.StatusInternalServerError,
-					gin.H{"success": false, "message": "保存设备信息失败: " + err.Error()},
+					"保存设备信息失败: "+err.Error(),
 				)
 				return err
 			} else {
@@ -354,14 +360,14 @@ func (s *DefaultOTAService) HandleFirmwareDownload() gin.HandlerFunc {
 		reqPath := c.Param("filepath")
 
 		if reqPath == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid file path"})
+			respondError(c, http.StatusBadRequest, "invalid file path")
 			return
 		}
 
 		clean := path.Clean(reqPath)
 		clean = strings.TrimPrefix(clean, "/")
 		if strings.Contains(clean, "..") {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid file path"})
+			respondError(c, http.StatusBadRequest, "invalid file path")
 			return
 		}
 
@@ -370,7 +376,7 @@ func (s *DefaultOTAService) HandleFirmwareDownload() gin.HandlerFunc {
 
 		fi, err := os.Stat(p)
 		if err != nil || fi.IsDir() {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "file not found"})
+			respondError(c, http.StatusNotFound, "file not found")
 			return
 		}
 

@@ -1,0 +1,9 @@
+config.db
+logs/**
+tmp/**
+tmpasr/**
+web/**
+scripts/**
+vendor/**
+src/docs/**
+docs/**

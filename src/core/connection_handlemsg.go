@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	"xiaozhi-server-go/src/core/chat"
-	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 )
@@ -27,12 +27,12 @@ func (h *ConnectionHandler) handleMessage(messageType int, message []byte) error
 				// 解码opus数据为PCM
 				decodedData, err := h.opusDecoder.Decode(message)
 				if err != nil {
-					h.logger.Error(fmt.Sprintf("解码Opus音频失败: %v", err))
+					h.logger.Error("解码Opus音频失败: %v", err)
 					// 即使解码失败，也尝试将原始数据传递给ASR处理
 					h.clientAudioQueue <- message
 				} else {
 					// 解码成功，将PCM数据放入队列
-					h.logger.Debug(fmt.Sprintf("Opus解码成功: %d bytes -> %d bytes", len(message), len(decodedData)))
+					h.logger.Debug("Opus解码成功: %d bytes -> %d bytes", len(message), len(decodedData))
 					if len(decodedData) > 0 {
 						h.clientAudioQueue <- decodedData
 					}
@@ -44,7 +44,7 @@ func (h *ConnectionHandler) handleMessage(messageType int, message []byte) error
 		}
 		return nil
 	default:
-		h.logger.Error(fmt.Sprintf("未知的消息类型: %d", messageType))
+		h.logger.Error("未知的消息类型: %d", messageType)
 		return fmt.Errorf("未知的消息类型: %d", messageType)
 	}
 }
@@ -92,10 +92,11 @@ func (h *ConnectionHandler) processClientTextMessage(ctx context.Context, text s
 	case "mcp":
 		return h.mcpManager.HandleXiaoZhiMCPMessage(msgMap)
 	default:
-		h.logger.Warn("=== 未知消息类型 ===", map[string]interface{}{
-			"unknown_type": msgType,
-			"full_message": msgMap,
-		})
+		h.logger.Warn(
+			"=== 未知消息类型 ===: unknown_type=%s full_message=%v",
+			msgType,
+			msgMap,
+		)
 		return fmt.Errorf("未知的消息类型: %s", msgType)
 	}
 }
@@ -143,7 +144,7 @@ func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) er
 		MaxChannels: h.clientAudioChannels,   // 单声道音频
 	})
 	if err != nil {
-		h.logger.Error(fmt.Sprintf("初始化Opus解码器失败: %v", err))
+		h.logger.Error("初始化Opus解码器失败: %v", err)
 	} else {
 		h.opusDecoder = opusDecoder
 		h.LogInfo("[Opus] [解码器] 初始化成功")
@@ -233,7 +234,7 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 		return fmt.Errorf("缺少图片数据")
 	}
 
-	imageData := image.ImageData{}
+	imageData := domainimage.ImageData{}
 	if url, ok := imageDataMap["url"].(string); ok {
 		imageData.URL = url
 	}
@@ -260,19 +261,19 @@ func (h *ConnectionHandler) handleImageMessage(ctx context.Context, msgMap map[s
 	// 立即发送STT消息
 	err := h.sendSTTMessage(text)
 	if err != nil {
-		h.logger.Error(fmt.Sprintf("发送STT消息失败: %v", err))
+		h.logger.Error("发送STT消息失败: %v", err)
 		return fmt.Errorf("发送STT消息失败: %v", err)
 	}
 
 	// 发送TTS开始状态
 	if err := h.sendTTSMessage("start", "", 0); err != nil {
-		h.logger.Error(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+		h.logger.Error("发送TTS开始状态失败: %v", err)
 		return fmt.Errorf("发送TTS开始状态失败: %v", err)
 	}
 
 	// 发送思考状态的情绪
 	if err := h.sendEmotionMessage("thinking"); err != nil {
-		h.logger.Error(fmt.Sprintf("发送思考状态情绪消息失败: %v", err))
+		h.logger.Error("发送思考状态情绪消息失败: %v", err)
 		return fmt.Errorf("发送情绪消息失败: %v", err)
 	}
 

@@ -3,15 +3,17 @@ package vlllm
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -33,13 +35,13 @@ type Config struct {
 
 // Provider VLLLM提供者，直接处理多模态API
 type Provider struct {
-	config         *Config
-	imageProcessor *image.ImageProcessor
-	logger         *utils.Logger
+	config        *Config
+	imagePipeline *domainimage.Pipeline
+	security      configs.SecurityConfig
+	logger        *utils.Logger
 
-	// 直接的API客户端
-	openaiClient *openai.Client // 用于OpenAI类型
-	httpClient   *http.Client   // 用于Ollama类型
+	openaiClient *openai.Client
+	httpClient   *http.Client
 }
 
 // OllamaRequest Ollama API请求结构
@@ -70,29 +72,21 @@ type OllamaResponse struct {
 
 // NewProvider 创建新的VLLLM提供者
 func NewProvider(config *Config, logger *utils.Logger) (*Provider, error) {
-	// 构建VLLLM配置
-	vlllmConfig := &configs.VLLMConfig{
-		Type:        config.Type,
-		ModelName:   config.ModelName,
-		BaseURL:     config.BaseURL,
-		APIKey:      config.APIKey,
-		Temperature: config.Temperature,
-		MaxTokens:   config.MaxTokens,
-		TopP:        config.TopP,
-		Security:    config.Security,
-	}
-
-	// 创建图片处理器
-	imageProcessor, err := image.NewImageProcessor(vlllmConfig, logger)
+	security := config.Security
+	imagePipeline, err := domainimage.NewPipeline(domainimage.Options{
+		Security: &security,
+		Logger:   logger,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("创建图片处理器失败: %v", err)
+		return nil, fmt.Errorf("initialise image pipeline: %w", err)
 	}
 
 	provider := &Provider{
-		config:         config,
-		imageProcessor: imageProcessor,
-		logger:         logger,
-		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		config:        config,
+		security:      security,
+		imagePipeline: imagePipeline,
+		logger:        logger,
+		httpClient:    &http.Client{Timeout: 30 * time.Second},
 	}
 
 	return provider, nil
@@ -118,57 +112,166 @@ func (p *Provider) Initialize() error {
 		if p.config.BaseURL == "" {
 			p.config.BaseURL = "http://localhost:11434" // 默认Ollama地址
 		}
-		p.logger.Debug("Ollama VLLLM初始化成功 %v", map[string]interface{}{
-			"base_url": p.config.BaseURL,
-			"model":    p.config.ModelName,
-		})
+		p.logger.Debug(
+			"Ollama VLLLM初始化成功: base_url=%s model=%s",
+			p.config.BaseURL,
+			p.config.ModelName,
+		)
 
 	default:
 		return fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
 	}
 
-	p.logger.Debug("VLLLM Provider初始化成功 %v", map[string]interface{}{
-		"type":       p.config.Type,
-		"model_name": p.config.ModelName,
-	})
+	p.logger.Debug(
+		"VLLLM Provider初始化成功: type=%s model_name=%s",
+		p.config.Type,
+		p.config.ModelName,
+	)
 
 	return nil
 }
 
-// Cleanup 清理资源
+// Cleanup 释放资源
 func (p *Provider) Cleanup() error {
-	// 清理图片处理器
-	if err := p.imageProcessor.Cleanup(); err != nil {
-		p.logger.Warn("清理图片处理器失败", err)
-	}
-
-	p.logger.Info("VLLLM Provider清理完成")
+	p.logger.Info("VLLLM Provider cleaned up")
 	return nil
 }
 
 // ResponseWithImage 处理包含图片的请求 - 核心方法
-func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, messages []providers.Message, imageData image.ImageData, text string) (<-chan string, error) {
+func (p *Provider) ResponseWithImage(ctx context.Context, sessionID string, messages []providers.Message, imageData domainimage.ImageData, text string) (<-chan string, error) {
 	// 处理图片
-	base64Image, err := p.imageProcessor.ProcessImage(ctx, imageData)
+	output, err := p.prepareImagePayload(ctx, imageData)
 	if err != nil {
-		return nil, fmt.Errorf("图片处理失败: %v", err)
+		return nil, fmt.Errorf("image pipeline: %w", err)
 	}
 
-	p.logger.Debug("开始调用多模态API %v", map[string]interface{}{
-		"type":       p.config.Type,
-		"model_name": p.config.ModelName,
-		"text":       text,
-		"image_size": len(base64Image),
-	})
+	base64Image := output.Base64
+	format := output.Validation.Format
 
-	// 根据类型调用对应的多模态API
+	p.logger.Debug(
+		"invoke vision API: type=%s model_name=%s text_length=%d image_bytes=%d",
+		p.config.Type,
+		p.config.ModelName,
+		len(text),
+		len(output.Bytes),
+	)
+
 	switch strings.ToLower(p.config.Type) {
 	case "openai":
-		return p.responseWithOpenAIVision(ctx, messages, base64Image, text, imageData.Format)
+		return p.responseWithOpenAIVision(ctx, messages, base64Image, text, format)
 	case "ollama":
-		return p.responseWithOllamaVision(ctx, messages, base64Image, text, imageData.Format)
+		return p.responseWithOllamaVision(ctx, messages, base64Image, text, format)
 	default:
-		return nil, fmt.Errorf("不支持的VLLLM类型: %s", p.config.Type)
+		return nil, fmt.Errorf("unsupported VLLLM provider: %s", p.config.Type)
+	}
+}
+func (p *Provider) prepareImagePayload(ctx context.Context, payload domainimage.ImageData) (*domainimage.Output, error) {
+	var (
+		reader      io.ReadCloser
+		formatHint  = payload.Format
+		sourceLabel string
+		err         error
+	)
+
+	switch {
+	case payload.URL != "":
+		sourceLabel = payload.URL
+		reader, formatHint, err = p.downloadImage(ctx, payload.URL)
+		if err != nil {
+			return nil, err
+		}
+	case payload.Data != "":
+		sourceLabel = "inline"
+		reader = io.NopCloser(base64.NewDecoder(base64.StdEncoding, strings.NewReader(payload.Data)))
+	default:
+		return nil, fmt.Errorf("missing image payload")
+	}
+
+	if closer := reader; closer != nil {
+		defer closer.Close()
+	}
+
+	output, err := p.imagePipeline.Process(ctx, domainimage.Input{
+		Reader:         reader,
+		DeclaredFormat: formatHint,
+		Source:         sourceLabel,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func (p *Provider) downloadImage(ctx context.Context, url string) (io.ReadCloser, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "XiaoZhi-Vision/1.0")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch image: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("unexpected status: %s", resp.Status)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !p.isValidImageContentType(contentType) {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("unsupported content-type: %s", contentType)
+	}
+
+	if resp.ContentLength > 0 && p.security.MaxFileSize > 0 && resp.ContentLength > p.security.MaxFileSize {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("remote image exceeds max size: %d", resp.ContentLength)
+	}
+
+	return resp.Body, inferFormatFromContentType(contentType), nil
+}
+
+func (p *Provider) isValidImageContentType(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+
+	lower := strings.ToLower(contentType)
+	validContentTypes := []string{
+		"image/jpeg",
+		"image/jpg",
+		"image/png",
+		"image/gif",
+		"image/webp",
+		"image/bmp",
+	}
+
+	for _, valid := range validContentTypes {
+		if strings.Contains(lower, valid) {
+			return true
+		}
+	}
+	return false
+}
+
+func inferFormatFromContentType(contentType string) string {
+	lower := strings.ToLower(contentType)
+	switch {
+	case strings.Contains(lower, "jpeg"), strings.Contains(lower, "jpg"):
+		return "jpeg"
+	case strings.Contains(lower, "png"):
+		return "png"
+	case strings.Contains(lower, "gif"):
+		return "gif"
+	case strings.Contains(lower, "webp"):
+		return "webp"
+	case strings.Contains(lower, "bmp"):
+		return "bmp"
+	default:
+		return ""
 	}
 }
 
@@ -297,7 +400,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		requestBody, err := json.Marshal(request)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【请求序列化失败: %v】", err)
-			p.logger.Error("Ollama请求序列化失败", err)
+			p.logger.Error("Ollama请求序列化失败: %v", err)
 			return
 		}
 
@@ -306,32 +409,34 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
 		if err != nil {
 			responseChan <- fmt.Sprintf("【创建请求失败: %v】", err)
-			p.logger.Error("创建Ollama请求失败", err)
+			p.logger.Error("创建Ollama请求失败: %v", err)
 			return
 		}
 
 		req.Header.Set("Content-Type", "application/json")
 
-		p.logger.Info("向Ollama发送多模态请求", map[string]interface{}{
-			"url":   url,
-			"model": p.config.ModelName,
-			"text":  text,
-		})
+		p.logger.Info(
+			"向Ollama发送多模态请求: url=%s model=%s text_length=%d",
+			url,
+			p.config.ModelName,
+			len(text),
+		)
 
 		resp, err := p.httpClient.Do(req)
 		if err != nil {
 			responseChan <- fmt.Sprintf("【Ollama API调用失败: %v】", err)
-			p.logger.Error("Ollama API调用失败", err)
+			p.logger.Error("Ollama API调用失败: %v", err)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			responseChan <- fmt.Sprintf("【Ollama API返回错误: %d】", resp.StatusCode)
-			p.logger.Error("Ollama API返回错误", map[string]interface{}{
-				"status_code": resp.StatusCode,
-				"status":      resp.Status,
-			})
+			p.logger.Error(
+				"Ollama API返回错误: status_code=%d status=%s",
+				resp.StatusCode,
+				resp.Status,
+			)
 			return
 		}
 
@@ -345,7 +450,7 @@ func (p *Provider) responseWithOllamaVision(ctx context.Context, messages []prov
 			var response OllamaResponse
 			if err := decoder.Decode(&response); err != nil {
 				if err.Error() != "EOF" {
-					p.logger.Error("解析Ollama响应失败", err)
+					p.logger.Error("解析Ollama响应失败: %v", err)
 				}
 				break
 			}
@@ -416,8 +521,8 @@ func (p *Provider) detectMultimodalMessage(content string) (text string, imageUR
 }
 
 // GetImageMetrics 获取图片处理统计信息
-func (p *Provider) GetImageMetrics() image.ImageMetrics {
-	return p.imageProcessor.GetMetrics()
+func (p *Provider) GetImageMetrics() domainimage.Metrics {
+	return domainimage.Metrics{}
 }
 
 // GetConfig 获取配置信息

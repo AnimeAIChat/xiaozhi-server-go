@@ -37,10 +37,9 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 		for {
 			messageType, p, _ := conn.ReadMessage()
 			if messageType == websocket.TextMessage {
-				if listener := provider.GetListener(); listener != nil {
-					if finished := listener.OnAsrResult(string(p), true); finished {
-					}
-				}
+				text := string(p)
+				// 发布ASR结果事件（通过事件总线分发）
+				provider.PublishAsrResult(text, true)
 			}
 		}
 	}()

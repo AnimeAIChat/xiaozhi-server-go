@@ -80,6 +80,7 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
 	if err != nil || device == nil {
 		h.logger.Error("mcp_handler_switch_agent: FindDeviceByID failed: %v", err)
+		h.SystemSpeak("切换智能体失败：无法获取设备信息")
 		return
 	}
 
@@ -99,13 +100,14 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 			h.checkLLMProvider(agent, h.config)
 
 			if agent != nil && agent.Name != "" {
-				h.SystemSpeak("已切换到智能体 " + agent.Name)
+				h.SystemSpeak("已切换到 " + agent.Name)
 			} else {
 				h.SystemSpeak("已切换到新的智能体")
 			}
 			return
 		}
 	}
+	h.SystemSpeak("没有找到对应的智能体")
 }
 
 func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) string {
@@ -201,18 +203,30 @@ func (h *ConnectionHandler) mcp_handler_exit(args interface{}) {
 }
 
 func (h *ConnectionHandler) mcp_handler_take_photo(args interface{}) {
-	// 特殊处理拍照函数，解析为VisionResponse
+	// 特殊处理拍照函数，解析新的 Vision API 响应结构
 	resultStr, _ := args.(string)
-	var visionResponse vision.VisionResponse
-	if err := json.Unmarshal([]byte(resultStr), &visionResponse); err != nil {
-		h.logger.Error("解析VisionResponse失败: %v", err)
+	type visionAPIResponse struct {
+		Success bool                      `json:"success"`
+		Message string                    `json:"message"`
+		Code    int                       `json:"code"`
+		Data    vision.VisionAnalysisData `json:"data"`
 	}
 
-	if !visionResponse.Success {
-		h.logger.Error("拍照失败: %s", visionResponse.Message)
+	var resp visionAPIResponse
+	if err := json.Unmarshal([]byte(resultStr), &resp); err != nil {
+		h.logger.Error("解析 Vision API 响应失败: %v", err)
+		return
+	}
+
+	if !resp.Success {
+		errMsg := resp.Data.Error
+		if errMsg == "" && resp.Message != "" {
+			errMsg = resp.Message
+		}
+		h.logger.Error("拍照失败: %s", errMsg)
 		h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
-
+		return
 	}
 
-	h.SystemSpeak(visionResponse.Result)
+	h.SystemSpeak(resp.Data.Result)
 }

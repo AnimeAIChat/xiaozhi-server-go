@@ -6,6 +6,7 @@ import (
 	"time"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/domain/eventbus"
 )
 
 // Config ASR配置结构
@@ -39,7 +40,8 @@ type BaseProvider struct {
 
 	UserPreferences map[string]interface{}
 
-	listener providers.AsrEventListener
+	listener   providers.AsrEventListener
+	sessionID  string // 会话ID，用于事件发布
 }
 
 func (p *BaseProvider) ResetStartListenTime() {
@@ -76,6 +78,16 @@ func (p *BaseProvider) SetListener(listener providers.AsrEventListener) {
 // GetListener 获取事件监听器
 func (p *BaseProvider) GetListener() providers.AsrEventListener {
 	return p.listener
+}
+
+// SetSessionID 设置会话ID
+func (p *BaseProvider) SetSessionID(sessionID string) {
+	p.sessionID = sessionID
+}
+
+// GetSessionID 获取会话ID
+func (p *BaseProvider) GetSessionID() string {
+	return p.sessionID
 }
 
 func (p *BaseProvider) SetUserPreferences(preferences map[string]interface{}) error {
@@ -149,6 +161,31 @@ func Create(name string, config *Config, deleteFile bool, logger *utils.Logger) 
 	}
 
 	return provider, nil
+}
+
+// PublishAsrResult 发布ASR结果事件
+func (p *BaseProvider) PublishAsrResult(text string, isFinal bool) {
+	eventData := eventbus.ASREventData{
+		SessionID: p.sessionID,
+		Text:      text,
+		IsFinal:   isFinal,
+	}
+
+	// 发布同步事件
+	eventbus.Publish(eventbus.EventASRResult, eventData)
+}
+
+// PublishAsrError 发布ASR错误事件
+func (p *BaseProvider) PublishAsrError(err error) {
+	eventData := eventbus.SystemEventData{
+		Level:   "error",
+		Message: fmt.Sprintf("ASR error: %v", err),
+		Data: map[string]interface{}{
+			"session_id": p.sessionID,
+			"error":      err.Error(),
+		},
+	}
+	eventbus.Publish(eventbus.EventASRError, eventData)
 }
 
 // 初始化音频处理

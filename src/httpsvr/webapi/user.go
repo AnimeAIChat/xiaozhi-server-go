@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"net/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
@@ -64,16 +65,9 @@ func (s *DefaultUserService) Start(
 		authGroup.PUT("/device/:id", s.handleDeviceUpdate)
 		authGroup.DELETE("/device", s.handleDeviceDelete)
 
-		// providers
-		authGroup.GET("/providers/:type", s.handleUserProvidersType)
-		authGroup.POST("/providers/create", s.handleUserProvidersCreate)
-		///user/providers/{type}/{name} [delete]
-		authGroup.DELETE("/providers/:type/:name", s.handleUserProvidersDelete)
-		///user/providers/{type}/{name} [put]
-		authGroup.PUT("/providers/:type/:name", s.handleUserProvidersUpdate)
 	}
 
-	s.logger.Info("用户HTTP服务路由注册完成")
+	s.logger.InfoTag("HTTP", "用户服务路由注册完成")
 	return nil
 }
 
@@ -82,28 +76,21 @@ func (s *DefaultUserService) handleSystemSummary(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	_, err := database.GetUserByID(database.GetDB(), userID.(uint))
 	if err != nil {
-		c.JSON(404, gin.H{
-			"status":  "error",
-			"message": "用户不存在",
-		})
+		respondError(c, http.StatusNotFound, "用户不存在", nil)
 		return
 	}
 
 	data, _ := database.GetSystemSummary(database.GetDB())
 
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "获取系统汇总信息成功",
-		"data": gin.H{
-			"totle_users":       data["total_users"],
-			"totle_agents":      data["total_agents"],
-			"totle_devices":     data["total_devices"],
-			"online_users":      data["online_devices"],
-			"session_devices":   data["session_devices"],
-			"system_memory_use": data["memory_usage"],
-			"system_cpu_use":    data["cpu_usage"],
-		},
-	})
+	respondSuccess(c, http.StatusOK, gin.H{
+		"totle_users":       data["total_users"],
+		"totle_agents":      data["total_agents"],
+		"totle_devices":     data["total_devices"],
+		"online_users":      data["online_devices"],
+		"session_devices":   data["session_devices"],
+		"system_memory_use": data["memory_usage"],
+		"system_cpu_use":    data["cpu_usage"],
+	}, "获取系统汇总信息成功")
 }
 
 // LoginRequest 用户登录请求体
@@ -144,39 +131,26 @@ type ChangePasswordRequest struct {
 func (s *DefaultUserService) handleLogin(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
 		return
 	}
 
 	// 获取用户信息
 	user, err := database.GetUserByUsername(database.GetDB(), req.Username)
 	if err != nil || user == nil {
-		c.JSON(401, gin.H{
-			"status":  "error",
-			"message": "用户名或密码错误",
-		})
+		respondError(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
 	}
 
 	// 验证密码
 	if !s.verifyPassword(req.Password, user.Password) {
-		c.JSON(401, gin.H{
-			"status":  "error",
-			"message": "用户名或密码错误",
-		})
+		respondError(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
 	}
 
 	// 检查用户状态
 	if user.Status != 1 {
-		c.JSON(401, gin.H{
-			"status":  "error",
-			"message": "账户已被禁用",
-		})
+		respondError(c, http.StatusUnauthorized, "账户已被禁用", nil)
 		return
 	}
 
@@ -184,10 +158,7 @@ func (s *DefaultUserService) handleLogin(c *gin.Context) {
 	token, err := GenerateJWT(user.ID, user.Username)
 	if err != nil {
 		s.logger.Error("生成JWT失败: %v", err)
-		c.JSON(500, gin.H{
-			"status":  "error",
-			"message": "登录失败",
-		})
+		respondError(c, http.StatusInternalServerError, "登录失败", nil)
 		return
 	}
 
@@ -209,12 +180,7 @@ func (s *DefaultUserService) handleLogin(c *gin.Context) {
 		data["role"] = role
 	}
 
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"success": true,
-		"message": "登录成功",
-		"data":    data,
-	})
+	respondSuccess(c, http.StatusOK, data, "登录成功")
 }
 
 // handleLogout 用户登出
@@ -226,10 +192,7 @@ func (s *DefaultUserService) handleLogin(c *gin.Context) {
 // @Router /user/logout [post]
 func (s *DefaultUserService) handleLogout(c *gin.Context) {
 	// 这里可以实现token黑名单机制
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "登出成功",
-	})
+	respondSuccess(c, http.StatusOK, nil, "登出成功")
 }
 
 // handleGetProfile 获取用户资料
@@ -244,26 +207,19 @@ func (s *DefaultUserService) handleGetProfile(c *gin.Context) {
 
 	user, err := database.GetUserByID(database.GetDB(), userID.(uint))
 	if err != nil || user == nil {
-		c.JSON(404, gin.H{
-			"status":  "error",
-			"message": "用户不存在",
-		})
+		respondError(c, http.StatusNotFound, "用户不存在", nil)
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "获取用户资料成功",
-		"data": gin.H{
-			"user_id":    user.ID,
-			"username":   user.Username,
-			"nickname":   user.Nickname,
-			"head_img":   user.HeadImg,
-			"email":      user.Email,
-			"created_at": user.CreatedAt,
-			"updated_at": user.UpdatedAt,
-		},
-	})
+	respondSuccess(c, http.StatusOK, gin.H{
+		"user_id":    user.ID,
+		"username":   user.Username,
+		"nickname":   user.Nickname,
+		"head_img":   user.HeadImg,
+		"email":      user.Email,
+		"created_at": user.CreatedAt,
+		"updated_at": user.UpdatedAt,
+	}, "获取用户资料成功")
 }
 
 // handleUpdateProfile 更新用户资料
@@ -285,30 +241,19 @@ func (s *DefaultUserService) handleUpdateProfile(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&updateData); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
 		return
 	}
 	WithTx(c, func(tx *gorm.DB) error {
 		user, err := database.GetUserByID(tx, userID.(uint))
 		if err != nil {
-			c.JSON(404, gin.H{
-				"status":  "error",
-				"message": "用户不存在",
-			})
+			respondError(c, http.StatusNotFound, "用户不存在", nil)
 			return err
 		}
 		if updateData.Nickname != user.Nickname {
 			err := database.UpdateUserNickname(tx, userID.(uint), updateData.Nickname)
 			if err != nil {
-				c.JSON(400, gin.H{
-					"status":  "error",
-					"message": "更新用昵称失败",
-					"error":   err.Error(),
-				})
+				respondError(c, http.StatusBadRequest, "更新用户昵称失败", gin.H{"error": err.Error()})
 				return err
 			}
 			user.Nickname = updateData.Nickname
@@ -316,11 +261,7 @@ func (s *DefaultUserService) handleUpdateProfile(c *gin.Context) {
 		if updateData.HeadImg != "" && updateData.HeadImg != user.HeadImg {
 			err := database.UpdateUserHeadImg(tx, userID.(uint), updateData.HeadImg)
 			if err != nil {
-				c.JSON(400, gin.H{
-					"status":  "error",
-					"message": "更新头像失败",
-					"error":   err.Error(),
-				})
+				respondError(c, http.StatusBadRequest, "更新头像失败", gin.H{"error": err.Error()})
 				return err
 			}
 			user.HeadImg = updateData.HeadImg
@@ -328,19 +269,17 @@ func (s *DefaultUserService) handleUpdateProfile(c *gin.Context) {
 		if updateData.Email != user.Email {
 			err := database.UpdateUserEmail(tx, userID.(uint), updateData.Email)
 			if err != nil {
-				c.JSON(400, gin.H{
-					"status":  "error",
-					"message": "更新邮箱失败",
-					"error":   err.Error(),
-				})
+				respondError(c, http.StatusBadRequest, "更新邮箱失败", gin.H{"error": err.Error()})
 				return err
 			}
 			user.Email = updateData.Email
 		}
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"message": "更新成功",
-		})
+		respondSuccess(c, http.StatusOK, gin.H{
+			"user_id":  user.ID,
+			"nickname": user.Nickname,
+			"email":    user.Email,
+			"head_img": user.HeadImg,
+		}, "更新成功")
 		return nil
 	})
 }
@@ -359,21 +298,14 @@ func (s *DefaultUserService) handleChangePassword(c *gin.Context) {
 
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
 		return
 	}
 
 	// 获取用户信息验证旧密码
 	user, err := database.GetUserByID(database.GetDB(), userID.(uint))
 	if err != nil || user == nil {
-		c.JSON(404, gin.H{
-			"status":  "error",
-			"message": "用户不存在",
-		})
+		respondError(c, http.StatusNotFound, "用户不存在", nil)
 		return
 	}
 
@@ -385,28 +317,18 @@ func (s *DefaultUserService) handleChangePassword(c *gin.Context) {
 			user.Password,
 			req.OldPassword,
 		)
-		c.JSON(400, gin.H{
-			"status":  "error",
-			"message": "原密码错误",
-		})
+		respondError(c, http.StatusBadRequest, "原密码错误", nil)
 		return
 	}
 
 	// 更新密码
 	hashedPassword := s.hashPassword(req.NewPassword)
 	if err := database.UpdateUserPassword(database.GetDB(), userID.(uint), hashedPassword); err != nil {
-		c.JSON(500, gin.H{
-			"status":  "error",
-			"message": "密码修改失败",
-			"error":   err.Error(),
-		})
+		respondError(c, http.StatusInternalServerError, "密码修改失败", gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "密码修改成功",
-	})
+	respondSuccess(c, http.StatusOK, nil, "密码修改成功")
 }
 
 // 密码哈希

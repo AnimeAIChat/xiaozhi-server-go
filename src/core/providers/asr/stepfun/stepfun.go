@@ -283,7 +283,7 @@ func (p *Provider) readLoop() {
 			}
 			// 读取转写结果
 			text := e.Transcript
-			p.logger.Debug("[DEBUG] Step识别结果: %s", text)
+			p.logger.DebugTag("ASR", "Step 识别结果: %s", text)
 			p.connMutex.Lock()
 			p.result = text
 			p.connMutex.Unlock()
@@ -295,9 +295,8 @@ func (p *Provider) readLoop() {
 				} else if text != "" {
 					p.BaseProvider.SilenceCount = 0
 				}
-				if finished := listener.OnAsrResult(text, true); finished {
-					return
-				}
+				// 直接调用listener.OnAsrResult，不再通过事件总线
+				listener.OnAsrResult(text, true)
 			}
 		default:
 			// 其他事件忽略

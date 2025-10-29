@@ -2,8 +2,9 @@ package pool
 
 import (
 	"fmt"
+
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -33,7 +34,7 @@ func (f *ProviderFactory) Create() (interface{}, error) {
 }
 
 func (f *ProviderFactory) Destroy(resource interface{}) error {
-	f.logger.Info("[Destroy] %s 资源池关闭，销毁资源", f.Name)
+	f.logger.InfoTag("资源池", "%s 资源池关闭，销毁资源", f.Name)
 
 	if provider, ok := resource.(providers.Provider); ok {
 		return provider.Cleanup()
@@ -69,8 +70,11 @@ func (f *ProviderFactory) createProvider() (interface{}, error) {
 		return vlllm.Create(cfg.Type, cfg, f.logger)
 	case "mcp":
 		cfg := f.config.(*configs.Config)
-		logger := f.logger
-		return mcp.NewManagerForPool(logger, cfg), nil
+		manager, err := domainmcp.NewFromConfig(cfg, f.logger)
+		if err != nil {
+			return nil, err
+		}
+		return manager, nil
 	default:
 		return nil, fmt.Errorf("未知的提供者类型: %s", f.providerType)
 	}

@@ -62,11 +62,15 @@ func (d *ServerConfigDB) InitServerConfig(cfgStr string) error {
 
 func (d *ServerConfigDB) GetServerConfig() (string, error) {
 	var config models.ServerConfig
-	if err := d.db.First(&config, ServerConfigID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	result := d.db.Where("id = ?", ServerConfigID).Limit(1).Find(&config)
+	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "no such table") {
 			return "", nil
 		}
-		return "", fmt.Errorf("查询服务器配置失败: %v", err)
+		return "", fmt.Errorf("查询服务器配置失败: %v", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return "", nil
 	}
 	return config.CfgStr, nil
 }
@@ -91,14 +95,15 @@ func (d *ServerConfigDB) LoadServerConfig() (string, error) {
 		return "", fmt.Errorf("创建服务器配置表失败: %v", err)
 	}
 
-	if err := d.db.First(&config, ServerConfigID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	result := d.db.Where("id = ?", ServerConfigID).Limit(1).Find(&config)
+	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "no such table") {
 			return "", nil
 		}
-		if strings.Contains(err.Error(), "no such table") {
-			return "", nil
-		}
-		return "", fmt.Errorf("查询服务器配置失败: %v", err)
+		return "", fmt.Errorf("查询服务器配置失败: %v", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return "", nil
 	}
 
 	return config.CfgStr, nil

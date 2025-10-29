@@ -16,9 +16,9 @@ var (
 	reRemoveAllPunctuation = regexp.MustCompile(
 		`[.,!?;:，。！？、；：""''「」『』（）\(\)【】\[\]{}《》〈〉—–\-_~·…‖\|\\/*&\^%\$#@\+=<>]`,
 	)
-	reWakeUpWord             = regexp.MustCompile(`^你好.+`)
-	reRemoveParenthesesCN    = regexp.MustCompile(`（[^）]*）`)  // 中文括号
-	reRemoveParenthesesEN    = regexp.MustCompile(`\([^)]*\)`)  // 英文括号
+	reWakeUpWord          = regexp.MustCompile(`^你好.+`)
+	reRemoveParenthesesCN = regexp.MustCompile(`（[^）]*）`)   // 中文括号
+	reRemoveParenthesesEN = regexp.MustCompile(`\([^)]*\)`) // 英文括号
 )
 
 // splitAtLastPunctuation 在最后一个标点符号处分割文本，优化聊天场景下的分句逻辑
@@ -329,4 +329,18 @@ func RemoveParentheses(text string) string {
 	// 移除英文括号及其内容
 	text = reRemoveParenthesesEN.ReplaceAllString(text, "")
 	return text
+}
+
+// SanitizeForLog 压缩文本中的空白字符，避免日志输出出现多余换行
+func SanitizeForLog(text string) string {
+	if text == "" {
+		return ""
+	}
+	// 将不间断空格替换为普通空格，避免被Fields忽略
+	replaced := strings.ReplaceAll(text, "\u00A0", " ")
+	fields := strings.Fields(replaced)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.Join(fields, " ")
 }

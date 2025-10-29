@@ -42,10 +42,7 @@ func NewAuthManager(storeConfig *store.StoreConfig, logger *utils.Logger) (*Auth
 		logger:        logger,
 	}
 
-	manager.logger.Info("[认证] [管理器] 初始化成功", map[string]interface{}{
-		"store_type": storeConfig.Type,
-		"expiry_hr":  storeConfig.ExpiryHr,
-	})
+	manager.logger.InfoTag("认证", "管理器初始化成功 — 存储类型=%v，过期=%vh", storeConfig.Type, storeConfig.ExpiryHr)
 
 	return manager, nil
 }
@@ -63,12 +60,8 @@ func (am *AuthManager) RegisterClient(
 	}
 
 	// 存储认证信息
-	err := am.store.StoreAuth(clientID, username, password, metadata)
-	if err != nil {
-		am.logger.Error("注册客户端认证信息失败", map[string]interface{}{
-			"client_id": clientID,
-			"error":     err.Error(),
-		})
+	if err := am.store.StoreAuth(clientID, username, password, metadata); err != nil {
+		am.logger.ErrorTag("认证", "注册客户端认证信息失败: client_id=%s error=%v", clientID, err)
 		return err
 	}
 	return nil
@@ -83,27 +76,23 @@ func (am *AuthManager) AuthenticateClient(
 
 	valid, clientInfo, err := am.store.ValidateAuth(clientID, username, password)
 	if err != nil {
-		am.logger.Error("客户端认证验证失败", map[string]interface{}{
-			"client_id": clientID,
-			"error":     err.Error(),
-		})
+		am.logger.ErrorTag("认证", "客户端认证失败: client_id=%s error=%v", clientID, err)
 		return false, nil, err
 	}
 
 	if !valid {
-		am.logger.Debug("客户端认证失败", map[string]interface{}{
-			"client_id": clientID,
-			"username":  username,
-		})
+		am.logger.DebugTag("认证", "凭证不正确: client_id=%s username=%s", clientID, username)
 		return false, nil, nil
 	}
 
-	am.logger.Debug("客户端认证成功", map[string]interface{}{
-		"client_id": clientID,
-		"username":  username,
-		"ip":        clientInfo.IP,
-		"device_id": clientInfo.DeviceID,
-	})
+	am.logger.DebugTag(
+		"认证",
+		"认证通过: client_id=%s username=%s ip=%s device_id=%s",
+		clientID,
+		username,
+		clientInfo.IP,
+		clientInfo.DeviceID,
+	)
 
 	return true, clientInfo, nil
 }
@@ -121,18 +110,12 @@ func (am *AuthManager) RemoveClient(clientID string) error {
 	am.mutex.Lock()
 	defer am.mutex.Unlock()
 
-	err := am.store.RemoveAuth(clientID)
-	if err != nil {
-		am.logger.Error("移除客户端认证信息失败", map[string]interface{}{
-			"client_id": clientID,
-			"error":     err.Error(),
-		})
+	if err := am.store.RemoveAuth(clientID); err != nil {
+		am.logger.ErrorTag("认证", "移除客户端认证信息失败: client_id=%s error=%v", clientID, err)
 		return err
 	}
 
-	am.logger.Info("客户端认证信息已移除", map[string]interface{}{
-		"client_id": clientID,
-	})
+	am.logger.InfoTag("认证", "客户端认证信息已移除: client_id=%s", clientID)
 
 	return nil
 }
@@ -150,15 +133,12 @@ func (am *AuthManager) CleanupExpired() error {
 	am.mutex.Lock()
 	defer am.mutex.Unlock()
 
-	err := am.store.CleanupExpired()
-	if err != nil {
-		am.logger.Error("清理过期认证信息失败", map[string]interface{}{
-			"error": err.Error(),
-		})
+	if err := am.store.CleanupExpired(); err != nil {
+		am.logger.ErrorTag("认证", "清理过期认证信息失败: %v", err)
 		return err
 	}
 
-	am.logger.Info("过期认证信息清理完成")
+	am.logger.InfoTag("认证", "过期认证信息清理完成")
 	return nil
 }
 
@@ -186,11 +166,8 @@ func (am *AuthManager) Close() error {
 	defer am.mutex.Unlock()
 
 	if am.store != nil {
-		err := am.store.Close()
-		if err != nil {
-			am.logger.Error("关闭认证存储失败", map[string]interface{}{
-				"error": err.Error(),
-			})
+		if err := am.store.Close(); err != nil {
+			am.logger.Error("关闭认证存储失败: %v", err)
 			return err
 		}
 	}
