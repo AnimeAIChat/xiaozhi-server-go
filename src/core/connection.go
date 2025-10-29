@@ -773,6 +773,14 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 		return fmt.Errorf("用户请求退出对话")
 	}
 
+	// 检测是否是唤醒词，实现快速响应
+	if utils.IsWakeUpWord(text) {
+		h.LogInfo(fmt.Sprintf("[唤醒] [检测成功] 文本 '%s' 匹配唤醒词模式", text))
+		return h.handleWakeUpMessage(ctx, text)
+	} else {
+		h.LogInfo(fmt.Sprintf("[唤醒] [检测失败] 文本 '%s' 不匹配唤醒词模式", text))
+	}
+
 	// 记录正在处理对话的状态
 	h.LogInfo(fmt.Sprintf("[对话] [开始处理] 文本: %s", utils.SanitizeForLog(text)))
 
@@ -1051,6 +1059,69 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		publisher.PublishLLMResponse(content, true, round, nil)
 	}
 
+	return nil
+}
+
+// handleWakeUpMessage 处理唤醒消息，实现快速响应
+func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string) error {
+	h.LogInfo(fmt.Sprintf("[唤醒] [快速响应] 检测到唤醒词: %s", utils.SanitizeForLog(text)))
+
+	// 增加对话轮次
+	h.talkRound++
+	h.roundStartTime = time.Now()
+	currentRound := h.talkRound
+	h.LogInfo(fmt.Sprintf("[对话] [轮次 %d] 唤醒响应", currentRound))
+
+	// 立即发送STT消息
+	err := h.sendSTTMessage(text)
+	if err != nil {
+		h.LogError(fmt.Sprintf("发送STT消息失败: %v", err))
+		return fmt.Errorf("发送STT消息失败: %v", err)
+	}
+
+	// 发送TTS开始状态
+	if err := h.sendTTSMessage("start", "", 0); err != nil {
+		h.LogError(fmt.Sprintf("发送TTS开始状态失败: %v", err))
+		return fmt.Errorf("发送TTS开始状态失败: %v", err)
+	}
+
+	// 发送开心情绪（唤醒响应应该比较友好）
+	if err := h.sendEmotionMessage("happy"); err != nil {
+		h.LogError(fmt.Sprintf("发送情绪消息失败: %v", err))
+		return fmt.Errorf("发送情绪消息失败: %v", err)
+	}
+
+	// 添加用户消息到对话历史
+	h.dialogueManager.Put(chat.Message{
+		Role:    "user",
+		Content: text,
+	})
+
+	// 直接回复简单的唤醒响应，不需要调用LLM
+	var wakeUpResponses []string
+	if h.config.QuickReply.Enabled && len(h.config.QuickReply.Words) > 0 {
+		wakeUpResponses = h.config.QuickReply.Words
+	} else {
+		// 默认回复词
+		wakeUpResponses = []string{"在呢", "您好", "我在听", "请讲"}
+	}
+	responseText := utils.RandomSelectFromArray(wakeUpResponses)
+
+	// 添加助手回复到对话历史
+	h.dialogueManager.Put(chat.Message{
+		Role:    "assistant",
+		Content: responseText,
+	})
+
+	// 直接播放响应
+	h.tts_last_text_index = 1
+	err = h.SpeakAndPlay(responseText, 1, currentRound)
+	if err != nil {
+		h.LogError(fmt.Sprintf("播放唤醒响应失败: %v", err))
+		return fmt.Errorf("播放唤醒响应失败: %v", err)
+	}
+
+	h.LogInfo(fmt.Sprintf("[唤醒] [响应完成] %s", responseText))
 	return nil
 }
 
