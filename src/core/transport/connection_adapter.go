@@ -190,12 +190,12 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 		if mgr := holder.GetMCPManager(); mgr != nil {
 			f.poolManager.ReturnMcpManager(providerSet.MCP)
 			providerSet.MCP = mgr
-			f.logger.InfoTag("连接", "使用已有的MCPManager创建handler")
+			f.logger.InfoTag("连接", "复用现有的 MCPManager")
 		} else {
-			f.logger.InfoTag("连接", "连接没有已有的MCPManager")
+			f.logger.InfoTag("连接", "当前连接的 MCPManager 为空，将创建新的实例")
 		}
 	} else {
-		f.logger.InfoTag("连接", "连接没有MCPManagerHolder接口")
+		f.logger.InfoTag("连接", "此连接未实现 MCPManagerHolder 接口，将创建新的 MCPManager")
 	}
 
 	// 创建连接上下文适配器

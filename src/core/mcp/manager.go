@@ -20,11 +20,11 @@ type Conn interface {
 	WriteMessage(messageType int, data []byte) error
 }
 
-// Manager MCP服务管理器
+// Manager MCP客户端管理器
 type Manager struct {
 	logger                *utils.Logger
-	conn                  Conn
 	funcHandler           types.FunctionRegistryInterface
+	conn                  Conn
 	configPath            string
 	clients               map[string]MCPClient
 	localClient           *LocalClient // 本地MCP客户端
@@ -34,6 +34,10 @@ type Manager struct {
 	isInitialized         bool              // 添加初始化状态标记
 	systemCfg             *configs.Config
 	mu                    sync.RWMutex
+
+	// 缓存外部工具列表，避免每次连接重新注册
+	cachedExternalTools []go_openai.Tool
+	toolsCacheValid     bool
 
 	AutoReturnToPool bool // 是否自动归还到资源池
 }
@@ -67,59 +71,127 @@ func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 		}
 	}
 
+	// 预创建XiaoZhiMCPClient（不绑定连接）
+	mgr.XiaoZhiMCPClient = NewXiaoZhiMCPClientWithoutConn(lg)
+
 	return mgr
 }
 
 // preInitializeServers 预初始化不依赖连接的MCP服务器
 func (m *Manager) preInitializeServers() error {
+	// 异步初始化外部MCP服务器
+	go m.initializeExternalServers()
+
+	// 同步初始化本地客户端（因为本地客户端启动很快）
 	m.localClient, _ = NewLocalClient(m.logger, m.systemCfg)
 	m.localClient.Start(context.Background())
 	m.clients["local"] = m.localClient
 
+	// 预先初始化XiaoZhiMCPClient（不绑定连接）
+	m.XiaoZhiMCPClient = NewXiaoZhiMCPClientWithoutConn(m.logger)
+	// 预先启动XiaoZhiMCPClient，让它在后台准备就绪
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("预初始化XiaoZhiMCPClient时发生panic: %v", r)
+			}
+		}()
+		// 创建一个虚拟连接用于初始化
+		mockConn := &mockConnection{}
+		xiaoZhiClient := NewXiaoZhiMCPClient(m.logger, mockConn, "preinit-session")
+		xiaoZhiClient.SetVisionURL("") // 预初始化时不需要vision URL
+		xiaoZhiClient.SetID("preinit", "preinit")
+		xiaoZhiClient.SetToken("preinit")
+
+		// 尝试启动，如果失败则记录但不影响主流程
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := xiaoZhiClient.Start(ctx); err != nil {
+			m.logger.Warn("预初始化XiaoZhiMCPClient失败，将在连接时重新初始化: %v", err)
+			return
+		}
+
+		// 如果启动成功，替换预创建的客户端
+		m.mu.Lock()
+		m.XiaoZhiMCPClient = xiaoZhiClient
+		m.mu.Unlock()
+		m.logger.Info("XiaoZhiMCPClient预初始化成功")
+	}()
+
+	// 检查是否有配置文件，如果没有则直接标记为已初始化
 	config := m.LoadConfig()
 	if config == nil {
-		// 没有MCP配置文件，跳过外部服务器初始化
 		m.logger.Debug("未找到MCP服务器配置文件，跳过外部MCP服务器初始化")
 		m.isInitialized = true
 		return nil
 	}
+
+	// 如果有配置文件，异步初始化会处理
+	return nil
+}
+
+// initializeExternalServers 异步初始化外部MCP服务器
+func (m *Manager) initializeExternalServers() {
+	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error("异步初始化MCP服务器时发生panic: %v", r)
+		}
+	}()
+
+	config := m.LoadConfig()
+	if config == nil {
+		m.logger.Debug("异步初始化：未找到MCP服务器配置文件")
+		m.isInitialized = true
+		return
+	}
+
+	m.logger.Info("开始异步初始化外部MCP服务器")
 
 	for name, srvConfig := range config {
 		// 只初始化不需要连接的外部MCP服务器
 		srvConfigMap, ok := srvConfig.(map[string]interface{})
 
 		if !ok {
-			m.logger.Warn("Invalid configuration format for server %s", name)
+			m.logger.Warn("异步初始化：Invalid configuration format for server %s", name)
 			continue
 		}
 
 		// 创建并启动外部MCP客户端
 		clientConfig, err := convertConfig(srvConfigMap)
 		if err != nil {
-			m.logger.Error("Failed to convert config for server %s: %v", name, err)
+			m.logger.Error("异步初始化：Failed to convert config for server %s: %v", name, err)
 			continue
 		}
 
 		if !clientConfig.Enabled {
-			m.logger.Debug("MCP client %s is disabled", name)
+			m.logger.Debug("异步初始化：MCP client %s is disabled", name)
 			continue
 		}
 
 		client, err := NewClient(clientConfig, m.logger)
 		if err != nil {
-			m.logger.Error("Failed to create MCP client for server %s: %v", name, err)
+			m.logger.Error("异步初始化：Failed to create MCP client for server %s: %v", name, err)
 			continue
 		}
 
 		if err := client.Start(context.Background()); err != nil {
-			m.logger.Error("Failed to start MCP client %s: %v", name, err)
+			m.logger.Error("异步初始化：Failed to start MCP client %s: %v", name, err)
 			continue
 		}
+
+		m.mu.Lock()
 		m.clients[name] = client
+		m.mu.Unlock()
+
+		m.logger.Info("异步初始化：外部MCP客户端 %s 初始化完成", name)
 	}
 
+	m.mu.Lock()
 	m.isInitialized = true
-	return nil
+	m.mu.Unlock()
+
+	m.logger.Info("外部MCP服务器异步初始化完成")
 }
 
 func (m *Manager) GetAllToolsNames() []string {
@@ -150,11 +222,25 @@ func (m *Manager) BindConnection(
 	token := paramsMap["token"].(string)
 	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
 	if !m.isInitialized {
-		m.logger.Info("BindConnection, MCP Manager未初始化，预初始化MCP服务器")
-		m.preInitializeServers()
-	}
+		m.logger.Info("BindConnection, MCP Manager未初始化，等待异步初始化完成")
+		// 等待异步初始化完成，最多等待30秒
+		timeout := time.After(30 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 
-	// 优化：检查XiaoZhiMCPClient是否需要重新启动
+		for !m.isInitialized {
+			select {
+			case <-timeout:
+				m.logger.Warn("等待MCP异步初始化超时，继续处理连接")
+				goto continueBinding
+			case <-ticker.C:
+				// 继续等待
+			}
+		}
+	}
+continueBinding:
+
+		// 优化：检查XiaoZhiMCPClient是否需要重新启动
 	if m.XiaoZhiMCPClient == nil {
 		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
 		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
@@ -167,6 +253,8 @@ func (m *Manager) BindConnection(
 	} else {
 		// 重新绑定连接而不是重新创建
 		m.XiaoZhiMCPClient.SetConnection(conn)
+		m.XiaoZhiMCPClient.SetSessionID(sessionID)
+		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
 		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
 		m.XiaoZhiMCPClient.SetToken(token)
 		if !m.XiaoZhiMCPClient.IsReady() {
@@ -199,18 +287,45 @@ func (m *Manager) registerAllToolsIfNeeded() {
 		m.bRegisteredXiaoZhiMCP = true
 	}
 
-	// 注册其他外部MCP客户端工具
+	// 注册其他外部MCP客户端工具（使用缓存）
+	m.registerExternalToolsIfNeeded()
+}
+
+// 注册外部工具（带缓存）
+func (m *Manager) registerExternalToolsIfNeeded() {
+	// 如果缓存有效，直接使用缓存的工具
+	if m.toolsCacheValid && len(m.cachedExternalTools) > 0 {
+		for _, tool := range m.cachedExternalTools {
+			toolName := tool.Function.Name
+			if !m.isToolRegistered(toolName) {
+				m.funcHandler.RegisterFunction(toolName, tool)
+				m.tools = append(m.tools, toolName)
+				m.logger.Info("Registered cached external MCP tool: [%s] %s", toolName, tool.Function.Description)
+			}
+		}
+		return
+	}
+
+	// 重新收集外部工具并缓存
+	var allExternalTools []go_openai.Tool
 	for name, client := range m.clients {
 		if name != "xiaozhi" && client.IsReady() {
 			tools := client.GetAvailableTools()
-			for _, tool := range tools {
-				toolName := tool.Function.Name
-				m.funcHandler.RegisterFunction(toolName, tool)
-				if !m.isToolRegistered(toolName) {
-					m.tools = append(m.tools, toolName)
-					m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
-				}
-			}
+			allExternalTools = append(allExternalTools, tools...)
+		}
+	}
+
+	// 更新缓存
+	m.cachedExternalTools = allExternalTools
+	m.toolsCacheValid = true
+
+	// 注册工具
+	for _, tool := range allExternalTools {
+		toolName := tool.Function.Name
+		if !m.isToolRegistered(toolName) {
+			m.funcHandler.RegisterFunction(toolName, tool)
+			m.tools = append(m.tools, toolName)
+			m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
 		}
 	}
 }
@@ -235,6 +350,10 @@ func (m *Manager) Reset() error {
 	m.funcHandler = nil
 	m.bRegisteredXiaoZhiMCP = false
 	m.tools = make([]string, 0)
+
+	// 清除工具缓存（连接断开时需要重新注册）
+	m.cachedExternalTools = nil
+	m.toolsCacheValid = false
 
 	// 对xiaozhi客户端进行连接重置而不是完全销毁
 	if m.XiaoZhiMCPClient != nil {
@@ -466,4 +585,12 @@ func (m *Manager) CleanupAll(ctx context.Context) {
 		m.mu.Unlock()
 	}
 	m.isInitialized = false
+}
+
+// mockConnection 用于预初始化的虚拟连接
+type mockConnection struct{}
+
+func (m *mockConnection) WriteMessage(messageType int, data []byte) error {
+	// 预初始化时不需要实际发送消息，只需要不报错即可
+	return nil
 }

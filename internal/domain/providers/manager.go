@@ -10,6 +10,7 @@ import (
 
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/core/mcp"
 	coreproviders "xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -78,6 +79,11 @@ type Manager struct {
 
 // NewManager initialises the provider pools declared in the supplied config.
 func NewManager(cfg *configs.Config, logger *utils.Logger) (*Manager, error) {
+	return NewManagerWithMCP(cfg, logger, nil)
+}
+
+// NewManagerWithMCP initialises the provider pools with an optional pre-initialised MCP manager.
+func NewManagerWithMCP(cfg *configs.Config, logger *utils.Logger, preInitMCPManager *mcp.Manager) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("providers manager requires config")
 	}
@@ -109,7 +115,7 @@ func NewManager(cfg *configs.Config, logger *utils.Logger) (*Manager, error) {
 	if mgr.vlllmPool, err = newVLLLMPool(cfg, modules, logger); err != nil {
 		return nil, err
 	}
-	if mgr.mcpPool, err = newMCPPool(cfg, logger); err != nil {
+	if mgr.mcpPool, err = newMCPPool(cfg, logger, preInitMCPManager); err != nil {
 		return nil, err
 	}
 
@@ -611,8 +617,12 @@ func newVLLLMPool(
 func newMCPPool(
 	cfg *configs.Config,
 	logger *utils.Logger,
+	preInitMCPManager *mcp.Manager,
 ) (*providerPool[*domainmcp.Manager], error) {
 	create := func(ctx context.Context) (*domainmcp.Manager, error) {
+		if preInitMCPManager != nil {
+			return domainmcp.NewFromManager(preInitMCPManager, logger)
+		}
 		return domainmcp.NewFromConfig(cfg, logger)
 	}
 

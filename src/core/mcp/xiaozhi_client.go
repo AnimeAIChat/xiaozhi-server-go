@@ -61,6 +61,20 @@ func NewXiaoZhiMCPClient(logger *utils.Logger, conn Conn, sessionID string) *Xia
 	}
 }
 
+// NewXiaoZhiMCPClientWithoutConn 创建一个新的MCP客户端（不绑定连接，用于预创建）
+func NewXiaoZhiMCPClientWithoutConn(logger *utils.Logger) *XiaoZhiMCPClient {
+	return &XiaoZhiMCPClient{
+		logger:      logger,
+		conn:        nil, // 延迟设置
+		sessionID:   "",
+		tools:       make([]Tool, 0),
+		ready:       false,
+		callResults: make(map[int]chan interface{}),
+		nextID:      1,
+		toolNameMap: make(map[string]string),
+	}
+}
+
 // SetConnection 设置新的连接
 func (c *XiaoZhiMCPClient) SetConnection(conn Conn) {
 	c.mu.Lock()
@@ -92,6 +106,13 @@ func (c *XiaoZhiMCPClient) SetVisionURL(visionURL string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.visionURL = visionURL
+}
+
+// SetSessionID 设置会话ID
+func (c *XiaoZhiMCPClient) SetSessionID(sessionID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionID = sessionID
 }
 
 // ResetConnection 重置连接状态
@@ -324,7 +345,8 @@ func (c *XiaoZhiMCPClient) CallTool(
 func (c *XiaoZhiMCPClient) IsReady() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.ready
+	// 不仅要检查ready标志，还要检查连接是否存在
+	return c.ready && c.conn != nil && c.sessionID != ""
 }
 
 // SendMCPInitializeMessage 发送MCP初始化消息

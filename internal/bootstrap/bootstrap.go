@@ -23,6 +23,7 @@ import (
 	httptransport "xiaozhi-server-go/internal/transport/http"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/transport/websocket"
@@ -90,6 +91,7 @@ type appState struct {
 	slogger               *slog.Logger
 	observabilityShutdown platformobservability.ShutdownFunc
 	authManager           *domainauth.AuthManager
+	mcpManager            *mcp.Manager
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -117,6 +119,15 @@ func Run(ctx context.Context) error {
 			platformerrors.KindBootstrap,
 			"bootstrap state validation",
 			errors.New("auth manager not initialised"),
+		)
+	}
+
+	mcpManager := state.mcpManager
+	if mcpManager == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"bootstrap state validation",
+			errors.New("mcp manager not initialised"),
 		)
 	}
 
@@ -148,7 +159,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(config, logger, authManager, group, groupCtx); err != nil {
+	if err := startServices(config, logger, authManager, mcpManager, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -242,6 +253,13 @@ func InitGraph() []initStep {
 			DependsOn: []string{"config:load-runtime"},
 			Kind:      platformerrors.KindBootstrap,
 			Execute:   initLoggingStep,
+		},
+		{
+			ID:        "mcp:init-manager",
+			Title:     "Initialise MCP manager",
+			DependsOn: []string{"logging:init-provider"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initMCPManagerStep,
 		},
 		{
 			ID:        "observability:setup-hooks",
@@ -359,6 +377,20 @@ func initAuthStep(_ context.Context, state *appState) error {
 		return err
 	}
 	state.authManager = authManager
+	return nil
+}
+
+func initMCPManagerStep(_ context.Context, state *appState) error {
+	if state == nil || state.config == nil || state.logger == nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"mcp:init-manager",
+			errors.New("missing config/logger"),
+		)
+	}
+
+	mcpManager := mcp.NewManagerForPool(state.logger, state.config)
+	state.mcpManager = mcpManager
 	return nil
 }
 
@@ -480,11 +512,12 @@ func parseDurationOrWarn(logger *utils.Logger, value string, field string) time.
 func startTransportServer(
 	config *configs.Config,
 	logger *utils.Logger,
-	_ *domainauth.AuthManager,
+	authManager *domainauth.AuthManager,
+	mcpManager *mcp.Manager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
-	poolManager, err := pool.NewPoolManager(config, logger)
+	poolManager, err := pool.NewPoolManagerWithMCP(config, logger, mcpManager)
 	if err != nil {
 		logger.ErrorTag("引导", "初始化资源池管理器失败: %v", err)
 		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "auth:init-manager", err)
@@ -702,10 +735,11 @@ func startServices(
 	config *configs.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
+	mcpManager *mcp.Manager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {
-	if _, err := startTransportServer(config, logger, authManager, g, groupCtx); err != nil {
+	if _, err := startTransportServer(config, logger, authManager, mcpManager, g, groupCtx); err != nil {
 		return fmt.Errorf("启动 Transport 服务失败: %w", err)
 	}
 
