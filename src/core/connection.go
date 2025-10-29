@@ -145,6 +145,7 @@ type ConnectionHandler struct {
 
 	talkRound      int       // 轮次计数
 	roundStartTime time.Time // 轮次开始时间
+	lastWakeUpTime time.Time // 上次唤醒处理时间
 	// functions
 	functionRegister *function.FunctionRegistry
 	mcpManager       *domainmcp.Manager
@@ -621,6 +622,16 @@ func (h *ConnectionHandler) processASRResultQueueCoroutine() {
 			return
 		case asrText := <-h.asrResultQueue:
 			h.LogInfo(fmt.Sprintf("[协程] [ASR队列] 处理ASR结果: %s", utils.SanitizeForLog(asrText)))
+
+			// 检查是否是重复的唤醒词处理
+			if utils.IsWakeUpWord(asrText) {
+				now := time.Now()
+				if now.Sub(h.lastWakeUpTime) < 3*time.Second {
+					h.LogInfo("[协程] [ASR队列] 跳过重复的唤醒词处理")
+					continue
+				}
+			}
+
 			if err := h.handleChatMessage(context.Background(), asrText); err != nil {
 				h.LogError(fmt.Sprintf("[协程] [ASR队列] 处理ASR结果失败: %v", err))
 			} else {
@@ -1099,6 +1110,15 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 // handleWakeUpMessage 处理唤醒消息，实现快速响应
 func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string) error {
 	h.LogInfo(fmt.Sprintf("[唤醒] [快速响应] 检测到唤醒词: %s", utils.SanitizeForLog(text)))
+
+	// 记录唤醒处理时间
+	h.lastWakeUpTime = time.Now()
+
+	// 停止任何正在进行的音频播放
+	h.stopServerSpeak()
+
+	// 重置语音停止标志，允许新的唤醒响应播放
+	atomic.StoreInt32(&h.serverVoiceStop, 0)
 
 	// 增加对话轮次
 	h.talkRound++
