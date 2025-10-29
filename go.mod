@@ -26,7 +26,6 @@ require (
 	github.com/wujunwei928/edge-tts-go v0.0.0-20250315123430-d4675babeb96
 	golang.org/x/image v0.27.0
 	golang.org/x/sync v0.16.0
-	golang.org/x/tools v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.5
 	gorm.io/driver/sqlite v1.6.0
@@ -92,6 +91,7 @@ require (
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/tools v0.35.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect

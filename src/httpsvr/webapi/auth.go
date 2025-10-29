@@ -21,12 +21,12 @@ type JWTClaims struct {
 var jwtSecret = []byte("xiaozhi_jwt_secret")
 
 // 通用认证中间件
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(config *configs.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apikey := c.GetHeader("AuthorToken")
 		if apikey != "" {
 			// 如果提供了API Token，直接验证
-			if apikey != configs.Cfg.Server.Token {
+			if apikey != config.Server.Token {
 				utils.DefaultLogger.Error("无效的API Token %s", apikey)
 			} else {
 				utils.DefaultLogger.Info("API Token验证通过，但未设置OpenID， 校验user_id和username")

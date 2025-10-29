@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/httpsvr/webapi"
@@ -259,10 +258,10 @@ func (s *DefaultOTAService) handlePostOTA(c *gin.Context) {
 		version = strings.TrimSuffix(latest, ".bin")
 		firmwareURL = "/ota_bin/" + latest
 	}
-	cfg := configs.Cfg
+	cfg := s.config
 	updateURL := cfg.Web.Websocket
 	deviceName := req.Board.Name
-	s.CheckAndUpdateDevice(c, cfg, req, deviceID, client_id, deviceName, version)
+	s.CheckAndUpdateDevice(c, req, deviceID, client_id, deviceName, version)
 	resp := OtaFirmwareResponse{}
 	resp.ServerTime.Timestamp = time.Now().UnixNano() / 1e6
 	resp.ServerTime.TimezoneOffset = 8 * 60
@@ -280,7 +279,6 @@ func (s *DefaultOTAService) handlePostOTA(c *gin.Context) {
 }
 func (s *DefaultOTAService) CheckAndUpdateDevice(
 	c *gin.Context,
-	cfg *configs.Config,
 	req OTARequestBody,
 	deviceID, clientID, deviceName, version string,
 ) *models.Device {

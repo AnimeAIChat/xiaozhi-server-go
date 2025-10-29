@@ -1643,7 +1643,7 @@ func (h *ConnectionHandler) initManagers(config *configs.Config) {
 				Format:          ttsCfg.Format,
 				Language:        "zh-CN", // 默认语言
 			}
-			h.ttsManager = domaintts.NewManager(ttsConfig)
+			h.ttsManager = domaintts.NewManager(ttsConfig, config)
 			h.LogInfo(fmt.Sprintf("已初始化 TTS Manager: %s (%s)", ttsName, ttsCfg.Type))
 		} else {
 			h.LogError(fmt.Sprintf("TTS 配置不存在: %s", ttsName))

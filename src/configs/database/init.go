@@ -149,8 +149,7 @@ func migrateTables(db *gorm.DB) error {
 }
 
 // InsertDefaultConfigIfNeeded 首次启动插入默认配置
-func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
-	config := configs.Cfg
+func InsertDefaultConfigIfNeeded(db *gorm.DB, config *configs.Config) error {
 	if err := InitProviders(db, config); err != nil {
 		return fmt.Errorf("初始化提供者配置失败: %v", err)
 	}

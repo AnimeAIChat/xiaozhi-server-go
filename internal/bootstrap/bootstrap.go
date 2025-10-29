@@ -14,6 +14,8 @@ import (
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
+	"xiaozhi-server-go/internal/domain/config/manager"
+	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/eventbus"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
@@ -85,6 +87,7 @@ type initStep struct {
 type appState struct {
 	config                *configs.Config
 	configPath            string
+	configRepo            types.Repository
 	logProvider           *platformlogging.Logger
 	logger                *utils.Logger
 	slogger               *slog.Logger
@@ -160,7 +163,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(config, logger, authManager, mcpManager, group, groupCtx); err != nil {
+	if err := startServices(config, logger, authManager, mcpManager, state.configRepo, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -242,9 +245,16 @@ func InitGraph() []initStep {
 			Execute: initStorageStep,
 		},
 		{
+			ID:        "config:init-repository",
+			Title:     "Initialise configuration repository",
+			DependsOn: []string{"storage:init-config-store"},
+			Kind:      platformerrors.KindConfig,
+			Execute:   initConfigRepositoryStep,
+		},
+		{
 			ID:        "config:load-runtime",
 			Title:     "Load runtime configuration",
-			DependsOn: []string{"storage:init-config-store"},
+			DependsOn: []string{"config:init-repository"},
 			Kind:      platformerrors.KindConfig,
 			Execute:   loadConfigStep,
 		},
@@ -286,13 +296,28 @@ func initStorageStep(_ context.Context, _ *appState) error {
 	return nil
 }
 
+func initConfigRepositoryStep(_ context.Context, state *appState) error {
+	configRepo := manager.NewDatabaseRepository(platformstorage.ConfigStore())
+	state.configRepo = configRepo
+	return nil
+}
+
 func loadConfigStep(_ context.Context, state *appState) error {
-	config, path, err := configs.LoadConfig(platformstorage.ConfigStore())
+	if state.configRepo == nil {
+		return platformerrors.New(
+			platformerrors.KindConfig,
+			"config:load-runtime",
+			"config repository not initialized",
+		)
+	}
+
+	config, err := state.configRepo.LoadConfig()
 	if err != nil {
 		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-runtime", "failed to load config", err)
 	}
+
 	state.config = config
-	state.configPath = path
+	state.configPath = "database:serverConfig"
 	return nil
 }
 
@@ -332,7 +357,7 @@ func initLoggingStep(_ context.Context, state *appState) error {
 	eventbus.SetupEventHandlers()
 
 	database.SetLogger(state.logger)
-	database.InsertDefaultConfigIfNeeded(database.GetDB())
+	database.InsertDefaultConfigIfNeeded(database.GetDB(), state.config)
 
 	return nil
 }
@@ -397,18 +422,27 @@ func initMCPManagerStep(_ context.Context, state *appState) error {
 
 func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	state := &appState{}
-	graph := InitGraph()
-	if len(graph) < 3 {
-		return nil, nil, platformerrors.New(
-			platformerrors.KindBootstrap,
-			"load config and logger",
-			"bootstrap graph missing core steps",
-		)
-	}
 
-	if err := executeInitSteps(context.Background(), graph[:3], state); err != nil {
+	// 初始化存储
+	if err := initStorageStep(context.Background(), state); err != nil {
 		return nil, nil, err
 	}
+
+	// 初始化配置Repository
+	if err := initConfigRepositoryStep(context.Background(), state); err != nil {
+		return nil, nil, err
+	}
+
+	// 加载配置
+	if err := loadConfigStep(context.Background(), state); err != nil {
+		return nil, nil, err
+	}
+
+	// 初始化日志
+	if err := initLoggingStep(context.Background(), state); err != nil {
+		return nil, nil, err
+	}
+
 	return state.config, state.logger, nil
 }
 
@@ -604,6 +638,7 @@ func startTransportServer(
 func startHTTPServer(
 	config *configs.Config,
 	logger *utils.Logger,
+	configRepo types.Repository,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*http.Server, error) {
@@ -632,7 +667,7 @@ func startHTTPServer(
 		c.File("./web/index.html")
 	})
 
-	otaService := ota.NewDefaultOTAService(config.Web.Websocket)
+	otaService := ota.NewDefaultOTAService(config.Web.Websocket, config)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.ErrorTag("OTA", "OTA 服务启动失败: %v", err)
 		return nil, err
@@ -668,7 +703,7 @@ func startHTTPServer(
 		return nil, err
 	}
 
-	systemConfigService := cfg.NewSystemConfigService(logger, database.GetDB())
+	systemConfigService := cfg.NewSystemConfigService(logger, database.GetDB(), config, configRepo)
 	systemConfigService.RegisterRoutes(apiGroup)
 
 	httpServer := &http.Server{
@@ -758,6 +793,7 @@ func startServices(
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
 	mcpManager *mcp.Manager,
+	configRepo types.Repository,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {
@@ -765,7 +801,7 @@ func startServices(
 		return fmt.Errorf("启动 Transport 服务失败: %w", err)
 	}
 
-	if _, err := startHTTPServer(config, logger, g, groupCtx); err != nil {
+	if _, err := startHTTPServer(config, logger, configRepo, g, groupCtx); err != nil {
 		return fmt.Errorf("启动 Http 服务失败: %w", err)
 	}
 
