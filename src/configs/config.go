@@ -2,7 +2,6 @@ package configs
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -216,7 +215,6 @@ func (cfg *Config) SaveToDB(dbi ConfigDBInterface) error {
 // LoadConfig 加载配置
 // 完全从数据库加载配置，如果数据库为空则使用默认配置并初始化数据库
 func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
-	bUseDatabaseCfg := true
 	// 尝试从数据库加载配置
 	cfgStr, err := dbi.LoadServerConfig()
 	if err != nil {
@@ -228,33 +226,22 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 
 	path := "database:serverConfig"
 	if cfgStr != "" {
-		config.FromString(cfgStr)
+		err = config.FromString(cfgStr)
+		if err != nil {
+			fmt.Println("解析数据库配置失败:", err)
+			return nil, "", err
+		}
 		Cfg = config
-		if bUseDatabaseCfg {
-			return Cfg, path, nil
-		}
+		return Cfg, path, nil
 	}
 
-	// 尝试从文件读取
-	path = ".config.yaml"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		path = "config.yaml"
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// 读取配置文件失败，使用默认配置
-		config.setDefaults()
-		data, _ = yaml.Marshal(config)
-	} else {
-		if err := yaml.Unmarshal(data, config); err != nil {
-			return nil, path, err
-		}
-	}
-
+	// 数据库为空，使用默认配置并初始化数据库
+	config = NewDefaultInitConfig()
+	data, _ := yaml.Marshal(config)
 	err = dbi.InitServerConfig(string(data))
 	if err != nil {
 		fmt.Println("初始化服务器配置到数据库失败:", err)
+		return nil, "", err
 	}
 	Cfg = config
 	return config, path, nil

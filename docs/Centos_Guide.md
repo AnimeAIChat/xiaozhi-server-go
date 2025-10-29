@@ -118,7 +118,7 @@ go run ./src/main.go
 ```
 git clone https://github.com/AnimeAIChat/xiaozhi-server-go
 ```
-下载完成后，复制一份config.yaml到.config.yaml，并在配置中填好相应的key等信息，避免密钥泄漏
+下载完成后，系统会自动使用内置的默认配置并保存到数据库中。如需修改配置，请通过Web管理界面进行配置。
 
 # 4、运行
 

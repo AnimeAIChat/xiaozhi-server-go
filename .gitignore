@@ -11,6 +11,7 @@ wake_replay
 *.log
 /ota_bin
 xiaozhi-server
+rag/
 !cmd/
 !cmd/xiaozhi-server/
 !cmd/xiaozhi-server/main.go
