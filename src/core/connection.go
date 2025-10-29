@@ -598,7 +598,11 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 			h.LogDebug("[连接] 等待客户端消息...")
 			messageType, message, err := conn.ReadMessage(h.stopChan)
 			if err != nil {
-				h.LogError(fmt.Sprintf("读取消息失败: %v, 退出消息循环", err))
+				if strings.Contains(err.Error(), "connection closed by stop signal") {
+					h.LogInfo("连接被停止信号关闭，退出消息循环")
+				} else {
+					h.LogError(fmt.Sprintf("读取消息失败: %v, 退出消息循环", err))
+				}
 				return
 			}
 
@@ -777,9 +781,6 @@ func (h *ConnectionHandler) QuitIntent(text string) bool {
 		if cleand_text == cmd {
 			h.LogInfo("[客户端] [退出意图] 收到，准备结束对话")
 			h.Close() // 直接关闭连接
-			if h.conn != nil {
-				h.conn.Close() // 强制关闭连接，让消息循环退出
-			}
 			return true
 		}
 	}

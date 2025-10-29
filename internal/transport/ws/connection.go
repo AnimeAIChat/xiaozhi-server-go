@@ -49,14 +49,32 @@ func (c *Connection) WriteMessage(messageType int, data []byte) error {
 	return nil
 }
 
-// ReadMessage receives a message from the client. The stopChan is currently
-// ignored to preserve the legacy behaviour.
+// ReadMessage receives a message from the client. Supports interruption via stopChan.
 func (c *Connection) ReadMessage(stopChan <-chan struct{}) (int, []byte, error) {
-	messageType, payload, err := c.socket.ReadMessage()
-	if err == nil {
-		c.touch()
+	type readResult struct {
+		messageType int
+		payload     []byte
+		err         error
 	}
-	return messageType, payload, err
+
+	resultChan := make(chan readResult, 1)
+
+	go func() {
+		messageType, payload, err := c.socket.ReadMessage()
+		resultChan <- readResult{messageType, payload, err}
+	}()
+
+	select {
+	case res := <-resultChan:
+		if res.err == nil {
+			c.touch()
+		}
+		return res.messageType, res.payload, res.err
+	case <-stopChan:
+		// Close the connection to interrupt the read
+		c.socket.Close()
+		return 0, nil, fmt.Errorf("connection closed by stop signal")
+	}
 }
 
 // Close terminates the underlying websocket connection.
