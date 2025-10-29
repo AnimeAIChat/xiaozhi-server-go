@@ -70,6 +70,14 @@ roles:
 
 # 音频处理相关设置
 delete_audio: true
+quick_reply: true
+quick_reply_words:
+  - "来了"
+  - "啥事啊"
+  - "在呢"
+  - "您好"
+  - "我在听"
+  - "请讲"
 
 use_private_config: false
 

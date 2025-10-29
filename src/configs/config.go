@@ -71,6 +71,7 @@ type Config struct {
 	DefaultPrompt string        `yaml:"prompt"             json:"prompt"`
 	Roles         []Role        `yaml:"roles"              json:"roles"` // 角色列表
 	DeleteAudio   bool          `yaml:"delete_audio"       json:"delete_audio"`
+	QuickReply    QuickReplyConfig `yaml:"quick_reply"      json:"quick_reply"` // 快速回复配置
 	LocalMCPFun   []LocalMCPFun `yaml:"local_mcp_fun"      json:"local_mcp_fun"` // 本地MCP函数映射
 	SaveTTSAudio  bool          `yaml:"save_tts_audio"  json:"save_tts_audio"`   // 是否保存TTS音频文件
 	SaveUserAudio bool          `yaml:"save_user_audio" json:"save_user_audio"`  // 是否保存用户音频文件
@@ -114,6 +115,11 @@ type Role struct {
 	Name        string `yaml:"name"         json:"name"`        // 角色名称
 	Description string `yaml:"description"  json:"description"` // 角色描述
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
+}
+
+type QuickReplyConfig struct {
+	Enabled bool     `yaml:"enabled" json:"enabled"` // 是否启用快速回复
+	Words   []string `yaml:"words"   json:"words"`   // 快速回复词列表
 }
 
 type PoolConfig struct {
