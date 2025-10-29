@@ -88,7 +88,7 @@ type User struct {
 
 type ServerConfig struct {
 	ID     uint   `gorm:"primaryKey"`
-	CfgStr string `gorm:"type:text"` // 服务器的配置内容，从config.yaml转换而来
+	CfgStr string `gorm:"type:text"` // 服务器的配置内容，YAML格式存储在数据库中
 }
 
 type ServerStatus struct {

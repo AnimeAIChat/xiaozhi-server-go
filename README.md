@@ -91,13 +91,13 @@ https://xiaozhi.xf.bj.cn/login
 ---
 
 
-### 2. 配置 `.config.yaml`
+### 2. 配置说明
 
-* 推荐复制一份 `config.yaml` 改名为 `.config.yaml`
-* 按需求配置模型、WebSocket、OTA 地址等字段
-* 不建议自行删减字段结构
+系统现在完全使用数据库存储配置，首次运行时会自动使用内置的默认配置并保存到数据库中。如需修改配置，请通过Web管理界面或API进行配置。
 
 #### WebSocket 地址配置（必配）
+
+首次运行后，可通过Web管理界面（http://localhost:8080）修改WebSocket地址配置：
 
 ```yaml
 web:
@@ -120,7 +120,7 @@ ESP32设备可以在联网界面修改OTA地址，从而在不重新刷固件的
 
 #### 配置ASR，LLM，TTS
 
-根据配置文件的格式，配置好相关模型服务，尽量不要增减字段
+通过Web管理界面配置相关模型服务，无需手动编辑配置文件。
 
 ---
 
@@ -140,7 +140,6 @@ ESP32设备可以在联网界面修改OTA地址，从而在不重新刷固件的
 ```bash
 git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
 cd xiaozhi-server-go
-cp config.yaml .config.yaml
 ```
 
 ---
@@ -212,13 +211,13 @@ swag init -g main.go
 
 ## Docker 环境部署
 
-1. 准备`docker-compose.yml`,`.config.yaml`,二进制程序文件
+1. 准备`docker-compose.yml`和二进制程序文件
 
 👉 [点击前往 Releases 页面](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)下载二进制程序文件
 
 * 选择你平台对应的版本（默认使用 Liunx: `linux-amd64-server-upx`，如使用其他版本，需要修改docker-compose.yml）
 
-2. 三个文件放到同一目录下，配置`docker-compose.yml`,`.config.yaml`
+2. 两个文件放到同一目录下，配置`docker-compose.yml`
 
 3. 运行`docker compose up -d`
 
