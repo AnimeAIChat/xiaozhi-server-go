@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"xiaozhi-server-go/internal/util/work"
 	"xiaozhi-server-go/src/core/providers"
@@ -134,7 +133,7 @@ func (p *AsyncTaskProcessor) processLLMTask(task *AsyncTask) error {
 	// 调用LLM
 	responses, err := llmProvider.ResponseWithFunctions(p.ctx, task.SessionID, messages, tools)
 	if err != nil {
-		p.logger.Error(fmt.Sprintf("LLM任务处理失败: %v", err))
+		p.logger.Error("LLM任务处理失败: %v", err)
 		if task.Callback != nil {
 			task.Callback(nil, err)
 		}
@@ -172,7 +171,7 @@ func (p *AsyncTaskProcessor) processTTSTask(task *AsyncTask) error {
 	// 生成语音文件
 	filepath, err := ttsProvider.ToTTS(text)
 	if err != nil {
-		p.logger.Error(fmt.Sprintf("TTS任务处理失败: %v", err))
+		p.logger.Error("TTS任务处理失败: %v", err)
 		if task.Callback != nil {
 			task.Callback(nil, err)
 		}

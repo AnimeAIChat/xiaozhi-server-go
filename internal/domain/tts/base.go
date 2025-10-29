@@ -6,11 +6,11 @@ import (
 	"xiaozhi-server-go/internal/domain/tts/inter"
 )
 
-// Manager TTS管理器
+// Manager TTS管理器 - 基于 Eino 框架
 type Manager struct {
-	mu       sync.RWMutex
-	provider inter.TTSProvider
-	config   inter.TTSConfig
+	mu     sync.RWMutex
+	tts    interface{} // Eino TTS component
+	config inter.TTSConfig
 }
 
 // NewManager 创建TTS管理器
@@ -20,44 +20,30 @@ func NewManager(config inter.TTSConfig) *Manager {
 	}
 }
 
-// SetProvider 设置TTS提供者
-func (m *Manager) SetProvider(provider inter.TTSProvider) {
+// SetTTS 设置 Eino TTS
+func (m *Manager) SetTTS(tts interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.provider = provider
+	m.tts = tts
 }
 
-// GetProvider 获取TTS提供者
-func (m *Manager) GetProvider() inter.TTSProvider {
+// GetTTS 获取 Eino TTS
+func (m *Manager) GetTTS() interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.provider
+	return m.tts
 }
 
 // ToTTS 将文本转换为语音
 func (m *Manager) ToTTS(text string) (string, error) {
-	m.mu.RLock()
-	provider := m.provider
-	m.mu.RUnlock()
-
-	if provider == nil {
-		return "", fmt.Errorf("TTS provider not set")
-	}
-
-	return provider.ToTTS(text)
+	// TODO: 实现 Eino TTS 调用
+	return "", fmt.Errorf("eino TTS integration not implemented yet")
 }
 
 // ToTTSWithConfig 使用指定配置转换文本
 func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig) (string, error) {
-	m.mu.RLock()
-	provider := m.provider
-	m.mu.RUnlock()
-
-	if provider == nil {
-		return "", fmt.Errorf("TTS provider not set")
-	}
-
-	return provider.ToTTSWithConfig(text, config)
+	// TODO: 实现 Eino TTS 调用
+	return "", fmt.Errorf("eino TTS integration not implemented yet")
 }
 
 // Close 关闭TTS资源
@@ -65,10 +51,9 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.provider != nil {
-		err := m.provider.Close()
-		m.provider = nil
-		return err
+	if m.tts != nil {
+		// Eino TTS 的关闭逻辑，如果有的话
+		m.tts = nil
 	}
 	return nil
 }

@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
 	"xiaozhi-server-go/internal/domain/llm/inter"
 )
 
-// Manager LLM管理器
+// Manager LLM管理器 - 基于 Eino 框架
 type Manager struct {
-	mu       sync.RWMutex
-	provider inter.LLMProvider
-	config   inter.LLMConfig
+	mu     sync.RWMutex
+	llm    interface{} // Eino LLM component
+	config inter.LLMConfig
 }
 
 // NewManager 创建LLM管理器
@@ -21,44 +22,29 @@ func NewManager(config inter.LLMConfig) *Manager {
 	}
 }
 
-// SetProvider 设置LLM提供者
-func (m *Manager) SetProvider(provider inter.LLMProvider) {
+// SetLLM 设置 Eino LLM
+func (m *Manager) SetLLM(llm interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.provider = provider
+	m.llm = llm
 }
 
-// GetProvider 获取LLM提供者
-func (m *Manager) GetProvider() inter.LLMProvider {
+// GetLLM 获取 Eino LLM
+func (m *Manager) GetLLM() interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.provider
+	return m.llm
 }
 
 // Response 生成回复
 func (m *Manager) Response(ctx context.Context, sessionID string, messages []inter.Message, tools []inter.Tool) (<-chan inter.ResponseChunk, error) {
-	m.mu.RLock()
-	provider := m.provider
-	m.mu.RUnlock()
-
-	if provider == nil {
-		return nil, fmt.Errorf("LLM provider not set")
-	}
-
-	return provider.Response(ctx, sessionID, messages, tools)
+	// TODO: 实现 Eino LLM 调用
+	return nil, fmt.Errorf("eino LLM integration not implemented yet")
 }
 
-// ResponseWithFunctions 生成带函数调用的回复
+// ResponseWithFunctions 生成带函数调用的回复 (兼容旧接口)
 func (m *Manager) ResponseWithFunctions(ctx context.Context, sessionID string, messages []inter.Message, tools []inter.Tool) (<-chan inter.ResponseChunk, error) {
-	m.mu.RLock()
-	provider := m.provider
-	m.mu.RUnlock()
-
-	if provider == nil {
-		return nil, fmt.Errorf("LLM provider not set")
-	}
-
-	return provider.ResponseWithFunctions(ctx, sessionID, messages, tools)
+	return m.Response(ctx, sessionID, messages, tools)
 }
 
 // Close 关闭LLM资源
@@ -66,10 +52,9 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.provider != nil {
-		err := m.provider.Close()
-		m.provider = nil
-		return err
+	if m.llm != nil {
+		// Eino LLM 的关闭逻辑，如果有的话
+		m.llm = nil
 	}
 	return nil
 }
