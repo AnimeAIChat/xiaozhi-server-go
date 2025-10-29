@@ -884,7 +884,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	// 发布LLM开始事件
 	if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
 		publisher.SetSessionID(h.sessionID)
-		publisher.PublishLLMResponse("", false, round, nil) // 开始事件
+		publisher.PublishLLMResponse("", false, round, nil, 0, "") // 开始事件
 	}
 
 	// 使用LLM生成回复
@@ -1013,14 +1013,6 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			if segment, charsCnt := utils.SplitAtLastPunctuation(currentText); charsCnt > 0 {
 				textIndex++
 				segment = strings.TrimSpace(segment)
-				logSegment := utils.SanitizeForLog(segment)
-				if textIndex == 1 {
-					now := time.Now()
-					llmSpentTime := now.Sub(llmStartTime)
-					h.logger.InfoLLM("[回复 %s/%d] 第一句话: %s", llmSpentTime, round, logSegment)
-				} else {
-					h.logger.InfoLLM("[分段 %d/%d] %s", textIndex, round, logSegment)
-				}
 				h.tts_last_text_index = textIndex
 				err := h.SpeakAndPlay(segment, textIndex, round)
 				if err != nil {
@@ -1030,7 +1022,13 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 				// 发布LLM响应事件
 				if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
-					publisher.PublishLLMResponse(segment, false, round, nil)
+					spentTime := ""
+					if textIndex == 1 {
+						now := time.Now()
+						llmSpentTime := now.Sub(llmStartTime)
+						spentTime = llmSpentTime.String()
+					}
+					publisher.PublishLLMResponse(segment, false, round, nil, textIndex, spentTime)
 				}
 			}
 		}
@@ -1102,7 +1100,6 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		remainingText := fullResponse[processedChars:]
 		if remainingText != "" {
 			textIndex++
-			h.logger.InfoLLM("[分段 剩余文本 %d/%d] %s", textIndex, round, utils.SanitizeForLog(remainingText))
 			h.tts_last_text_index = textIndex
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}
@@ -1123,7 +1120,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 发布LLM完成事件
 	if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
-		publisher.PublishLLMResponse(content, true, round, nil)
+		publisher.PublishLLMResponse(content, true, round, nil, 0, "")
 	}
 
 	return nil

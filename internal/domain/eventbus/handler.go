@@ -46,7 +46,13 @@ func (h *DefaultEventHandler) handleLLMResponse(data LLMEventData) {
 	if data.IsFinal {
 		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s (最终)", data.Round, utils.SanitizeForLog(data.Content))
 	} else {
-		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s", data.Round, utils.SanitizeForLog(data.Content))
+		if data.TextIndex == 1 && data.SpentTime != "" {
+			utils.DefaultLogger.InfoLLM("[事件处理器] [回复 %s/%d] 第一句话: %s", data.SpentTime, data.Round, utils.SanitizeForLog(data.Content))
+		} else if data.TextIndex > 1 {
+			utils.DefaultLogger.InfoLLM("[事件处理器] [分段 %d/%d] %s", data.TextIndex, data.Round, utils.SanitizeForLog(data.Content))
+		} else {
+			utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s", data.Round, utils.SanitizeForLog(data.Content))
+		}
 	}
 }
 

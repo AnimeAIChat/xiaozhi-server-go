@@ -64,12 +64,14 @@ func (p *BaseProvider) SetSessionID(sessionID string) {
 }
 
 // PublishLLMResponse 发布LLM回复事件
-func (p *BaseProvider) PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{}) {
+func (p *BaseProvider) PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{}, textIndex int, spentTime string) {
 	eventData := eventbus.LLMEventData{
 		SessionID: p.SessionID,
 		Round:     round,
 		Content:   content,
 		IsFinal:   isFinal,
+		TextIndex: textIndex,
+		SpentTime: spentTime,
 		ToolCalls: toolCalls,
 	}
 	eventbus.Publish(eventbus.EventLLMResponse, eventData)
@@ -96,7 +98,7 @@ func (p *BaseProvider) SetIdentityFlag(idType string, flag string) {
 // EventPublisher 事件发布接口
 type EventPublisher interface {
 	SetSessionID(sessionID string)
-	PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{})
+	PublishLLMResponse(content string, isFinal bool, round int, toolCalls interface{}, textIndex int, spentTime string)
 	PublishLLMError(err error, round int)
 }
 

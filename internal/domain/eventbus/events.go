@@ -47,6 +47,8 @@ type LLMEventData struct {
 	Round     int         `json:"round"`
 	Content   string      `json:"content"`
 	IsFinal   bool        `json:"is_final"`
+	TextIndex int         `json:"text_index,omitempty"` // 分段索引
+	SpentTime string      `json:"spent_time,omitempty"` // 首句回复用时
 	ToolCalls interface{} `json:"tool_calls,omitempty"`
 }
 
