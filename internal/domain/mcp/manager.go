@@ -10,7 +10,9 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
+	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/src/core/utils"
 )
 
 // Options configures the manager instance.
@@ -346,4 +348,21 @@ func (m *Manager) HandleXiaoZhiMCPMessage(msg map[string]interface{}) error {
 		return errors.New("legacy MCP manager not configured")
 	}
 	return m.legacy.HandleXiaoZhiMCPMessage(msg)
+}
+
+// NewFromManager creates a manager instance using an existing legacy MCP manager.
+func NewFromManager(manager *mcp.Manager, logger *utils.Logger) (*Manager, error) {
+	if logger == nil {
+		return nil, errors.New("logger is required")
+	}
+	if manager == nil {
+		return nil, errors.New("mcp manager is required")
+	}
+	legacy := NewLegacyFromManager(manager)
+
+	return NewManager(Options{
+		Logger:     logger,
+		Legacy:     legacy,
+		AutoReturn: legacy != nil && legacy.AutoReturn(),
+	})
 }

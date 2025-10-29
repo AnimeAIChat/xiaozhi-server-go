@@ -118,6 +118,14 @@ func NewLegacyFromConfig(cfg *configs.Config, logger *utils.Logger) legacyBridge
 	return newCoreLegacyAdapter(coremcp.NewManagerForPool(logger, cfg))
 }
 
+// NewLegacyFromManager constructs a bridge over an existing legacy MCP manager.
+func NewLegacyFromManager(manager *coremcp.Manager) legacyBridge {
+	if manager == nil {
+		return nil
+	}
+	return newCoreLegacyAdapter(manager)
+}
+
 // NewFromConfig creates a manager instance pre-wired with the legacy bridge.
 func NewFromConfig(cfg *configs.Config, logger *utils.Logger) (*Manager, error) {
 	if logger == nil {
