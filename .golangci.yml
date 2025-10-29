@@ -1,0 +1,36 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - golint
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+    - errcheck
+    - gosimple
+    - gocyclo
+    - funlen
+    - nestif
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  funlen:
+    lines: 100
+    statements: 50
+
+issues:
+  exclude-rules:
+    # 排除 src/ 目录的检查，因为我们要迁移它
+    - path: src/
+      linters:
+        - gocyclo
+        - funlen
+        - nestif

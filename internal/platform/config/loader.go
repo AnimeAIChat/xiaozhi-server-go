@@ -1,67 +1,75 @@
 package config
 
 import (
-	"fmt"
+	"os"
+	"path/filepath"
 
-	"github.com/joho/godotenv"
-
-	"xiaozhi-server-go/internal/platform/storage"
-	"xiaozhi-server-go/src/configs"
+	"github.com/spf13/viper"
+	"xiaozhi-server-go/internal/platform/errors"
 )
 
-// Loader bridges legacy config loading logic into the new internal layer.
 type Loader struct {
-	useDotEnv bool
-	source    configs.ConfigDBInterface
+	viper *viper.Viper
 }
 
-// NewLoader creates a loader that reads from the default database-backed source.
 func NewLoader() *Loader {
-	return &Loader{
-		useDotEnv: true,
-		source:    storage.ConfigStore(),
+	v := viper.New()
+	v.SetConfigName(".config")
+	v.SetConfigType("yaml")
+
+	// 搜索路径
+	searchPaths := []string{
+		".",
+		"./config",
+		filepath.Dir(os.Args[0]), // 可执行文件目录
 	}
+
+	for _, path := range searchPaths {
+		v.AddConfigPath(path)
+	}
+
+	return &Loader{viper: v}
 }
 
-// WithDotEnv toggles loading variables from a .env file before reading config.
-func (l *Loader) WithDotEnv(enabled bool) *Loader {
-	l.useDotEnv = enabled
-	return l
+func (l *Loader) Load() (*Config, error) {
+	// 设置默认值
+	l.setDefaults()
+
+	// 读取配置文件
+	if err := l.viper.ReadInConfig(); err != nil {
+		return nil, errors.Wrap(errors.KindConfig, "load", "failed to read config file", err)
+	}
+
+	var cfg Config
+	if err := l.viper.Unmarshal(&cfg); err != nil {
+		return nil, errors.Wrap(errors.KindConfig, "load", "failed to unmarshal config", err)
+	}
+
+	// 验证配置
+	if err := l.validate(&cfg); err != nil {
+		return nil, errors.Wrap(errors.KindConfig, "load", "config validation failed", err)
+	}
+
+	return &cfg, nil
 }
 
-// WithSource overrides the configuration data source (useful for tests).
-func (l *Loader) WithSource(src configs.ConfigDBInterface) *Loader {
-	if src != nil {
-		l.source = src
-	}
-	return l
+func (l *Loader) setDefaults() {
+	l.viper.SetDefault("server.ip", "0.0.0.0")
+	l.viper.SetDefault("server.port", 8000)
+	l.viper.SetDefault("web.port", 8080)
+	l.viper.SetDefault("log.log_level", "INFO")
+	l.viper.SetDefault("log.log_dir", "logs")
+	l.viper.SetDefault("log.log_file", "server.log")
 }
 
-// Result captures the loaded configuration and its origin path.
-type Result struct {
-	Config *configs.Config
-	Path   string
-}
-
-// Load retrieves configuration by delegating to the legacy configs package.
-func (l *Loader) Load() (*Result, error) {
-	if l.useDotEnv {
-		if err := godotenv.Load(); err != nil {
-			fmt.Println("未找到 .env 文件，使用系统环境变量")
-		}
+func (l *Loader) validate(cfg *Config) error {
+	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
+		return errors.New(errors.KindConfig, "validate", "invalid server port")
 	}
 
-	if l.source == nil {
-		l.source = storage.ConfigStore()
+	if cfg.Web.Port <= 0 || cfg.Web.Port > 65535 {
+		return errors.New(errors.KindConfig, "validate", "invalid web port")
 	}
 
-	cfg, path, err := configs.LoadConfig(l.source)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Result{
-		Config: cfg,
-		Path:   path,
-	}, nil
+	return nil
 }
