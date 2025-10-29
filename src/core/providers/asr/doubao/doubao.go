@@ -584,6 +584,16 @@ func (p *Provider) ReadMessage() {
 			p.logger.Info("检测到code字段: 解析结果=%v", result)
 			codeValue := code.(uint32)
 			if codeValue != 0 {
+				// 对特定的超时错误进行特殊处理
+				if codeValue == 45000081 {
+					p.logger.Warn("检测到ASR会话超时错误(Code=45000081)，这可能是由于快速重启导致的，将尝试重新启动")
+					// 不立即停止，而是标记需要重启
+					p.connMutex.Lock()
+					p.isStreaming = false
+					p.closeConnection()
+					p.connMutex.Unlock()
+					return
+				}
 				p.setErrorAndStop(fmt.Errorf("ASR服务端错误: Code=%d", codeValue))
 				return
 			}
@@ -739,6 +749,9 @@ func (p *Provider) Reset() error {
 
 	// 重置音频处理
 	p.InitAudioProcessing()
+
+	// 给服务端一点时间清理会话，避免立即重启导致的超时错误
+	time.Sleep(time.Millisecond)
 
 	p.logger.DebugTag("ASR", "状态已重置")
 

@@ -104,7 +104,7 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		spentTime := time.Since(startTime).Milliseconds()
 		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, logText))
 		h.providers.asr.ResetStartListenTime()
-			if h.tts_last_audio_index >= 0 && textIndex == h.tts_last_audio_index {
+			if h.tts_last_text_index >= 0 && textIndex == h.tts_last_text_index {
 				h.sendTTSMessage("stop", "", textIndex)
 				// 恢复ASR接收
 				atomic.StoreInt32(&h.asrPause, 0)
