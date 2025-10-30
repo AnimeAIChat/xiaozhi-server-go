@@ -17,7 +17,7 @@ func DefaultConfig() *Config {
 		},
 		Log: LogConfig{
 			Level: "INFO",
-			Dir:   "logs",
+			Dir:   "data/logs",
 			File:  "server.log",
 		},
 		Web: WebConfig{
@@ -125,14 +125,14 @@ func DefaultConfig() *Config {
 				"type":         "doubao",
 				"appid":        "your_appid",
 				"access_token": "your_access_token",
-				"output_dir":   "tmp/",
+				"output_dir":   "data/tmp/",
 			},
 		},
 		TTS: map[string]TTSConfig{
 			"EdgeTTS": {
 				Type:      "edge",
 				Voice:     "zh-CN-XiaoxiaoNeural",
-				OutputDir: "tmp/",
+				OutputDir: "data/tmp/",
 				SupportedVoices: []VoiceInfo{
 					{Name: "zh-CN-XiaoxiaoNeural", DisplayName: "晓晓", Sex: "女", Description: "商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读"},
 					{Name: "zh-CN-XiaoyiNeural", DisplayName: "晓伊", Sex: "女", Description: "柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景"},

@@ -100,7 +100,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, sess
 	// 确保输出目录存在
 	outputDir, _ := config.Data["output_dir"].(string)
 	if outputDir == "" {
-		outputDir = "tmp/"
+		outputDir = "data/tmp/"
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建输出目录失败: %v", err)
