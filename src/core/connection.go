@@ -22,6 +22,7 @@ import (
 	domaintts "xiaozhi-server-go/internal/domain/tts"
 	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
 	"xiaozhi-server-go/internal/platform/config"
+	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/pool"
@@ -104,6 +105,7 @@ type ConnectionHandler struct {
 
 	// Agent 相关
 	agentID      uint          // 设备绑定的AgentID
+	userID       string        // 设备绑定的用户ID
 	enabledTools []string      // 启用的工具列表
 	tools        []openai.Tool // 缓存的工具列表
 	// 语音处理相关
@@ -258,10 +260,13 @@ func (h *ConnectionHandler) InitWithAgent() (*models.Agent, string) {
 func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config.Config) {
 	h.ttsProviderName = "default" // 默认TTS提供者名称
 	h.voiceName = "default"
-	if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
 
-		// Database functionality removed - use configured TTS provider
-		h.LogInfo("Database functionality removed - using configured TTS provider")
+	// 获取用户的TTS选择
+	_, ttsName, _ := h.getUserModelSelection()
+
+	if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
+		// 使用用户选择的TTS提供者
+		h.LogInfo(fmt.Sprintf("使用用户选择的TTS提供者: %s", ttsName))
 
 		h.ttsProviderName = getter.Config().Type
 		// 从agent配置中获取
@@ -302,16 +307,22 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 			h.LogError(fmt.Sprintf("Agent %d 的 Extra 字段格式错误: %v， err:%v", agent.ID, agent.Extra, err))
 		}
 	}
-	// 判断handler.providers.llm 类型是否和 agent.LLM 相同
-	if getter, ok := h.providers.llm.(llmConfigGetter); ok {
-		// Database functionality removed - use configured LLM provider
-		h.LogInfo("Database functionality removed - using configured LLM provider")
 
-		llmName := getter.Config().Name
-		if llmName != agentLLMName {
-			// 根据agent.LLM类型设置LLM提供者
-			if cfg, ok := config.LLM[agentLLMName]; !ok {
-				h.LogError(fmt.Sprintf("Agent %d 的 LLM 类型 %s 不存在", h.agentID, agentLLMName))
+	// 获取用户的模型选择
+	llmName, _, _ := h.getUserModelSelection()
+
+	// 如果用户没有选择，使用agent的LLM
+	if llmName == "" {
+		llmName = agentLLMName
+	}
+
+	// 判断handler.providers.llm 类型是否和用户选择的LLM相同
+	if getter, ok := h.providers.llm.(llmConfigGetter); ok {
+		currentLLMName := getter.Config().Name
+		if currentLLMName != llmName {
+			// 根据用户选择的LLM类型设置LLM提供者
+			if cfg, ok := config.LLM[llmName]; !ok {
+				h.LogError(fmt.Sprintf("用户选择的LLM类型 %s 不存在", llmName))
 			} else {
 				if apiKey != "" {
 					cfg.APIKey = apiKey // 使用Agent的API密钥
@@ -320,7 +331,7 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 					cfg.BaseURL = baseUrl // 使用Agent的BaseURL
 				}
 				llmCfg := &llm.Config{
-					Name:        agentLLMName,
+					Name:        llmName,
 					Type:        cfg.Type,
 					ModelName:   cfg.ModelName,
 					BaseURL:     cfg.BaseURL,
@@ -335,7 +346,7 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 					h.LogError(fmt.Sprintf("创建LLM提供者失败: %v", err))
 				} else {
 					h.providers.llm = newllm
-					h.LogInfo(fmt.Sprintf("已切换Agent %d 的 LLM 提供者到: %s", h.agentID, agentLLMName))
+					h.LogInfo(fmt.Sprintf("已切换到用户选择的LLM提供者: %s", llmName))
 				}
 			}
 		} else {
@@ -345,24 +356,98 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 			if baseUrl != "" {
 				getter.Config().BaseURL = baseUrl
 			}
-			h.LogInfo(fmt.Sprintf("使用Agent %d 的 LLM 类型: %s, BaseURL:%s", h.agentID, llmName, getter.Config().BaseURL))
+			h.LogInfo(fmt.Sprintf("使用用户选择的LLM类型: %s, BaseURL:%s", llmName, getter.Config().BaseURL))
 		}
 	}
 }
 
 func (h *ConnectionHandler) checkDeviceInfo() {
 	h.agentID = 0 // 清空AgentID
+	h.userID = "" // 清空用户ID
 
 	if h.deviceID == "" {
 		h.LogError("设备ID未设置，无法检查设备绑定状态")
 		return
 	}
 
-	// Database functionality removed - use default agent
-	h.LogInfo("Database functionality removed - using default agent configuration")
-	h.agentID = 0 // 未绑定则为0
+	// 尝试从数据库获取设备信息和用户模型选择
+	if err := storage.InitDatabase(); err != nil {
+		h.LogError(fmt.Sprintf("初始化数据库失败: %v，使用默认配置", err))
+	} else {
+		db := storage.GetDB()
+		var device storage.Device
+		if err := db.Where("device_id = ?", h.deviceID).First(&device).Error; err != nil {
+			h.LogWarn(fmt.Sprintf("设备 %s 不存在于数据库中: %v，使用默认配置", h.deviceID, err))
+		} else {
+			// 获取用户ID
+			if device.UserID != nil {
+				userIDInt := *device.UserID
+				h.userID = fmt.Sprintf("%d", userIDInt)
+				h.LogInfo(fmt.Sprintf("设备绑定用户ID: %s", h.userID))
 
-	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))
+				// 根据用户ID获取用户名
+				var user storage.User
+				if err := db.Where("id = ?", userIDInt).First(&user).Error; err != nil {
+					h.LogWarn(fmt.Sprintf("用户ID %d 不存在于用户表中: %v，使用默认配置", userIDInt, err))
+				} else {
+					username := user.Username
+					h.LogInfo(fmt.Sprintf("设备绑定用户名: %s", username))
+
+					// 获取用户的模型选择
+					var modelSelection storage.ModelSelection
+					if err := db.Where("user_id = ? AND is_active = ?", username, true).First(&modelSelection).Error; err != nil {
+						h.LogWarn(fmt.Sprintf("用户 %s 没有模型选择配置: %v，使用默认配置", username, err))
+					} else {
+						h.LogInfo(fmt.Sprintf("用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", username, modelSelection.LLMProvider, modelSelection.TTSProvider, modelSelection.ASRProvider))
+					}
+				}
+			} else {
+				h.LogWarn(fmt.Sprintf("设备 %s 未绑定用户，使用默认配置", h.deviceID))
+			}
+
+			// 获取AgentID（如果存在）
+			if device.AgentID != nil {
+				h.agentID = uint(*device.AgentID)
+			}
+		}
+	}
+
+	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d, UserID=%s", h.agentID, h.userID))
+}
+
+// getUserModelSelection 获取用户的模型选择，如果没有则返回默认配置
+func (h *ConnectionHandler) getUserModelSelection() (llmProvider, ttsProvider, asrProvider string) {
+	// 默认使用全局配置
+	llmProvider = h.config.Selected.LLM
+	ttsProvider = h.config.Selected.TTS
+	asrProvider = h.config.Selected.ASR
+
+	// 如果有用户ID，尝试获取用户的模型选择
+	if h.userID != "" {
+		if err := storage.InitDatabase(); err == nil {
+			db := storage.GetDB()
+
+			// 根据用户ID字符串解析为整数，然后获取用户名
+			var userIDInt int
+			if _, err := fmt.Sscanf(h.userID, "%d", &userIDInt); err == nil {
+				var user storage.User
+				if err := db.Where("id = ?", userIDInt).First(&user).Error; err == nil {
+					username := user.Username
+
+					var modelSelection storage.ModelSelection
+					if err := db.Where("user_id = ? AND is_active = ?", username, true).First(&modelSelection).Error; err == nil {
+						// 使用用户的模型选择
+						llmProvider = modelSelection.LLMProvider
+						ttsProvider = modelSelection.TTSProvider
+						asrProvider = modelSelection.ASRProvider
+						h.LogInfo(fmt.Sprintf("使用用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", username, llmProvider, ttsProvider, asrProvider))
+					}
+				}
+			}
+		}
+	}
+
+	return llmProvider, ttsProvider, asrProvider
 }
 
 func (h *ConnectionHandler) SetTaskCallback(callback func(func(*ConnectionHandler)) func()) {
@@ -1489,8 +1574,10 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 
 // initManagers 初始化新架构的 LLM 和 TTS Manager
 func (h *ConnectionHandler) initManagers(config *config.Config) {
+	// 获取用户的模型选择
+	llmName, ttsName, asrName := h.getUserModelSelection()
+
 	// 初始化 LLM Manager
-	llmName := config.Selected.LLM
 	if llmName != "" {
 		if llmCfg, ok := config.LLM[llmName]; ok {
 			llmConfig := domainllminter.LLMConfig{
@@ -1503,14 +1590,17 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 				Timeout:     60, // 默认超时时间
 			}
 			h.llmManager = domainllm.NewManager(llmConfig)
-			h.LogInfo(fmt.Sprintf("已初始化 LLM Manager: %s (%s)", llmName, llmCfg.Type))
+			if h.userID != "" {
+				h.LogInfo(fmt.Sprintf("使用用户 %s 的LLM提供者: %s (%s)", h.userID, llmName, llmCfg.Type))
+			} else {
+				h.LogInfo(fmt.Sprintf("使用默认LLM提供者: %s (%s)", llmName, llmCfg.Type))
+			}
 		} else {
 			h.LogError(fmt.Sprintf("LLM 配置不存在: %s", llmName))
 		}
 	}
 
 	// 初始化 TTS Manager
-	ttsName := config.Selected.TTS
 	if ttsName != "" {
 		if ttsCfg, ok := config.TTS[ttsName]; ok {
 			ttsConfig := domainttsinter.TTSConfig{
@@ -1524,9 +1614,22 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 				Language:        "zh-CN", // 默认语言
 			}
 			h.ttsManager = domaintts.NewManager(ttsConfig, config)
-			h.LogInfo(fmt.Sprintf("已初始化 TTS Manager: %s (%s)", ttsName, ttsCfg.Type))
+			if h.userID != "" {
+				h.LogInfo(fmt.Sprintf("使用用户 %s 的TTS提供者: %s (%s)", h.userID, ttsName, ttsCfg.Type))
+			} else {
+				h.LogInfo(fmt.Sprintf("使用默认TTS提供者: %s (%s)", ttsName, ttsCfg.Type))
+			}
 		} else {
 			h.LogError(fmt.Sprintf("TTS 配置不存在: %s", ttsName))
+		}
+	}
+
+	// 记录用户的ASR选择（ASR目前不支持动态切换）
+	if asrName != "" {
+		if h.userID != "" {
+			h.LogInfo(fmt.Sprintf("用户 %s 选择的ASR提供者: %s (当前不支持动态切换)", h.userID, asrName))
+		} else {
+			h.LogInfo(fmt.Sprintf("默认ASR提供者: %s (当前不支持动态切换)", asrName))
 		}
 	}
 }
