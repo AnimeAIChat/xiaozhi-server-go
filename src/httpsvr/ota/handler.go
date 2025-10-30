@@ -281,14 +281,59 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 	req OTARequestBody,
 	deviceID, clientID, deviceName, version string,
 ) *models.Device {
-	// Database functionality removed - return mock device
+	// 获取客户端IP地址
+	ip := req.Board.IP
+	if ip == "" {
+		ip = c.ClientIP()
+	}
+
+	// 构建应用信息
+	appInfo := ""
+	if req.Application.Name != "" {
+		appInfo = req.Application.Name
+		if req.Application.Version != "" {
+			appInfo += " " + req.Application.Version
+		}
+	}
+
+	// 调用设备服务进行注册
+	device, err := s.deviceService.RegisterDevice(
+		c.Request.Context(),
+		deviceID,
+		clientID,
+		deviceName,
+		version,
+		ip,
+		appInfo,
+	)
+
+	if err != nil {
+		// 注册失败时记录错误，但不中断OTA流程，返回mock设备
+		utils.DefaultLogger.Error("设备注册失败: %v", err)
+		return &models.Device{
+			DeviceID:         deviceID,
+			ClientID:         clientID,
+			Name:             deviceName,
+			Version:          version,
+			RegisterTimeV2:   time.Now(),
+			LastActiveTimeV2: time.Now(),
+			BoardType:        req.Board.Type,
+			ChipModelName:    req.ChipModelName,
+			Channel:          req.Board.Channel,
+			SSID:             req.Board.SSID,
+			Language:         req.Language,
+			OTA:              true,
+		}
+	}
+
+	// 注册成功，返回包含注册信息的设备对象
 	return &models.Device{
-		DeviceID:         deviceID,
-		ClientID:         clientID,
-		Name:             deviceName,
-		Version:          version,
-		RegisterTimeV2:   time.Now(),
-		LastActiveTimeV2: time.Now(),
+		DeviceID:         device.DeviceID,
+		ClientID:         device.ClientID,
+		Name:             device.Name,
+		Version:          device.Version,
+		RegisterTimeV2:   device.RegisterTime,
+		LastActiveTimeV2: device.LastActiveTime,
 		BoardType:        req.Board.Type,
 		ChipModelName:    req.ChipModelName,
 		Channel:          req.Board.Channel,

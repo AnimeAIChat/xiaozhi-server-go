@@ -646,7 +646,7 @@ func startHTTPServer(
 	otaHandler := httptransport.NewOTAHandler(deviceService)
 	otaHandler.RegisterRoutes(httpRouter)
 
-	otaService := ota.NewDefaultOTAService(config.Web.Websocket, config)
+	otaService := ota.NewDefaultOTAService(config.Web.Websocket, config, deviceService)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
 		logger.ErrorTag("OTA", "OTA 服务启动失败: %v", err)
 		return nil, err
