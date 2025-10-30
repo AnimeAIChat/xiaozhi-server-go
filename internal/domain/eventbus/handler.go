@@ -1,7 +1,6 @@
 package eventbus
 
 import (
-	"fmt"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -30,7 +29,7 @@ func (h *DefaultEventHandler) Handle(eventType string, data interface{}) {
 	case EventASRError, EventLLMError, EventTTSError:
 		h.handleError(data.(SystemEventData))
 	default:
-		utils.DefaultLogger.Info(fmt.Sprintf("[事件处理器] 未处理的事件类型: %s", eventType))
+		utils.DefaultLogger.InfoTag("事件处理器", "未处理的事件类型: %s", eventType)
 	}
 }
 
@@ -63,7 +62,7 @@ func (h *DefaultEventHandler) handleTTSSpeak(data TTSEventData) {
 
 // handleError 处理错误事件
 func (h *DefaultEventHandler) handleError(data SystemEventData) {
-	utils.DefaultLogger.Info(fmt.Sprintf("[事件处理器] 系统错误: 级别=%s, 消息=%s", data.Level, data.Message))
+	utils.DefaultLogger.InfoTag("事件处理器", "系统错误: 级别=%s, 消息=%s", data.Level, data.Message)
 }
 
 // SetupEventHandlers 设置事件处理器
