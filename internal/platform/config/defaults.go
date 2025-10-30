@@ -23,7 +23,7 @@ func DefaultConfig() *Config {
 		Web: WebConfig{
 			Enabled: true,
 			Port:    8080,
-			Websocket: "ws://your_ip:8080/ws",
+			Websocket: "ws://your_ip:8000/ws",
 			VisionURL: "http://your_ip:8080/api/vision",
 			ActivateText: "Anime Chat AI",
 		},
