@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/internal/domain/auth/model"
-	"xiaozhi-server-go/src/models"
+	"xiaozhi-server-go/internal/platform/storage"
 
 	"gorm.io/gorm"
 )
@@ -41,10 +41,10 @@ func (s *sqliteStore) Store(ctx context.Context, info model.ClientInfo) error {
 	meta, _ := json.Marshal(info.Metadata)
 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("client_id = ?", info.ClientID).Delete(&models.AuthClient{}).Error; err != nil {
+		if err := tx.Where("client_id = ?", info.ClientID).Delete(&storage.AuthClient{}).Error; err != nil {
 			return err
 		}
-		record := &models.AuthClient{
+		record := &storage.AuthClient{
 			ClientID:  info.ClientID,
 			Username:  info.Username,
 			Password:  info.Password,
@@ -92,11 +92,11 @@ func (s *sqliteStore) Get(ctx context.Context, clientID string) (model.ClientInf
 }
 
 func (s *sqliteStore) Remove(ctx context.Context, clientID string) error {
-	return s.db.WithContext(ctx).Where("client_id = ?", clientID).Delete(&models.AuthClient{}).Error
+	return s.db.WithContext(ctx).Where("client_id = ?", clientID).Delete(&storage.AuthClient{}).Error
 }
 
 func (s *sqliteStore) List(ctx context.Context) ([]string, error) {
-	var clients []models.AuthClient
+	var clients []storage.AuthClient
 	if err := s.db.WithContext(ctx).Select("client_id", "expires_at").Find(&clients).Error; err != nil {
 		return nil, err
 	}
@@ -116,13 +116,13 @@ func (s *sqliteStore) CleanupExpired(ctx context.Context) error {
 	}
 	return s.db.WithContext(ctx).
 		Where("expires_at IS NOT NULL AND expires_at < ?", time.Now()).
-		Delete(&models.AuthClient{}).
+		Delete(&storage.AuthClient{}).
 		Error
 }
 
 func (s *sqliteStore) Stats(ctx context.Context) (map[string]any, error) {
 	var total int64
-	if err := s.db.WithContext(ctx).Model(&models.AuthClient{}).Count(&total).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&storage.AuthClient{}).Count(&total).Error; err != nil {
 		return nil, err
 	}
 	return map[string]any{
@@ -137,7 +137,7 @@ func (s *sqliteStore) Close(context.Context) error {
 }
 
 func (s *sqliteStore) fetch(ctx context.Context, clientID string) (model.ClientInfo, error) {
-	var client models.AuthClient
+	var client storage.AuthClient
 	err := s.db.WithContext(ctx).Where("client_id = ?", clientID).First(&client).Error
 	if errorsIsNotFound(err) {
 		return model.ClientInfo{}, fmt.Errorf("client not found: %s", clientID)
