@@ -336,10 +336,10 @@ func (s *DefaultVisionService) saveImageToFile(imageData []byte, deviceID string
 		time.Now().Unix(),
 		s.detectImageFormat(imageData),
 	)
-	filepath := fmt.Sprintf("uploads/%s", filename)
+	filepath := fmt.Sprintf("data/uploads/%s", filename)
 
 	// 确保uploads目录存在
-	if err := os.MkdirAll("uploads", os.ModePerm); err != nil {
+	if err := os.MkdirAll("data/uploads", os.ModePerm); err != nil {
 		return "", fmt.Errorf("创建uploads目录失败: %v", err)
 	}
 

@@ -52,7 +52,7 @@ func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig, globalCon
 		Voice:           config.Voice,
 		Format:          config.Format,
 		SampleRate:      config.SampleRate,
-		OutputDir:       "tmp/", // 默认输出目录
+		OutputDir:       "data/tmp/", // 默认输出目录
 	}
 
 	// 根据提供商类型设置额外配置

@@ -58,7 +58,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 	// Ensure output directory exists
 	outputDir, _ := config.Data["output_dir"].(string)
 	if outputDir == "" {
-		outputDir = "tmp/"
+		outputDir = "data/tmp/"
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)

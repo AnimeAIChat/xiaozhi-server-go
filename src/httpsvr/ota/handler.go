@@ -245,7 +245,7 @@ func (s *DefaultOTAService) handlePostOTA(c *gin.Context) {
 		version = "1.0.0"
 	}
 
-	otaDir := filepath.Join(".", "ota_bin")
+	otaDir := filepath.Join(".", "data", "ota_bin")
 	_ = os.MkdirAll(otaDir, 0755)
 	bins, _ := filepath.Glob(filepath.Join(otaDir, "*.bin"))
 	firmwareURL := ""
@@ -317,7 +317,7 @@ func (s *DefaultOTAService) HandleFirmwareDownload() gin.HandlerFunc {
 			return
 		}
 
-		p := filepath.Join("ota_bin", filepath.FromSlash(clean))
+		p := filepath.Join("data", "ota_bin", filepath.FromSlash(clean))
 		//fmt.Println("Firmware download requested:", clean, "full path:", p)
 
 		fi, err := os.Stat(p)
