@@ -82,6 +82,19 @@ type Provider struct {
 	sendDataCnt int // 计数器，用于跟踪发送的音频数据包数量
 	ticker      *time.Ticker // 用于定期发送心跳包保持连接
 	tickerDone  chan struct{} // 用于停止ticker的信号通道
+
+	// 异步初始化相关字段
+	initDone     chan struct{} // 初始化完成信号
+	initErr      error         // 初始化错误
+	isReady      bool          // 是否准备就绪
+	initMutex    sync.RWMutex  // 保护初始化状态
+
+	// 预连接相关字段
+	preConn        *websocket.Conn // 预连接的WebSocket连接
+	preConnReady   bool            // 预连接是否准备就绪
+	preConnMutex   sync.RWMutex    // 保护预连接状态
+	preConnCtx     context.Context // 预连接上下文
+	preConnCancel  context.CancelFunc // 预连接取消函数
 }
 
 // NewProvider 创建豆包ASR提供者实例
@@ -142,10 +155,20 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, sess
 		enablePunc:    true,
 		enableITN:     true,
 		enableDDC:     false,
+
+		// 初始化异步字段
+		initDone: make(chan struct{}),
+		isReady:  false,
+
+		// 初始化预连接字段
+		preConnReady: false,
 	}
 
 	// 初始化音频处理
 	provider.InitAudioProcessing()
+
+	// 启动预连接
+	provider.startPreConnect()
 
 	return provider, nil
 }
@@ -398,6 +421,28 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 		}
 	}
 
+	// 等待异步初始化完成
+	p.initMutex.RLock()
+	initDone := p.initDone
+	p.initMutex.RUnlock()
+
+	if initDone != nil {
+		select {
+		case <-initDone:
+			// 初始化完成，检查是否有错误
+			p.initMutex.RLock()
+			initErr := p.initErr
+			p.initMutex.RUnlock()
+			if initErr != nil {
+				return initErr
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Second): // 超时保护
+			return fmt.Errorf("ASR初始化超时")
+		}
+	}
+
 	// 检查是否有实际数据需要发送
 	if len(data) > 0 && p.isStreaming {
 		// 直接发送音频数据
@@ -423,7 +468,15 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 		p.session.ResetLLMContext()
 	}
 
-	// 加锁保护连接初始化
+	// 检查是否已经在初始化或准备就绪
+	p.initMutex.RLock()
+	if p.isReady || p.initDone == nil {
+		p.initMutex.RUnlock()
+		return nil
+	}
+	p.initMutex.RUnlock()
+
+	// 加锁保护初始化过程
 	p.connMutex.Lock()
 	defer p.connMutex.Unlock()
 
@@ -432,80 +485,147 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 		return nil
 	}
 
-	// 初始化流式识别
+	// 初始化流式识别状态
 	p.InitAudioProcessing()
 	p.result = ""
 	p.err = nil
 
-	// 确保旧连接已关闭
-	if p.conn != nil {
-		p.closeConnection()
-	}
+	// 异步初始化WebSocket连接
+	go p.asyncInitialize(ctx)
 
-	// 建立WebSocket连接
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second, // 设置握手超时
-	}
-	headers := map[string][]string{
-		"X-Api-App-Key":     {p.appID},
-		"X-Api-Access-Key":  {p.accessToken},
-		"X-Api-Resource-Id": {"volc.bigasr.sauc.duration"},
-		"X-Api-Connect-Id":  {p.connectID},
-	}
+	// 立即返回，不等待初始化完成
+	p.isStreaming = true
+	p.logger.DebugTag("ASR", "开始异步初始化WebSocket连接")
 
-	// 添加日志记录请求头信息，用于调试认证问题
-	// p.logger.InfoTag("ASR", "豆包ASR请求头信息: appID=%s, accessToken=%s..., connectID=%s", 
-	// 	p.appID, 
-	// 	p.accessToken[:min(10, len(p.accessToken))]+"...", // 只显示前10个字符
-	// 	p.connectID)
+	return nil
+}
 
-	// 重试机制
-	var conn *websocket.Conn
-	var resp *http.Response
-	var err error
-	maxRetries := 2
+// startPreConnect 启动预连接
+func (p *Provider) startPreConnect() {
+	p.preConnCtx, p.preConnCancel = context.WithCancel(context.Background())
 
-	for i := 0; i <= maxRetries; i++ {
-		conn, resp, err = dialer.DialContext(ctx, p.wsURL, headers)
-		if err == nil {
-			break
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				p.logger.Error("预连接发生错误: %v", r)
+			}
+		}()
+
+		p.logger.DebugTag("ASR", "开始预连接到Doubao ASR服务")
+
+		// 建立WebSocket连接
+		dialer := websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+		}
+		headers := map[string][]string{
+			"X-Api-App-Key":     {p.appID},
+			"X-Api-Access-Key":  {p.accessToken},
+			"X-Api-Resource-Id": {"volc.bigasr.sauc.duration"},
+			"X-Api-Connect-Id":  {p.connectID},
 		}
 
-		// 检查是否是401认证错误，如果是则直接返回配置错误提示
-		if resp != nil && resp.StatusCode == 401 {
-			return fmt.Errorf("ASR配置错误: API密钥或应用ID无效(401认证失败)，请检查配置文件中的access_token和appid")
+		// 重试机制
+		var conn *websocket.Conn
+		var resp *http.Response
+		var err error
+		maxRetries := 2
+
+		for i := 0; i <= maxRetries; i++ {
+			conn, resp, err = dialer.DialContext(p.preConnCtx, p.wsURL, headers)
+			if err == nil {
+				break
+			}
+
+			// 检查是否是401认证错误
+			if resp != nil && resp.StatusCode == 401 {
+				p.logger.Warn("预连接认证失败，跳过预连接")
+				return
+			}
+
+			if i < maxRetries {
+				backoffTime := time.Duration(500*(i+1)) * time.Millisecond
+				p.logger.Debug("预连接失败(尝试%d/%d): %v, 将在%v后重试",
+					i+1, maxRetries+1, err, backoffTime)
+
+				select {
+				case <-p.preConnCtx.Done():
+					return // 上下文取消，退出
+				case <-time.After(backoffTime):
+					// 继续重试
+				}
+			}
 		}
 
-		if i < maxRetries {
-			backoffTime := time.Duration(500*(i+1)) * time.Millisecond
-			fmt.Printf("WebSocket连接失败(尝试%d/%d): %v, 将在%v后重试\n",
-				i+1, maxRetries+1, err, backoffTime)
-			time.Sleep(backoffTime)
+		if err != nil {
+			p.logger.Warn("预连接失败，将在需要时再连接: %v", err)
+			return
 		}
-	}
 
-	if err != nil {
-		statusCode := 0
-		if resp != nil {
-			statusCode = resp.StatusCode
+		// 设置预连接
+		p.preConnMutex.Lock()
+		p.preConn = conn
+		p.preConnReady = true
+		p.preConnMutex.Unlock()
+
+		p.logger.InfoTag("ASR", "预连接到Doubao ASR服务成功")
+
+		// 保持预连接活跃，定期发送心跳
+		ticker := time.NewTicker(30 * time.Second) // 每30秒发送一次心跳
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-p.preConnCtx.Done():
+				// 上下文取消，关闭预连接
+				p.preConnMutex.Lock()
+				if p.preConn != nil {
+					p.preConn.Close()
+					p.preConn = nil
+				}
+				p.preConnReady = false
+				p.preConnMutex.Unlock()
+				return
+
+			case <-ticker.C:
+				// 发送心跳包保持连接
+				p.preConnMutex.Lock()
+				if p.preConn != nil && p.preConnReady {
+					// 发送一个小的ping消息
+					if err := p.preConn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(5*time.Second)); err != nil {
+						p.logger.Warn("预连接心跳失败: %v", err)
+						p.preConn.Close()
+						p.preConn = nil
+						p.preConnReady = false
+					}
+				}
+				p.preConnMutex.Unlock()
+			}
 		}
-		return fmt.Errorf("WebSocket连接失败(状态码:%d): %v", statusCode, err)
-	}
+	}()
+}
 
-	p.conn = conn
-
+// sendInitialRequest 发送初始请求并等待响应
+func (p *Provider) sendInitialRequest(ctx context.Context) {
 	// 发送初始请求
 	p.reqID = fmt.Sprintf("%d", time.Now().UnixNano())
 	request := p.constructRequest()
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("构造请求数据失败: %v", err)
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("构造请求数据失败: %v", err)
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
 	}
 
 	var buf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buf)
 	if _, err := gzipWriter.Write(requestBytes); err != nil {
-		return fmt.Errorf("压缩请求数据失败: %v", err)
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("压缩请求数据失败: %v", err)
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
 	}
 	gzipWriter.Close()
 
@@ -519,32 +639,75 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	fullRequest = append(fullRequest, compressedRequest...)
 
 	// 发送请求
-	if err := p.conn.WriteMessage(websocket.BinaryMessage, fullRequest); err != nil {
-		return fmt.Errorf("发送请求失败: %v", err)
+	p.connMutex.Lock()
+	if p.conn == nil {
+		p.connMutex.Unlock()
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("连接已关闭")
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
+	}
+	err = p.conn.WriteMessage(websocket.BinaryMessage, fullRequest)
+	p.connMutex.Unlock()
+
+	if err != nil {
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("发送请求失败: %v", err)
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
 	}
 
 	// 读取响应
-	_, response, err := p.conn.ReadMessage()
-	if err != nil {
-		return fmt.Errorf("读取响应失败: %v", err)
-	} else {
-		p.logger.DebugTag("ASR", "流式识别收到 WebSocket 数据长度=%d", len(response))
+	p.connMutex.Lock()
+	if p.conn == nil {
+		p.connMutex.Unlock()
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("连接已关闭")
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
 	}
+	_, response, err := p.conn.ReadMessage()
+	p.connMutex.Unlock()
+
+	if err != nil {
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("读取响应失败: %v", err)
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
+	}
+
+	p.logger.DebugTag("ASR", "流式识别收到 WebSocket 数据长度=%d", len(response))
 
 	initialResult, err := p.parseResponse(response)
 	if err != nil {
-		return fmt.Errorf("解析响应失败: %v", err)
+		p.initMutex.Lock()
+		p.initErr = fmt.Errorf("解析响应失败: %v", err)
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
 	}
 
 	// 检查初始响应状态
 	if msg, ok := initialResult["payload_msg"].(map[string]interface{}); ok {
 		// Doubao ASR v3 uses 20000000 for success code in initial response
 		if code, ok := msg["code"].(float64); ok && int(code) != 20000000 {
-			return fmt.Errorf("ASR初始化错误: %v", msg)
+			p.initMutex.Lock()
+			p.initErr = fmt.Errorf("ASR初始化错误: %v", msg)
+			p.initMutex.Unlock()
+			close(p.initDone)
+			return
 		}
 	}
 
-	p.isStreaming = true
+	// 初始化成功
+	p.initMutex.Lock()
+	p.isReady = true
+	p.initMutex.Unlock()
+
 	p.logger.DebugTag("ASR", "流式识别初始化成功 connectID=%s reqID=%s", p.connectID, p.reqID)
 
 	// 启动心跳包ticker，每200ms发送一次心跳包保持连接
@@ -556,7 +719,97 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	go func() {
 		p.ReadMessage()
 	}()
-	return nil
+
+	// 关闭初始化完成信号
+	close(p.initDone)
+}
+
+// asyncInitialize 异步初始化WebSocket连接
+func (p *Provider) asyncInitialize(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Error("异步初始化发生错误: %v", r)
+			p.initMutex.Lock()
+			p.initErr = fmt.Errorf("异步初始化panic: %v", r)
+			p.initMutex.Unlock()
+			close(p.initDone)
+		}
+	}()
+
+	// 确保旧连接已关闭
+	if p.conn != nil {
+		p.closeConnection()
+	}
+
+	// 首先尝试使用预连接
+	p.preConnMutex.Lock()
+	if p.preConnReady && p.preConn != nil {
+		p.logger.InfoTag("ASR", "使用预连接进行初始化")
+		p.conn = p.preConn
+		p.preConn = nil
+		p.preConnReady = false
+		p.preConnMutex.Unlock()
+
+		// 预连接已经建立，直接发送初始请求
+		p.sendInitialRequest(ctx)
+		return
+	}
+	p.preConnMutex.Unlock()
+
+	// 没有预连接可用，正常建立连接
+	p.logger.DebugTag("ASR", "没有预连接可用，正常建立连接")
+
+	// 建立WebSocket连接
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second, // 设置握手超时
+	}
+	headers := map[string][]string{
+		"X-Api-App-Key":     {p.appID},
+		"X-Api-Access-Key":  {p.accessToken},
+		"X-Api-Resource-Id": {"volc.bigasr.sauc.duration"},
+		"X-Api-Connect-Id":  {p.connectID},
+	}
+
+	// 重试机制
+	var conn *websocket.Conn
+	var resp *http.Response
+	var err error
+	maxRetries := 2
+
+	for i := 0; i <= maxRetries; i++ {
+		conn, resp, err = dialer.DialContext(ctx, p.wsURL, headers)
+		if err == nil {
+			break
+		}
+
+		// 检查是否是401认证错误
+		if resp != nil && resp.StatusCode == 401 {
+			err = fmt.Errorf("ASR配置错误: API密钥或应用ID无效(401认证失败)，请检查配置文件中的access_token和appid")
+			break
+		}
+
+		if i < maxRetries {
+			backoffTime := time.Duration(500*(i+1)) * time.Millisecond
+			p.logger.Debug("WebSocket连接失败(尝试%d/%d): %v, 将在%v后重试",
+				i+1, maxRetries+1, err, backoffTime)
+			time.Sleep(backoffTime)
+		}
+	}
+
+	if err != nil {
+		p.initMutex.Lock()
+		p.initErr = err
+		p.initMutex.Unlock()
+		close(p.initDone)
+		return
+	}
+
+	// 设置连接
+	p.connMutex.Lock()
+	p.conn = conn
+	p.connMutex.Unlock()
+
+	p.sendInitialRequest(ctx)
 }
 
 // keepAlive 定期发送心跳包保持连接活跃
@@ -816,6 +1069,16 @@ func (p *Provider) Reset() error {
 	p.reqID = ""
 	p.result = ""
 	p.err = nil
+
+	// 重置异步初始化状态
+	p.initMutex.Lock()
+	p.isReady = false
+	p.initErr = nil
+	if p.initDone != nil {
+		// 重新创建一个新的channel用于下次初始化
+		p.initDone = make(chan struct{})
+	}
+	p.initMutex.Unlock()
 
 	// 重置音频处理
 	p.InitAudioProcessing()
