@@ -197,7 +197,8 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 			providerSet.MCP = mgr
 			f.logger.InfoTag("连接", "复用现有的 MCPManager")
 		} else {
-			f.logger.InfoTag("连接", "当前连接的 MCPManager 为空，将创建新的实例")
+			// 这是一个新连接，MCPManager 为空是正常的，不需要记录为警告
+			f.logger.InfoTag("连接", "新连接将使用池化的 MCPManager")
 		}
 	} else {
 		f.logger.InfoTag("连接", "此连接未实现 MCPManagerHolder 接口，将创建新的 MCPManager")

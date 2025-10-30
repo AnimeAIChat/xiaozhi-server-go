@@ -169,29 +169,64 @@ func (m *Manager) initializeExternalServers() {
 			continue
 		}
 
-		client, err := NewClient(clientConfig, m.logger)
-		if err != nil {
-			m.logger.Error("异步初始化：Failed to create MCP client for server %s: %v", name, err)
-			continue
-		}
+		// 为每个客户端启动添加超时控制
+		go func(name string, clientConfig *Config) {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Error("初始化MCP客户端 %s 时发生panic: %v", name, r)
+				}
+			}()
 
-		if err := client.Start(context.Background()); err != nil {
-			m.logger.Error("异步初始化：Failed to start MCP client %s: %v", name, err)
-			continue
-		}
+			client, err := NewClient(clientConfig, m.logger)
+			if err != nil {
+				m.logger.Error("异步初始化：Failed to create MCP client for server %s: %v", name, err)
+				return
+			}
 
-		m.mu.Lock()
-		m.clients[name] = client
-		m.mu.Unlock()
+			// 添加超时控制，避免单个客户端阻塞整个初始化过程
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
-		m.logger.Info("异步初始化：外部MCP客户端 %s 初始化完成", name)
+			startDone := make(chan error, 1)
+			go func() {
+				startDone <- client.Start(ctx)
+			}()
+
+			select {
+			case err := <-startDone:
+				if err != nil {
+					m.logger.Error("异步初始化：Failed to start MCP client %s: %v", name, err)
+					return
+				}
+
+				m.mu.Lock()
+				m.clients[name] = client
+				m.mu.Unlock()
+
+				m.logger.Info("异步初始化：外部MCP客户端 %s 初始化完成", name)
+			case <-ctx.Done():
+				m.logger.Warn("异步初始化：MCP客户端 %s 启动超时", name)
+				// 尝试停止客户端（如果客户端有Stop方法）
+				if client != nil {
+					// 客户端可能有Stop方法，尝试调用
+					defer func() {
+						if r := recover(); r != nil {
+							// 忽略停止时的错误
+						}
+					}()
+					// 这里可以添加停止逻辑，如果客户端支持的话
+				}
+			}
+		}(name, clientConfig)
 	}
 
+	// 不等待所有客户端初始化完成，立即标记为已初始化
+	// 这样可以避免阻塞服务启动
 	m.mu.Lock()
 	m.isInitialized = true
 	m.mu.Unlock()
 
-	m.logger.Info("外部MCP服务器异步初始化完成")
+	m.logger.Info("外部MCP服务器异步初始化已启动（不阻塞服务启动）")
 }
 
 func (m *Manager) GetAllToolsNames() []string {
@@ -221,53 +256,68 @@ func (m *Manager) BindConnection(
 	clientID := paramsMap["client_id"].(string)
 	token := paramsMap["token"].(string)
 	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
-	if !m.isInitialized {
-		m.logger.Info("BindConnection, MCP Manager未初始化，等待异步初始化完成")
-		// 等待异步初始化完成，最多等待30秒
-		timeout := time.After(30 * time.Second)
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
 
-		for !m.isInitialized {
-			select {
-			case <-timeout:
-				m.logger.Warn("等待MCP异步初始化超时，继续处理连接")
-				goto continueBinding
-			case <-ticker.C:
-				// 继续等待
+	// 异步处理MCP初始化和绑定，不阻塞连接建立
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("MCP绑定连接时发生panic: %v", r)
+			}
+		}()
+
+		// 如果MCP管理器还未初始化完成，等待一下但不阻塞
+		if !m.isInitialized {
+			m.logger.Info("BindConnection, MCP Manager未初始化，等待异步初始化完成")
+			// 最多等待10秒，避免阻塞连接建立
+			timeout := time.After(10 * time.Second)
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+
+			for !m.isInitialized {
+				select {
+				case <-timeout:
+					m.logger.Warn("等待MCP异步初始化超时，继续处理连接（MCP功能可能受限）")
+					goto continueBinding
+				case <-ticker.C:
+					// 继续等待
+				}
 			}
 		}
-	}
-continueBinding:
+
+	continueBinding:
 
 		// 优化：检查XiaoZhiMCPClient是否需要重新启动
-	if m.XiaoZhiMCPClient == nil {
-		m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
-		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
-		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
-		m.XiaoZhiMCPClient.SetToken(token)
+		if m.XiaoZhiMCPClient == nil {
+			m.XiaoZhiMCPClient = NewXiaoZhiMCPClient(m.logger, conn, sessionID)
+			m.XiaoZhiMCPClient.SetVisionURL(visionURL)
+			m.XiaoZhiMCPClient.SetID(deviceID, clientID)
+			m.XiaoZhiMCPClient.SetToken(token)
 
-		if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
-			return fmt.Errorf("启动XiaoZhi MCP客户端失败: %v", err)
-		}
-	} else {
-		// 重新绑定连接而不是重新创建
-		m.XiaoZhiMCPClient.SetConnection(conn)
-		m.XiaoZhiMCPClient.SetSessionID(sessionID)
-		m.XiaoZhiMCPClient.SetVisionURL(visionURL)
-		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
-		m.XiaoZhiMCPClient.SetToken(token)
-		if !m.XiaoZhiMCPClient.IsReady() {
-			m.logger.Info("XiaoZhi MCP客户端未就绪，重新启动")
 			if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
-				return fmt.Errorf("重启XiaoZhi MCP客户端失败: %v", err)
+				m.logger.Error("启动XiaoZhi MCP客户端失败: %v", err)
+				return
+			}
+		} else {
+			// 重新绑定连接而不是重新创建
+			m.XiaoZhiMCPClient.SetConnection(conn)
+			m.XiaoZhiMCPClient.SetSessionID(sessionID)
+			m.XiaoZhiMCPClient.SetVisionURL(visionURL)
+			m.XiaoZhiMCPClient.SetID(deviceID, clientID)
+			m.XiaoZhiMCPClient.SetToken(token)
+			if !m.XiaoZhiMCPClient.IsReady() {
+				m.logger.DebugTag("MCP", "XiaoZhi MCP客户端未完全初始化，将重新启动")
+				if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
+					m.logger.Error("重启XiaoZhi MCP客户端失败: %v", err)
+					return
+				}
 			}
 		}
-	}
-	m.clients["xiaozhi"] = m.XiaoZhiMCPClient
+		m.clients["xiaozhi"] = m.XiaoZhiMCPClient
 
-	// 重新注册工具（只注册尚未注册的）
-	m.registerAllToolsIfNeeded()
+		// 重新注册工具（只注册尚未注册的）
+		m.registerAllToolsIfNeeded()
+	}()
+
 	return nil
 }
 
