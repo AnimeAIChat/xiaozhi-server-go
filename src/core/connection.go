@@ -385,21 +385,12 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 				h.userID = fmt.Sprintf("%d", userIDInt)
 				h.LogInfo(fmt.Sprintf("设备绑定用户ID: %s", h.userID))
 
-				// 根据用户ID获取用户名
-				var user storage.User
-				if err := db.Where("id = ?", userIDInt).First(&user).Error; err != nil {
-					h.LogWarn(fmt.Sprintf("用户ID %d 不存在于用户表中: %v，使用默认配置", userIDInt, err))
+				// 获取用户的模型选择
+				var modelSelection storage.ModelSelection
+				if err := db.Where("user_id = ? AND is_active = ?", userIDInt, true).First(&modelSelection).Error; err != nil {
+					h.LogWarn(fmt.Sprintf("用户 %s 没有模型选择配置: %v，使用默认配置", h.userID, err))
 				} else {
-					username := user.Username
-					h.LogInfo(fmt.Sprintf("设备绑定用户名: %s", username))
-
-					// 获取用户的模型选择
-					var modelSelection storage.ModelSelection
-					if err := db.Where("user_id = ? AND is_active = ?", username, true).First(&modelSelection).Error; err != nil {
-						h.LogWarn(fmt.Sprintf("用户 %s 没有模型选择配置: %v，使用默认配置", username, err))
-					} else {
-						h.LogInfo(fmt.Sprintf("用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", username, modelSelection.LLMProvider, modelSelection.TTSProvider, modelSelection.ASRProvider))
-					}
+					h.LogInfo(fmt.Sprintf("用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", h.userID, modelSelection.LLMProvider, modelSelection.TTSProvider, modelSelection.ASRProvider))
 				}
 			} else {
 				h.LogWarn(fmt.Sprintf("设备 %s 未绑定用户，使用默认配置", h.deviceID))
@@ -427,21 +418,16 @@ func (h *ConnectionHandler) getUserModelSelection() (llmProvider, ttsProvider, a
 		if err := storage.InitDatabase(); err == nil {
 			db := storage.GetDB()
 
-			// 根据用户ID字符串解析为整数，然后获取用户名
+			// 将用户ID字符串解析为整数
 			var userIDInt int
 			if _, err := fmt.Sscanf(h.userID, "%d", &userIDInt); err == nil {
-				var user storage.User
-				if err := db.Where("id = ?", userIDInt).First(&user).Error; err == nil {
-					username := user.Username
-
-					var modelSelection storage.ModelSelection
-					if err := db.Where("user_id = ? AND is_active = ?", username, true).First(&modelSelection).Error; err == nil {
-						// 使用用户的模型选择
-						llmProvider = modelSelection.LLMProvider
-						ttsProvider = modelSelection.TTSProvider
-						asrProvider = modelSelection.ASRProvider
-						h.LogInfo(fmt.Sprintf("使用用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", username, llmProvider, ttsProvider, asrProvider))
-					}
+				var modelSelection storage.ModelSelection
+				if err := db.Where("user_id = ? AND is_active = ?", userIDInt, true).First(&modelSelection).Error; err == nil {
+					// 使用用户的模型选择
+					llmProvider = modelSelection.LLMProvider
+					ttsProvider = modelSelection.TTSProvider
+					asrProvider = modelSelection.ASRProvider
+					h.LogInfo(fmt.Sprintf("使用用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", h.userID, llmProvider, ttsProvider, asrProvider))
 				}
 			}
 		}

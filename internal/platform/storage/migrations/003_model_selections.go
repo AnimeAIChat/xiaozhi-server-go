@@ -20,7 +20,7 @@ func (m *Migration003ModelSelections) Up(db *gorm.DB) error {
 	if err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS model_selections (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id VARCHAR(255) NOT NULL DEFAULT 'admin', -- 用户ID，默认为admin管理员
+			user_id INTEGER NOT NULL,                      -- 用户ID（整数），外键关联users表
 			asr_provider VARCHAR(255) NOT NULL,           -- 选择的ASR提供商
 			tts_provider VARCHAR(255) NOT NULL,           -- 选择的TTS提供商
 			llm_provider VARCHAR(255) NOT NULL,           -- 选择的LLM提供商

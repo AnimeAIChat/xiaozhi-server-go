@@ -121,7 +121,7 @@ func (r *DatabaseRepository) InitDefaultConfig() (*config.Config, error) {
 
 	// 初始化默认的模型选择
 	modelSelectionManager := NewModelSelectionManager(r.db)
-	if err := modelSelectionManager.InitDefaultSelection("admin"); err != nil {
+	if err := modelSelectionManager.InitDefaultSelection(1); err != nil { // 使用管理员用户ID 1
 		return nil, errors.Wrap(errors.KindDomain, "config.init", "failed to init default model selection", err)
 	}
 

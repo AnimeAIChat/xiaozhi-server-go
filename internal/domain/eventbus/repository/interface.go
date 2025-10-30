@@ -3,8 +3,6 @@ package repository
 import (
 	"context"
 	"time"
-
-	"xiaozhi-server-go/internal/domain/eventbus"
 )
 
 // EventRepository 领域事件数据访问接口
