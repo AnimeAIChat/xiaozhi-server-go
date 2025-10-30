@@ -77,7 +77,8 @@ func DefaultConfig() *Config {
 					Enabled:     true,
 				},
 			},
-			CMDExit: []string{"退出", "关闭"},
+			CMDExit:  []string{"退出", "关闭"},
+			MusicDir: "data/music",
 		},
 		Audio: AudioConfig{
 			DeleteAudio:   false,

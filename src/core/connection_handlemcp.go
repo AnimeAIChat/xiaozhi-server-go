@@ -97,7 +97,7 @@ func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) str
 func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
 	if songName, ok := args.(string); ok {
 		h.logger.Info("mcp_handler_play_music: %s", songName)
-		if path, name, err := utils.GetMusicFilePathFuzzy(songName); err != nil {
+		if path, name, err := utils.GetMusicFilePathFuzzy(songName, h.config.System.MusicDir); err != nil {
 			h.logger.Error("mcp_handler_play_music: Play failed: %v", err)
 			h.SystemSpeak("没有找到名为" + songName + "的歌曲")
 		} else {
