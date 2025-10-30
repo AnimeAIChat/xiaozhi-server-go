@@ -199,7 +199,7 @@ func (c *LocalClient) AddToolSwitchAgent() error {
 	}
 
 	c.AddTool("switch_agent",
-		"当用户想切换智能体时调用，必须提供agent_id（数字）或agent_name（字符串）其中之一",
+		"当且仅当用户说‘切换到{name}智能体’或‘切换智能体到{name}’时调用，严格校验格式，如果用户没有明确到要切换到的智能体id或者name，需要先和用户确认，不要直接调用本工具，调用时必须提供agent_id（数字）或agent_name（字符串）其中之一",
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			// 验证至少提供了一个参数

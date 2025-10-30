@@ -34,6 +34,8 @@ import (
 	"gorm.io/gorm"
 )
 
+type MCPResultHandler func(args interface{}) string
+
 // Connection 统一连接接口
 type Connection interface {
 	// 发送消息
@@ -146,7 +148,7 @@ type ConnectionHandler struct {
 	functionRegister *function.FunctionRegistry
 	mcpManager       *mcp.Manager
 
-	mcpResultHandlers map[string]func(interface{}) // MCP处理器映射
+	mcpResultHandlers map[string]MCPResultHandler // MCP处理器映射
 	ctx               context.Context
 }
 

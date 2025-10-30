@@ -42,6 +42,14 @@ func (dm *DialogueManager) SetSystemMessage(systemMessage string) {
 	}, dm.dialogue...)
 }
 
+func (dm *DialogueManager) RemoveSecondMessageForToolType() {
+	// 如果第二条的类型是"role": "tool",则移除这条
+	if len(dm.dialogue) < 2 || dm.dialogue[1].Role != "tool" {
+		return
+	}
+	dm.dialogue = append(dm.dialogue[:1], dm.dialogue[2:]...)
+}
+
 // 保留最近的几条对话消息
 func (dm *DialogueManager) KeepRecentMessages(maxMessages int) {
 	if maxMessages <= 0 || len(dm.dialogue) <= maxMessages {
@@ -51,6 +59,7 @@ func (dm *DialogueManager) KeepRecentMessages(maxMessages int) {
 	if len(dm.dialogue) > 0 && dm.dialogue[0].Role == "system" {
 		// 保留system消息
 		dm.dialogue = append(dm.dialogue[:1], dm.dialogue[len(dm.dialogue)-maxMessages:]...)
+		dm.RemoveSecondMessageForToolType()
 		return
 	}
 	// 如果没有system消息，直接保留最近的 maxMessages 条消息

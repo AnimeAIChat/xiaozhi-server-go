@@ -14,7 +14,7 @@ import (
 func (h *ConnectionHandler) initMCPResultHandlers() {
 	// 初始化MCP结果处理器
 	// 这里可以添加更多的处理器初始化逻辑
-	h.mcpResultHandlers = map[string]func(args interface{}){
+	h.mcpResultHandlers = map[string]MCPResultHandler{
 		"mcp_handler_exit":         h.mcp_handler_exit,
 		"mcp_handler_take_photo":   h.mcp_handler_take_photo,
 		"mcp_handler_change_voice": h.mcp_handler_change_voice,
@@ -25,7 +25,7 @@ func (h *ConnectionHandler) initMCPResultHandlers() {
 }
 
 // mcp_handler_switch_agent 处理切换智能体的请求，参数可以是 {"agent_id": <number>} 或 {"agent_id": "123"} 或 {"agent_name": "名字"}
-func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) string {
 	var newAgentID uint = 0
 	var agentName string
 
@@ -61,13 +61,13 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 		newAgentID = uint(v)
 	default:
 		h.logger.Error("mcp_handler_switch_agent: unsupported arg type %T", v)
-		return
+		return "切换智能体失败：参数格式错误"
 	}
 
 	if newAgentID != 0 && newAgentID == h.agentID {
 		h.logger.Info("mcp_handler_switch_agent: already using agent %d", newAgentID)
 		h.SystemSpeak("您已经在使用该智能体")
-		return
+		return "您已经在使用该智能体,无需切换"
 	}
 
 	agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
@@ -75,13 +75,13 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 	if err != nil {
 		h.logger.Error("mcp_handler_switch_agent: ListAgentsByUser failed: %v", err)
 		h.SystemSpeak("切换智能体失败：无法获取智能体列表")
-		return
+		return "切换智能体失败：无法获取智能体列表"
 	}
 	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
 	if err != nil || device == nil {
 		h.logger.Error("mcp_handler_switch_agent: FindDeviceByID failed: %v", err)
 		h.SystemSpeak("切换智能体失败：无法获取设备信息")
-		return
+		return "切换智能体失败：无法获取设备信息"
 	}
 
 	for _, ag := range agents {
@@ -94,7 +94,7 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 			agent, prompt := h.InitWithAgent()
 			// 更新对话系统提示并保留最近上下文
 			h.dialogueManager.SetSystemMessage(prompt)
-			h.dialogueManager.KeepRecentMessages(5)
+			h.dialogueManager.KeepRecentMessages(1)
 			// 重新检查并切换提供者
 			h.checkTTSProvider(agent, h.config)
 			h.checkLLMProvider(agent, h.config)
@@ -104,10 +104,11 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 			} else {
 				h.SystemSpeak("已切换到新的智能体")
 			}
-			return
+			return "切换智能体成功"
 		}
 	}
 	h.SystemSpeak("没有找到对应的智能体")
+	return "切换智能体失败：没有找到对应的智能体"
 }
 
 func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) string {
@@ -126,8 +127,8 @@ func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) str
 	if Caller, ok := result.Result.(types.ActionResponseCall); ok {
 		if handler, exists := h.mcpResultHandlers[Caller.FuncName]; exists {
 			// 调用对应的处理函数
-			handler(Caller.Args)
-			return "调用工具成功: " + Caller.FuncName
+			resultStr := handler(Caller.Args)
+			return resultStr
 		} else {
 			h.logger.Error("handleMCPResultCall: no handler found for function %s", Caller.FuncName)
 		}
@@ -137,37 +138,43 @@ func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) str
 	return errResult
 }
 
-func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_play_music(args interface{}) string {
 	if songName, ok := args.(string); ok {
 		h.logger.Info("mcp_handler_play_music: %s", songName)
 		if path, name, err := utils.GetMusicFilePathFuzzy(songName); err != nil {
 			h.logger.Error("mcp_handler_play_music: Play failed: %v", err)
 			h.SystemSpeak("没有找到名为" + songName + "的歌曲")
+			return "没有找到名为" + songName + "的歌曲"
 		} else {
 			//h.SystemSpeak("这就为您播放音乐: " + songName)
 			h.sendAudioMessage(path, name, h.tts_last_text_index, h.talkRound)
+			return "正在播放音乐: " + name
 		}
 	} else {
 		h.logger.Error("mcp_handler_play_music: args is not a string")
 	}
+	return "播放音乐失败：参数格式错误"
 }
 
-func (h *ConnectionHandler) mcp_handler_change_voice(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_change_voice(args interface{}) string {
 	if voice, ok := args.(string); ok {
 		h.logger.Info("mcp_handler_change_voice: %s", voice)
 		if err, voiceName := h.providers.tts.SetVoice(voice); err != nil {
 			h.logger.Error("mcp_handler_change_voice: SetVoice failed: %v", err)
 			h.SystemSpeak("切换语音失败，没有叫" + voice + "的音色")
+			return "切换语音失败，没有叫" + voice + "的音色"
 		} else {
 			h.LogInfo(fmt.Sprintf("mcp_handler_change_voice: SetVoice success: %s", voiceName))
 			h.SystemSpeak("已切换到音色" + voice)
+			return "切换语音成功，当前音色: " + voiceName
 		}
 	} else {
 		h.logger.Error("mcp_handler_change_voice: args is not a string")
+		return "切换语音失败：参数格式错误"
 	}
 }
 
-func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) string {
 	if params, ok := args.(map[string]string); ok {
 		role := params["role"]
 		prompt := params["prompt"]
@@ -188,33 +195,39 @@ func (h *ConnectionHandler) mcp_handler_change_role(args interface{}) {
 			}
 		}
 		h.SystemSpeak("已切换到新角色 " + role)
+		return "切换角色成功: " + role
 	} else {
 		h.logger.Error("mcp_handler_change_role: args is not a string")
+		return "切换角色失败：参数格式错误"
 	}
 }
 
-func (h *ConnectionHandler) mcp_handler_exit(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_exit(args interface{}) string {
 	if text, ok := args.(string); ok {
 		h.closeAfterChat = true
 		h.SystemSpeak(text)
+		return "即将结束对话: " + text
 	} else {
 		h.logger.Error("mcp_handler_exit: args is not a string")
+		return "结束对话失败：参数格式错误"
 	}
 }
 
-func (h *ConnectionHandler) mcp_handler_take_photo(args interface{}) {
+func (h *ConnectionHandler) mcp_handler_take_photo(args interface{}) string {
 	// 特殊处理拍照函数，解析为VisionResponse
 	resultStr, _ := args.(string)
 	var visionResponse vision.VisionResponse
 	if err := json.Unmarshal([]byte(resultStr), &visionResponse); err != nil {
 		h.logger.Error("解析VisionResponse失败: %v", err)
+		return "拍照失败：无法解析响应结果"
 	}
 
 	if !visionResponse.Success {
 		h.logger.Error("拍照失败: %s", visionResponse.Message)
 		h.genResponseByLLM(context.Background(), h.dialogueManager.GetLLMDialogue(), h.talkRound)
-
+		return "拍照失败: " + visionResponse.Message
 	}
 
 	h.SystemSpeak(visionResponse.Result)
+	return "拍照成功: " + visionResponse.Result
 }
