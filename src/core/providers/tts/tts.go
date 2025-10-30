@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/internal/domain/eventbus"
@@ -21,7 +21,7 @@ type Config struct {
 	AppID           string              `yaml:"appid"`
 	Token           string              `yaml:"token"`
 	Cluster         string              `yaml:"cluster"`
-	SupportedVoices []configs.VoiceInfo `yaml:"supported_voices"` // 支持的语音列表
+	SupportedVoices []config.VoiceInfo `yaml:"supported_voices"` // 支持的语音列表
 }
 
 // Provider TTS提供者接口
@@ -106,7 +106,7 @@ func (p *BaseProvider) Initialize() error {
 	return nil
 }
 
-func IsSupportedVoice(voice string, supportedVoices []configs.VoiceInfo) (bool, string, error) {
+func IsSupportedVoice(voice string, supportedVoices []config.VoiceInfo) (bool, string, error) {
 	if voice == "" {
 		return false, "", fmt.Errorf("声音不能为空")
 	}

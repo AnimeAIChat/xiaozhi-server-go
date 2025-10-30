@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -32,7 +32,7 @@ type Manager struct {
 	XiaoZhiMCPClient      *XiaoZhiMCPClient // XiaoZhiMCPClient用于处理小智MCP相关逻辑
 	bRegisteredXiaoZhiMCP bool              // 是否已注册小智MCP工具
 	isInitialized         bool              // 添加初始化状态标记
-	systemCfg             *configs.Config
+	systemCfg             *config.Config
 	mu                    sync.RWMutex
 
 	// 缓存外部工具列表，避免每次连接重新注册
@@ -43,7 +43,7 @@ type Manager struct {
 }
 
 // NewManagerForPool 创建用于资源池的MCP管理器
-func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
+func NewManagerForPool(lg *utils.Logger, cfg *config.Config) *Manager {
 	lg.Debug("创建MCP Manager用于资源池")
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -15,12 +15,12 @@ import (
 type Pipeline struct {
 	validator *SecurityValidator
 	logger    *utils.Logger
-	security  *configs.SecurityConfig
+	security  *config.SecurityConfig
 }
 
 // Options configures the pipeline behaviour.
 type Options struct {
-	Security *configs.SecurityConfig
+	Security *config.SecurityConfig
 	Logger   *utils.Logger
 }
 

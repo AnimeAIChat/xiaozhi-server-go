@@ -2,9 +2,7 @@ package mcp
 
 import (
 	"context"
-	"strings"
 	"time"
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/types"
 )
 
@@ -64,10 +62,10 @@ func (c *LocalClient) AddToolTime() error {
 }
 
 func (c *LocalClient) AddToolChangeRole() error {
-	roles := c.cfg.Roles
+	roles := c.cfg.System.Roles
 	prompts := map[string]string{}
 	roleNames := ""
-	if roles == nil {
+	if len(roles) == 0 {
 		c.logger.Warn(
 			"AddToolChangeRole: roles settings is nil or empty, Skipping tool registration",
 		)
@@ -113,22 +111,15 @@ func (c *LocalClient) AddToolChangeRole() error {
 }
 
 func (c *LocalClient) AddToolChangeVoice() error {
-	voices := []configs.VoiceInfo{}
-	if ttsType, ok := c.cfg.SelectedModule["TTS"]; ok && ttsType != "" {
-		voices = c.cfg.TTS[ttsType].SupportedVoices
-	}
-	voiceDesArr := []string{}
-	for _, v := range voices {
-		voiceDesArr = append(voiceDesArr, v.Name+"("+v.DisplayName+"-"+v.Sex+")："+v.Description)
-	}
-	voiceDes := strings.Join(voiceDesArr, ", ")
+	// 由于移除了数据库配置，暂时简化音色切换功能
+	voiceDes := "默认音色"
 
 	InputSchema := ToolInputSchema{
 		Type: "object",
 		Properties: map[string]any{
 			"voice": map[string]any{
 				"type":        "string",
-				"description": "新的语音名称，音色描述中的第一部分",
+				"description": "新的语音名称",
 			},
 		},
 		Required: []string{"voice"},

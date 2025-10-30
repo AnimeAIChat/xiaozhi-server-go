@@ -3,18 +3,18 @@ package ota
 import (
 	"context"
 
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 
 	"github.com/gin-gonic/gin"
 )
 
 type DefaultOTAService struct {
 	UpdateURL string
-	config    *configs.Config
+	config    *config.Config
 }
 
 // NewDefaultOTAService 构造函数
-func NewDefaultOTAService(updateURL string, config *configs.Config) *DefaultOTAService {
+func NewDefaultOTAService(updateURL string, config *config.Config) *DefaultOTAService {
 	return &DefaultOTAService{
 		UpdateURL: updateURL,
 		config:    config,

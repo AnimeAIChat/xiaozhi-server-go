@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/internal/platform/config"
+	// "xiaozhi-server-go/src/configs/database" // TODO: Remove database dependency
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/internal/domain/config/types"
 
@@ -14,13 +14,13 @@ import (
 
 type DefaultAdminService struct {
 	logger *utils.Logger
-	config *configs.Config
+	config *config.Config
 	repo   types.Repository
 }
 
 // NewDefaultAdminService 构造函数
 func NewDefaultAdminService(
-	config *configs.Config,
+	config *config.Config,
 	logger *utils.Logger,
 ) (*DefaultAdminService, error) {
 	service := &DefaultAdminService{
@@ -87,21 +87,21 @@ type SystemConfig struct {
 // @Router /admin/system [get]
 func (s *DefaultAdminService) handleSystemGet(c *gin.Context) {
 	var config SystemConfig
-	config.SelectedASR = s.config.SelectedModule["ASR"]
-	config.SelectedTTS = s.config.SelectedModule["TTS"]
-	config.SelectedLLM = s.config.SelectedModule["LLM"]
-	config.SelectedVLLLM = s.config.SelectedModule["VLLLM"]
-	config.Prompt = s.config.DefaultPrompt
+	config.SelectedASR = s.config.Selected.ASR
+	config.SelectedTTS = s.config.Selected.TTS
+	config.SelectedLLM = s.config.Selected.LLM
+	config.SelectedVLLLM = s.config.Selected.VLLLM
+	config.Prompt = s.config.System.DefaultPrompt
 
 	var data map[string]interface{}
 	tmp, _ := json.Marshal(config)
 	json.Unmarshal(tmp, &data)
 
-	asrList, ttsList, llmList, vllmList := database.GetProviderNameList(database.AdminUserID)
-	data["asrList"] = asrList
-	data["llmList"] = llmList
-	data["ttsList"] = ttsList
-	data["vllmList"] = vllmList
+	// Database functionality removed - return empty lists
+	data["asrList"] = []string{}
+	data["llmList"] = []string{}
+	data["ttsList"] = []string{}
+	data["vllmList"] = []string{}
 
 	// fmt.Println("JSON字符串:", data)
 	respondSuccess(c, http.StatusOK, data, "System configuration retrieved successfully")
@@ -141,21 +141,17 @@ func (s *DefaultAdminService) handleSystemPost(c *gin.Context) {
 		return
 	}
 
-	s.config.SelectedModule["ASR"] = config.SelectedASR
-	s.config.SelectedModule["TTS"] = config.SelectedTTS
-	s.config.SelectedModule["LLM"] = config.SelectedLLM
-	s.config.SelectedModule["VLLM"] = config.SelectedVLLLM
-	s.config.DefaultPrompt = config.Prompt
+	s.config.Selected.ASR = config.SelectedASR
+	s.config.Selected.TTS = config.SelectedTTS
+	s.config.Selected.LLM = config.SelectedLLM
+	s.config.Selected.VLLLM = config.SelectedVLLLM
+	s.config.System.DefaultPrompt = config.Prompt
 
-	if s.repo != nil {
-		if err := s.repo.SaveConfig(s.config); err != nil {
-			s.logger.Error("保存系统配置失败: %v", err)
-			respondError(c, http.StatusInternalServerError, "保存系统配置失败", gin.H{"error": err.Error()})
-			return
-		}
-	} else {
-		// 回退到旧方法
-		s.config.SaveToDB(database.GetServerConfigDB())
-	}
-	respondSuccess(c, http.StatusOK, nil, "System configuration saved successfully")
+	// Database functionality removed - return error
+	respondError(c, http.StatusNotImplemented, "Database functionality removed", gin.H{"error": "Configuration persistence is not available"})
+}
+
+// handleSystemProvidersType 获取指定类型的提供商列表
+func (s *DefaultAdminService) handleSystemProvidersType(c *gin.Context) {
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }

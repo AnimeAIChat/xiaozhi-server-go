@@ -5,7 +5,7 @@ import (
 	"sync"
 	"xiaozhi-server-go/internal/domain/tts/inter"
 	"xiaozhi-server-go/src/core/providers/tts"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 )
 
 // Manager TTS管理器 - 基于 Eino 框架
@@ -13,12 +13,12 @@ type Manager struct {
 	mu     sync.RWMutex
 	tts    interface{} // Eino TTS component
 	config inter.TTSConfig
-	globalConfig *configs.Config // 全局配置
+	globalConfig *config.Config // 全局配置
 	provider inter.TTSProvider // 实际的TTS提供商
 }
 
 // NewManager 创建TTS管理器
-func NewManager(config inter.TTSConfig, globalConfig *configs.Config) *Manager {
+func NewManager(config inter.TTSConfig, globalConfig *config.Config) *Manager {
 	return &Manager{
 		config:       config,
 		globalConfig: globalConfig,
@@ -45,7 +45,7 @@ func (m *Manager) ToTTS(text string) (string, error) {
 }
 
 // ToTTSWithConfig 使用指定配置转换文本
-func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig, globalConfig *configs.Config) (string, error) {
+func (m *Manager) ToTTSWithConfig(text string, config inter.TTSConfig, globalConfig *config.Config) (string, error) {
 	// 创建TTS配置
 	ttsConfig := &tts.Config{
 		Type:            config.Provider,

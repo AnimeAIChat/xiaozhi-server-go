@@ -4,8 +4,7 @@ import (
 	"context"
 	"sync"
 	"time"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -13,12 +12,12 @@ import (
 type TransportManager struct {
 	transports map[string]Transport
 	logger     *utils.Logger
-	config     *configs.Config
+	config     *config.Config
 	mu         sync.RWMutex
 }
 
 // NewTransportManager 创建新的传输管理器
-func NewTransportManager(config *configs.Config, logger *utils.Logger) *TransportManager {
+func NewTransportManager(config *config.Config, logger *utils.Logger) *TransportManager {
 	return &TransportManager{
 		transports: make(map[string]Transport),
 		logger:     logger,
@@ -76,7 +75,8 @@ func (m *TransportManager) StartTicker(ctx context.Context) {
 				//m.logger.Info("当前活跃连接数: %d, 当前活跃会话数: %d", clientCnt, sessionCnt)
 				systemMemoryUse, _ := utils.GetSystemMemoryUsage()
 				systemCPUUse, _ := utils.GetSystemCPUUsage()
-				database.UpdateServerStatus(systemMemoryUse, systemCPUUse, clientCnt, sessionCnt)
+				// Database functionality removed - server status updates disabled
+				m.logger.Debug("Server status: CPU %.1f%%, Memory %.1f%%, Connections %d, Sessions %d", systemCPUUse, systemMemoryUse, clientCnt, sessionCnt)
 			}
 		}
 	}()

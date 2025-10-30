@@ -5,22 +5,21 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"net/http"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/internal/platform/config"
+	// "xiaozhi-server-go/src/configs/database" // DISABLED: Database functionality removed
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type DefaultUserService struct {
 	logger *utils.Logger
-	config *configs.Config
+	config *config.Config
 }
 
 // NewDefaultUserService 构造函数
 func NewDefaultUserService(
-	config *configs.Config,
+	config *config.Config,
 	logger *utils.Logger,
 ) (*DefaultUserService, error) {
 	service := &DefaultUserService{
@@ -72,24 +71,15 @@ func (s *DefaultUserService) Start(
 }
 
 func (s *DefaultUserService) handleSystemSummary(c *gin.Context) {
-	// 获取用户汇总信息
-	userID, _ := c.Get("user_id")
-	_, err := database.GetUserByID(database.GetDB(), userID.(uint))
-	if err != nil {
-		respondError(c, http.StatusNotFound, "用户不存在", nil)
-		return
-	}
-
-	data, _ := database.GetSystemSummary(database.GetDB())
-
+	// Database functionality removed - return mock data
 	respondSuccess(c, http.StatusOK, gin.H{
-		"totle_users":       data["total_users"],
-		"totle_agents":      data["total_agents"],
-		"totle_devices":     data["total_devices"],
-		"online_users":      data["online_devices"],
-		"session_devices":   data["session_devices"],
-		"system_memory_use": data["memory_usage"],
-		"system_cpu_use":    data["cpu_usage"],
+		"totle_users":       0,
+		"totle_agents":      0,
+		"totle_devices":     0,
+		"online_users":      0,
+		"session_devices":   0,
+		"system_memory_use": "0%",
+		"system_cpu_use":    "0%",
 	}, "获取系统汇总信息成功")
 }
 
@@ -129,58 +119,8 @@ type ChangePasswordRequest struct {
 // @Success 200 {object} map[string]interface{} "登录成功返回token和用户信息"
 // @Router /user/login [post]
 func (s *DefaultUserService) handleLogin(c *gin.Context) {
-	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
-		return
-	}
-
-	// 获取用户信息
-	user, err := database.GetUserByUsername(database.GetDB(), req.Username)
-	if err != nil || user == nil {
-		respondError(c, http.StatusUnauthorized, "用户名或密码错误", nil)
-		return
-	}
-
-	// 验证密码
-	if !s.verifyPassword(req.Password, user.Password) {
-		respondError(c, http.StatusUnauthorized, "用户名或密码错误", nil)
-		return
-	}
-
-	// 检查用户状态
-	if user.Status != 1 {
-		respondError(c, http.StatusUnauthorized, "账户已被禁用", nil)
-		return
-	}
-
-	// 生成JWT token
-	token, err := GenerateJWT(user.ID, user.Username)
-	if err != nil {
-		s.logger.Error("生成JWT失败: %v", err)
-		respondError(c, http.StatusInternalServerError, "登录失败", nil)
-		return
-	}
-
-	// 更新最后登录时间
-	database.UpdateUserLastLogin(database.GetDB(), user.ID)
-
-	s.logger.Info("用户登录成功: %s", req.Username)
-	role := user.Role
-	// 判断 如果时admin，则下发role字段
-	data := gin.H{
-		"token":    token,
-		"user_id":  user.ID,
-		"username": user.Username,
-		"email":    user.Email,
-	}
-
-	// 判断 如果是admin，则下发role字段
-	if role != "user" {
-		data["role"] = role
-	}
-
-	respondSuccess(c, http.StatusOK, data, "登录成功")
+	// Database functionality removed - return error
+	respondError(c, http.StatusNotImplemented, "Database functionality removed", gin.H{"error": "User authentication is not available"})
 }
 
 // handleLogout 用户登出
@@ -203,23 +143,8 @@ func (s *DefaultUserService) handleLogout(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "用户资料"
 // @Router /user/profile [get]
 func (s *DefaultUserService) handleGetProfile(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
-	user, err := database.GetUserByID(database.GetDB(), userID.(uint))
-	if err != nil || user == nil {
-		respondError(c, http.StatusNotFound, "用户不存在", nil)
-		return
-	}
-
-	respondSuccess(c, http.StatusOK, gin.H{
-		"user_id":    user.ID,
-		"username":   user.Username,
-		"nickname":   user.Nickname,
-		"head_img":   user.HeadImg,
-		"email":      user.Email,
-		"created_at": user.CreatedAt,
-		"updated_at": user.UpdatedAt,
-	}, "获取用户资料成功")
+	// Database functionality removed - return error
+	respondError(c, http.StatusNotImplemented, "Database functionality removed", gin.H{"error": "User profile is not available"})
 }
 
 // handleUpdateProfile 更新用户资料
@@ -232,56 +157,8 @@ func (s *DefaultUserService) handleGetProfile(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "更新后的用户资料"
 // @Router /user/profile [put]
 func (s *DefaultUserService) handleUpdateProfile(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
-	var updateData struct {
-		Nickname string `json:"nickname" binding:"omitempty,min=3,max=20"`
-		Email    string `json:"email" binding:"omitempty,email"`
-		HeadImg  string `json:"head_img" binding:"omitempty,url"`
-	}
-
-	if err := c.ShouldBindJSON(&updateData); err != nil {
-		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		user, err := database.GetUserByID(tx, userID.(uint))
-		if err != nil {
-			respondError(c, http.StatusNotFound, "用户不存在", nil)
-			return err
-		}
-		if updateData.Nickname != user.Nickname {
-			err := database.UpdateUserNickname(tx, userID.(uint), updateData.Nickname)
-			if err != nil {
-				respondError(c, http.StatusBadRequest, "更新用户昵称失败", gin.H{"error": err.Error()})
-				return err
-			}
-			user.Nickname = updateData.Nickname
-		}
-		if updateData.HeadImg != "" && updateData.HeadImg != user.HeadImg {
-			err := database.UpdateUserHeadImg(tx, userID.(uint), updateData.HeadImg)
-			if err != nil {
-				respondError(c, http.StatusBadRequest, "更新头像失败", gin.H{"error": err.Error()})
-				return err
-			}
-			user.HeadImg = updateData.HeadImg
-		}
-		if updateData.Email != user.Email {
-			err := database.UpdateUserEmail(tx, userID.(uint), updateData.Email)
-			if err != nil {
-				respondError(c, http.StatusBadRequest, "更新邮箱失败", gin.H{"error": err.Error()})
-				return err
-			}
-			user.Email = updateData.Email
-		}
-		respondSuccess(c, http.StatusOK, gin.H{
-			"user_id":  user.ID,
-			"nickname": user.Nickname,
-			"email":    user.Email,
-			"head_img": user.HeadImg,
-		}, "更新成功")
-		return nil
-	})
+	// Database functionality removed - return error
+	respondError(c, http.StatusNotImplemented, "Database functionality removed", gin.H{"error": "Profile update is not available"})
 }
 
 // handleChangePassword 修改密码
@@ -294,41 +171,8 @@ func (s *DefaultUserService) handleUpdateProfile(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "修改密码结果"
 // @Router /user/change-password [post]
 func (s *DefaultUserService) handleChangePassword(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
-	var req ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "请求参数错误", gin.H{"error": err.Error()})
-		return
-	}
-
-	// 获取用户信息验证旧密码
-	user, err := database.GetUserByID(database.GetDB(), userID.(uint))
-	if err != nil || user == nil {
-		respondError(c, http.StatusNotFound, "用户不存在", nil)
-		return
-	}
-
-	// 验证旧密码
-	if !s.verifyPassword(req.OldPassword, user.Password) {
-		s.logger.Error(
-			"用户修改密码失败: 原密码错误: %s, old:%s, req:%s",
-			user.Username,
-			user.Password,
-			req.OldPassword,
-		)
-		respondError(c, http.StatusBadRequest, "原密码错误", nil)
-		return
-	}
-
-	// 更新密码
-	hashedPassword := s.hashPassword(req.NewPassword)
-	if err := database.UpdateUserPassword(database.GetDB(), userID.(uint), hashedPassword); err != nil {
-		respondError(c, http.StatusInternalServerError, "密码修改失败", gin.H{"error": err.Error()})
-		return
-	}
-
-	respondSuccess(c, http.StatusOK, nil, "密码修改成功")
+	// Database functionality removed - return error
+	respondError(c, http.StatusNotImplemented, "Database functionality removed", gin.H{"error": "Password change is not available"})
 }
 
 // 密码哈希

@@ -3,7 +3,7 @@ package webapi
 import (
 	"context"
 	"net/http"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +11,11 @@ import (
 
 type DefaultCfgService struct {
 	logger *utils.Logger
-	config *configs.Config
+	config *config.Config
 }
 
 // NewDefaultCfgService 构造函数
-func NewDefaultCfgService(config *configs.Config, logger *utils.Logger) (*DefaultCfgService, error) {
+func NewDefaultCfgService(config *config.Config, logger *utils.Logger) (*DefaultCfgService, error) {
 	service := &DefaultCfgService{
 		logger: logger,
 		config: config,

@@ -10,14 +10,14 @@ import (
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/observability"
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 // Options configures the HTTP router builder.
 type Options struct {
-	Config         *configs.Config
+	Config         *config.Config
 	Logger         *utils.Logger
 	AuthMiddleware gin.HandlerFunc
 	StaticRoot     string
@@ -40,7 +40,7 @@ func Build(opts Options) (*Router, error) {
 		logger = utils.DefaultLogger
 	}
 
-	if opts.Config.Log.LogLevel == "debug" {
+	if opts.Config.Log.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/mcp"
 	coreproviders "xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
@@ -78,12 +78,12 @@ type Manager struct {
 }
 
 // NewManager initialises the provider pools declared in the supplied config.
-func NewManager(cfg *configs.Config, logger *utils.Logger) (*Manager, error) {
+func NewManager(cfg *config.Config, logger *utils.Logger) (*Manager, error) {
 	return NewManagerWithMCP(cfg, logger, nil)
 }
 
 // NewManagerWithMCP initialises the provider pools with an optional pre-initialised MCP manager.
-func NewManagerWithMCP(cfg *configs.Config, logger *utils.Logger, preInitMCPManager *mcp.Manager) (*Manager, error) {
+func NewManagerWithMCP(cfg *config.Config, logger *utils.Logger, preInitMCPManager *mcp.Manager) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("providers manager requires config")
 	}
@@ -93,8 +93,17 @@ func NewManagerWithMCP(cfg *configs.Config, logger *utils.Logger, preInitMCPMana
 	}
 
 	modules := map[string]string{}
-	if cfg.SelectedModule != nil {
-		modules = maps.Clone(cfg.SelectedModule)
+	if cfg.Selected.ASR != "" {
+		modules["ASR"] = cfg.Selected.ASR
+	}
+	if cfg.Selected.LLM != "" {
+		modules["LLM"] = cfg.Selected.LLM
+	}
+	if cfg.Selected.TTS != "" {
+		modules["TTS"] = cfg.Selected.TTS
+	}
+	if cfg.Selected.VLLLM != "" {
+		modules["VLLLM"] = cfg.Selected.VLLLM
 	}
 
 	mgr := &Manager{
@@ -480,7 +489,7 @@ func (p *providerPool[T]) stats() map[string]int64 {
 }
 
 func newASRPool(
-	cfg *configs.Config,
+	cfg *config.Config,
 	modules map[string]string,
 	logger *utils.Logger,
 ) (*providerPool[coreproviders.ASRProvider], error) {
@@ -494,13 +503,18 @@ func newASRPool(
 		return nil, fmt.Errorf("selected ASR provider %q is not configured", name)
 	}
 
-	providerType, _ := asrCfg["type"].(string)
+	asrCfgMap, ok := asrCfg.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("ASR provider %q configuration is not a map", name)
+	}
+
+	providerType, _ := asrCfgMap["type"].(string)
 	if providerType == "" {
 		providerType = name
 	}
 
 	create := func(ctx context.Context) (coreproviders.ASRProvider, error) {
-		data := maps.Clone(asrCfg)
+		data := maps.Clone(asrCfgMap)
 		provider, err := asr.Create(
 			providerType,
 			&asr.Config{
@@ -508,7 +522,7 @@ func newASRPool(
 				Type: providerType,
 				Data: data,
 			},
-			cfg.DeleteAudio,
+			cfg.Audio.DeleteAudio,
 			logger,
 		)
 		if err != nil {
@@ -539,7 +553,7 @@ func newASRPool(
 }
 
 func newLLMPool(
-	cfg *configs.Config,
+	cfg *config.Config,
 	modules map[string]string,
 	logger *utils.Logger,
 ) (*providerPool[coreproviders.LLMProvider], error) {
@@ -604,7 +618,7 @@ func newLLMPool(
 }
 
 func newTTSPool(
-	cfg *configs.Config,
+	cfg *config.Config,
 	modules map[string]string,
 	logger *utils.Logger,
 ) (*providerPool[coreproviders.TTSProvider], error) {
@@ -632,7 +646,7 @@ func newTTSPool(
 				Cluster:         ttsCfg.Cluster,
 				SupportedVoices: ttsCfg.SupportedVoices,
 			},
-			cfg.DeleteAudio,
+			cfg.Audio.DeleteAudio,
 		)
 		if err != nil {
 			return nil, err
@@ -658,7 +672,7 @@ func newTTSPool(
 }
 
 func newVLLLMPool(
-	cfg *configs.Config,
+	cfg *config.Config,
 	modules map[string]string,
 	logger *utils.Logger,
 ) (*providerPool[*vlllm.Provider], error) {
@@ -696,7 +710,7 @@ func newVLLLMPool(
 }
 
 func newMCPPool(
-	cfg *configs.Config,
+	cfg *config.Config,
 	logger *utils.Logger,
 	preInitMCPManager *mcp.Manager,
 ) (*providerPool[*domainmcp.Manager], error) {

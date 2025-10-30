@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/httpsvr/vision"
@@ -24,10 +23,9 @@ func (h *ConnectionHandler) initMCPResultHandlers() {
 	}
 }
 
-// mcp_handler_switch_agent 处理切换智能体的请求，参数可以是 {"agent_id": <number>} 或 {"agent_id": "123"} 或 {"agent_name": "名字"}
+// mcp_handler_switch_agent 处理切换智能体的请求，参数可以是 {"agent_id": <number>} 或 {"agent_id": "123"}
 func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 	var newAgentID uint = 0
-	var agentName string
 
 	switch v := args.(type) {
 	case map[string]interface{}:
@@ -43,17 +41,10 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 				}
 			}
 		}
-		if namev, ok := v["agent_name"]; ok {
-			if s, ok2 := namev.(string); ok2 {
-				agentName = s
-			}
-		}
 	case string:
-		// 如果直接传入字符串，尝试解析为数字ID，否则作为名字
+		// 如果直接传入字符串，尝试解析为数字ID
 		if n, err := strconv.Atoi(v); err == nil {
 			newAgentID = uint(n)
-		} else {
-			agentName = v
 		}
 	case float64:
 		newAgentID = uint(v)
@@ -70,44 +61,10 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 		return
 	}
 
-	agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
-	// 查找agent
-	if err != nil {
-		h.logger.Error("mcp_handler_switch_agent: ListAgentsByUser failed: %v", err)
-		h.SystemSpeak("切换智能体失败：无法获取智能体列表")
-		return
-	}
-	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
-	if err != nil || device == nil {
-		h.logger.Error("mcp_handler_switch_agent: FindDeviceByID failed: %v", err)
-		h.SystemSpeak("切换智能体失败：无法获取设备信息")
-		return
-	}
-
-	for _, ag := range agents {
-		if ag.ID == newAgentID || (agentName != "" && ag.Name == agentName) {
-			// 找到对应的agent
-			h.logger.Info("mcp_handler_switch_agent: found agent %d, name %s", ag.ID, ag.Name)
-			h.agentID = ag.ID
-			device.AgentID = &ag.ID
-			database.UpdateDevice(database.GetDB(), device) // 更新设备的agent_id
-			agent, prompt := h.InitWithAgent()
-			// 更新对话系统提示并保留最近上下文
-			h.dialogueManager.SetSystemMessage(prompt)
-			h.dialogueManager.KeepRecentMessages(5)
-			// 重新检查并切换提供者
-			h.checkTTSProvider(agent, h.config)
-			h.checkLLMProvider(agent, h.config)
-
-			if agent != nil && agent.Name != "" {
-				h.SystemSpeak("已切换到 " + agent.Name)
-			} else {
-				h.SystemSpeak("已切换到新的智能体")
-			}
-			return
-		}
-	}
-	h.SystemSpeak("没有找到对应的智能体")
+	// Database functionality removed - cannot switch agents
+	h.logger.Info("Database functionality removed - agent switching not available")
+	h.SystemSpeak("数据库功能已移除，无法切换智能体")
+	return
 }
 
 func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) string {

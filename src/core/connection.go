@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
-	"gorm.io/gorm"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	domainimage "xiaozhi-server-go/internal/domain/image"
 	domainllm "xiaozhi-server-go/internal/domain/llm"
@@ -22,8 +21,7 @@ import (
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	domaintts "xiaozhi-server-go/internal/domain/tts"
 	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/pool"
@@ -60,7 +58,7 @@ type llmConfigGetter interface {
 type ConnectionHandler struct {
 	// 确保实现 AsrEventListener 接口
 	_                providers.AsrEventListener
-	config           *configs.Config
+	config           *config.Config
 	logger           *utils.Logger
 	conn             Connection
 	closeOnce        sync.Once
@@ -156,7 +154,7 @@ type ConnectionHandler struct {
 
 // NewConnectionHandler 创建新的连接处理器
 func NewConnectionHandler(
-	config *configs.Config,
+	config *config.Config,
 	providerSet *pool.ProviderSet,
 	logger *utils.Logger,
 	req *http.Request,
@@ -251,64 +249,19 @@ func NewConnectionHandler(
 }
 
 func (h *ConnectionHandler) InitWithAgent() (*models.Agent, string) {
-	// 根据agentID获取Agent
-	var agent *models.Agent = nil
-	var err error
-	prompt := h.config.DefaultPrompt
-	if h.agentID != 0 {
-		// 此处不需要事务
-		agent, err = database.GetAgentByID(database.GetDB(), h.agentID)
-		if err != nil {
-			h.LogError(fmt.Sprintf("获取Agent失败: %v", err))
-		}
-		agentName := agent.Name
-		prompt = agent.Prompt // 使用Agent的Prompt
-		if agentName != "" {
-			if strings.Contains(prompt, "{{assistant_name}}") {
-				prompt = strings.Replace(prompt, "{{assistant_name}}", agentName, -1)
-			} else {
-				prompt += "\n\n助手名称: " + agentName
-			}
-		}
-
-		if agent.Language != "" && agent.Language != "普通话" && agent.Language != "中文" {
-			prompt += "\n\n使用 " + agent.Language + " 回答用户的问题。"
-		}
-
-		if agent.EnabledTools != "" {
-			h.enabledTools = strings.Split(agent.EnabledTools, ",")
-		} else {
-			h.enabledTools = []string{} // 没有则不过滤
-		}
-
-		h.LogInfo(fmt.Sprintf("允许的工具: %v", h.enabledTools))
-		h.LogInfo(fmt.Sprintf("使用Agent %d 的Prompt: %s", h.agentID, prompt))
-
-	}
-	return agent, prompt
+	// Database functionality removed - return default prompt
+	prompt := h.config.System.DefaultPrompt
+	h.LogInfo("Database functionality removed - using default agent configuration")
+	return nil, prompt
 }
 
-func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *configs.Config) {
+func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config.Config) {
 	h.ttsProviderName = "default" // 默认TTS提供者名称
 	h.voiceName = "default"
 	if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
 
-		userID := database.AdminUserID
-		alltts, err := database.GetProviderByTypeInternal("TTS", userID, false)
-		if err == nil {
-			for name, data := range alltts {
-
-				cfg := configs.TTSConfig{}
-				if err := json.Unmarshal([]byte(data), &cfg); err != nil {
-					h.LogError(fmt.Sprintf("反序列化用户 %d 的 TTS 提供者 %s 配置失败: %v", userID, name, err))
-					continue
-				}
-				// h.LogInfo(fmt.Sprintf("用户 %d 的 TTS 提供者: %s, 配置: %v", userID, name, cfg))
-				config.TTS[name] = cfg // 更新配置
-			}
-		} else {
-			h.LogError(fmt.Sprintf("获取用户 %d 的 TTS 提供者失败: %v", userID, err))
-		}
+		// Database functionality removed - use configured TTS provider
+		h.LogInfo("Database functionality removed - using configured TTS provider")
 
 		h.ttsProviderName = getter.Config().Type
 		// 从agent配置中获取
@@ -316,42 +269,7 @@ func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config
 		if agent != nil && agent.Voice != "" {
 			err, newVoice := h.providers.tts.SetVoice(agent.Voice) // 设置TTS语音
 			if err != nil {
-				// 检查是否是其他tts支持的音色
-				bChangeTTSSucc := false
-				for name, cfg := range config.TTS {
-					if bSupport, newVoice2, _ := tts.IsSupportedVoice(agent.Voice, cfg.SupportedVoices); bSupport {
-						ttsCfg := &tts.Config{
-							Name:            name,
-							Type:            cfg.Type,
-							OutputDir:       cfg.OutputDir,
-							Voice:           newVoice2,
-							Format:          cfg.Format,
-							SampleRate:      h.serverAudioSampleRate,
-							AppID:           cfg.AppID,
-							Token:           cfg.Token,
-							Cluster:         cfg.Cluster,
-							SupportedVoices: cfg.SupportedVoices,
-						}
-						newVoice = newVoice2
-						newtts, err := tts.Create(cfg.Type, ttsCfg, false)
-						if err == nil {
-							h.providers.tts = newtts
-							bChangeTTSSucc = true
-							h.ttsProviderName = cfg.Type
-							h.LogInfo(fmt.Sprintf("已切换TTS提供者到: %s, 语音名称: %s, v:%s", name, agent.Voice, newVoice))
-							break
-						} else {
-							h.LogError(fmt.Sprintf("创建TTS提供者失败: %v", err))
-						}
-					} else {
-						h.LogInfo(fmt.Sprintf("Agent %d 的语音 %s 在 TTS 提供者 %s 中不受支持", agent.ID, agent.Voice, name))
-					}
-				}
-				if !bChangeTTSSucc {
-					h.LogError(fmt.Sprintf("设置TTS语音为agent配置失败: %v", err))
-				} else {
-					h.voiceName = newVoice
-				}
+				h.LogError(fmt.Sprintf("设置TTS语音为agent配置失败: %v", err))
 			} else {
 				h.voiceName = newVoice
 			}
@@ -362,7 +280,7 @@ func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config
 
 }
 
-func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *configs.Config) {
+func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config.Config) {
 	if agent == nil {
 		return
 	}
@@ -386,23 +304,8 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 	}
 	// 判断handler.providers.llm 类型是否和 agent.LLM 相同
 	if getter, ok := h.providers.llm.(llmConfigGetter); ok {
-		// 从数据库加载用户私有的LLM配置
-		userID := database.AdminUserID
-		llms, err := database.GetProviderByTypeInternal("LLM", userID, false)
-		if err == nil {
-			for name, data := range llms {
-
-				cfg := configs.LLMConfig{}
-				if err := json.Unmarshal([]byte(data), &cfg); err != nil {
-					h.LogError(fmt.Sprintf("反序列化用户 %d 的 LLM 提供者 %s 配置失败: %v", userID, name, err))
-					continue
-				}
-				//h.LogInfo(fmt.Sprintf("用户 %d 的 LLM 提供者: %s, 配置: %v", userID, name, cfg))
-				config.LLM[name] = cfg // 更新配置
-			}
-		} else {
-			h.LogError(fmt.Sprintf("获取用户 %d 的 LLM 提供者失败: %v", userID, err))
-		}
+		// Database functionality removed - use configured LLM provider
+		h.LogInfo("Database functionality removed - using configured LLM provider")
 
 		llmName := getter.Config().Name
 		if llmName != agentLLMName {
@@ -454,33 +357,10 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 		h.LogError("设备ID未设置，无法检查设备绑定状态")
 		return
 	}
-	device, err := database.FindDeviceByID(database.GetDB(), h.deviceID) // 确保设备存在
-	if err == gorm.ErrRecordNotFound {
-		h.LogError(fmt.Sprintf("查找设备失败: %v", err))
-		return
-	}
 
-	if device.AgentID != nil {
-		h.agentID = *device.AgentID // 获取设备绑定的AgentID
-	} else {
-		// 查询当前agent列表，绑定到第一个agent
-		agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
-		if err != nil {
-			h.LogError(fmt.Sprintf("查询智能体失败: %v", err))
-			return
-		}
-		if len(agents) > 0 {
-			h.agentID = agents[0].ID
-			device.AgentID = &h.agentID
-			err = database.UpdateDevice(database.GetDB(), device)
-			if err != nil {
-				h.LogError(fmt.Sprintf("更新设备绑定的智能体失败: %v", err))
-				return
-			}
-		} else {
-			h.agentID = 0 // 未绑定则为0
-		}
-	}
+	// Database functionality removed - use default agent
+	h.LogInfo("Database functionality removed - using default agent configuration")
+	h.agentID = 0 // 未绑定则为0
 
 	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))
 }
@@ -769,7 +649,7 @@ func (h *ConnectionHandler) clientAbortChat() error {
 
 func (h *ConnectionHandler) QuitIntent(text string) bool {
 	//CMD_exit 读取配置中的退出命令
-	exitCommands := h.config.CMDExit
+	exitCommands := h.config.System.CMDExit
 	if exitCommands == nil {
 		return false
 	}
@@ -1308,7 +1188,7 @@ func (h *ConnectionHandler) stopServerSpeak() {
 }
 
 func (h *ConnectionHandler) deleteAudioFileIfNeeded(filepath string, reason string) {
-	if !h.config.DeleteAudio || filepath == "" {
+	if !h.config.Audio.DeleteAudio || filepath == "" {
 		return
 	}
 
@@ -1608,9 +1488,9 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 }
 
 // initManagers 初始化新架构的 LLM 和 TTS Manager
-func (h *ConnectionHandler) initManagers(config *configs.Config) {
+func (h *ConnectionHandler) initManagers(config *config.Config) {
 	// 初始化 LLM Manager
-	llmName := config.SelectedModule["LLM"]
+	llmName := config.Selected.LLM
 	if llmName != "" {
 		if llmCfg, ok := config.LLM[llmName]; ok {
 			llmConfig := domainllminter.LLMConfig{
@@ -1630,7 +1510,7 @@ func (h *ConnectionHandler) initManagers(config *configs.Config) {
 	}
 
 	// 初始化 TTS Manager
-	ttsName := config.SelectedModule["TTS"]
+	ttsName := config.Selected.TTS
 	if ttsName != "" {
 		if ttsCfg, ok := config.TTS[ttsName]; ok {
 			ttsConfig := domainttsinter.TTSConfig{

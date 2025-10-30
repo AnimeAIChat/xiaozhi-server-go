@@ -1,10 +1,11 @@
 package webapi
 
 import (
+	"fmt"
 	"net/http"
-	"strconv"
-	"time"
-	"xiaozhi-server-go/src/configs/database"
+	// "strconv"
+	// "time"
+	// "xiaozhi-server-go/src/configs/database" // TODO: Remove database dependency
 	"xiaozhi-server-go/src/models"
 
 	"github.com/gin-gonic/gin"
@@ -34,33 +35,38 @@ type AgentCreateRequest struct {
 // @Success 200 {object} models.Agent "创建成功返回Agent信息"
 // @Router /user/agent/create [post]
 func (s *DefaultUserService) handleAgentCreate(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	// userID := c.GetUint("user_id")
 	var req AgentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, "参数校验失败", gin.H{"error": err.Error()})
 		return
 	}
-	agent := &models.Agent{
-		Prompt:     req.Prompt,
-		Name:       req.Name,
-		LLM:        req.LLM,
-		Language:   req.Language,
-		Voice:      req.Voice,
-		VoiceName:  req.VoiceName,
-		ASRSpeed:   req.ASRSpeed,
-		SpeakSpeed: req.SpeakSpeed,
-		Tone:       req.Tone,
-		UserID:     userID,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-	}
 	WithTx(c, func(tx *gorm.DB) error {
+		// TODO: Database functionality removed - need to implement new storage mechanism
+		respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
+		return fmt.Errorf("database functionality removed")
+		/*
+		agent := &models.Agent{
+			Prompt:     req.Prompt,
+			Name:       req.Name,
+			LLM:        req.LLM,
+			Language:   req.Language,
+			Voice:      req.Voice,
+			VoiceName:  req.VoiceName,
+			ASRSpeed:   req.ASRSpeed,
+			SpeakSpeed: req.SpeakSpeed,
+			Tone:       req.Tone,
+			UserID:     userID,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
+		}
 		if err := database.CreateAgent(tx, agent); err != nil {
 			respondError(c, http.StatusInternalServerError, "创建智能体失败", gin.H{"error": err.Error()})
 			return err
 		}
 		respondSuccess(c, http.StatusOK, agent, "创建智能体成功")
 		return nil
+		*/
 	})
 }
 
@@ -78,8 +84,12 @@ type AgentWithDeviceIDs struct {
 // @Success 200 {object} []AgentWithDeviceIDs "Agent列表"
 // @Router /user/agent/list [get]
 func (s *DefaultUserService) handleAgentList(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	// userID := c.GetUint("user_id")
 	WithTx(c, func(tx *gorm.DB) error {
+		// TODO: Database functionality removed - need to implement new storage mechanism
+		respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
+		return fmt.Errorf("database functionality removed")
+		/*
 		agents, err := database.ListAgentsByUser(tx, userID)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, "获取智能体列表失败", gin.H{"error": err.Error()})
@@ -98,185 +108,30 @@ func (s *DefaultUserService) handleAgentList(c *gin.Context) {
 		}
 		respondSuccess(c, http.StatusOK, result, "获取智能体列表成功")
 		return nil
+		*/
 	})
 }
 
-// handleAgentGet 获取单个Agent
-// @Summary 获取指定ID的Agent
-// @Description 根据ID获取Agent详情
-// @Tags Agent
-// @Produce json
-// @Param id path int true "Agent ID"
-// @Success 200 {object} models.Agent "Agent信息"
-// @Router /user/agent/{id} [get]
 func (s *DefaultUserService) handleAgentGet(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		respondError(c, http.StatusBadRequest, "Agent ID 非法", gin.H{"error": "invalid id"})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		agent, err := database.GetAgentByID(tx, uint(id))
-		if err != nil {
-			respondError(c, http.StatusNotFound, "未找到对应Agent", gin.H{"error": "agent not found"})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, agent, "获取Agent详情成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }
 
-// handleAgentUpdate 更新Agent
-// @Summary 更新指定ID的Agent
-// @Description 根据ID更新Agent信息
-// @Tags Agent
-// @Accept json
-// @Produce json
-// @Param id path int true "Agent ID"
-// @Param data body AgentCreateRequest true "Agent更新参数"
-// @Success 200 {object} models.Agent "更新后的Agent信息"
-// @Router /user/agent/{id} [put]
 func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		respondError(c, http.StatusBadRequest, "Agent ID 非法", gin.H{"error": "invalid id"})
-		return
-	}
-	var req AgentCreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "参数校验失败", gin.H{"error": err.Error()})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		agent, err := database.GetAgentByID(tx, uint(id))
-		if err != nil {
-			respondError(c, http.StatusNotFound, "未找到对应Agent", gin.H{"error": "agent not found"})
-			return err
-		}
-
-		agent.Prompt = req.Prompt
-		agent.Name = req.Name
-		agent.LLM = req.LLM
-		agent.Language = req.Language
-		agent.Voice = req.Voice
-		agent.VoiceName = req.VoiceName
-		agent.ASRSpeed = req.ASRSpeed
-		agent.SpeakSpeed = req.SpeakSpeed
-		agent.Tone = req.Tone
-		agent.UpdatedAt = time.Now() // 更新修改时间
-		if agent.CreatedAt.IsZero() {
-			agent.CreatedAt = time.Now() // 如果没有设置创建时间，则设置为当前时间
-		}
-
-		if err := database.UpdateAgent(tx, agent); err != nil {
-			respondError(c, http.StatusInternalServerError, "更新智能体失败", gin.H{"error": err.Error()})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, agent, "更新智能体成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }
 
-// handleAgentDelete 删除Agent
-// @Summary 删除指定ID的Agent
-// @Description 根据ID删除Agent
-// @Tags Agent
-// @Produce json
-// @Param id path int true "Agent ID"
-// @Success 200 {object} map[string]interface{} "删除结果"
-// @Router /user/agent/{id} [delete]
 func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		s.logger.Error("无效的Agent ID: %v", err)
-		respondError(c, http.StatusBadRequest, "Agent ID 非法", gin.H{"error": "invalid id"})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		if err := database.DeleteAgent(tx, uint(id), userID); err != nil {
-			s.logger.Error("删除Agent失败: %v", err)
-			respondError(c, http.StatusBadRequest, "删除智能体失败", gin.H{"error": err.Error()})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, nil, "删除智能体成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }
 
-// handleAgentHistoryDialogList 获取Agent对话记录列表
-// @Summary 获取Agent对话记录列表
-// @Description 获取指定Agent的对话记录列表
-// @Tags Agent
-// @Produce json
-// @Param id path int true "Agent ID"
-// @Success 200 {object} []models.AgentDialog "对话记录列表"
-// @Router /user/agent/history_dialog_list/{id} [post]
 func (s *DefaultUserService) handleAgentHistoryDialogList(c *gin.Context) {
-	agentID := c.Param("id")
-	id, err := strconv.Atoi(agentID)
-	if err != nil {
-		respondError(c, http.StatusBadRequest, "Agent ID 非法", gin.H{"error": "invalid agent id"})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		dialogs, err := database.GetAgentDialogsWithoutDetailByID(tx, uint(id))
-		if err != nil {
-			respondError(c, http.StatusInternalServerError, "获取对话记录失败", gin.H{"error": err.Error()})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, dialogs, "获取对话记录成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }
 
-// handleAgentGetHistoryDialog 获取Agent的单条对话记录
-// @Summary 获取Agent的单条对话记录
-// @Description 根据对话ID获取Agent的单条对话记录
-// @Tags Agent
-// @Produce json
-// @Param dialog_id path int true "对话ID"
-// @Success 200 {object} models.AgentDialog "对话记录"
-// @Router /user/agent/history_dialog/{dialog_id} [get]
 func (s *DefaultUserService) handleAgentGetHistoryDialog(c *gin.Context) {
-	dialogID := c.Param("dialog_id")
-	id, err := strconv.Atoi(dialogID)
-	if err != nil {
-		respondError(c, http.StatusBadRequest, "对话ID 非法", gin.H{"error": "invalid dialog id"})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		dialog, err := database.GetAgentDialogByID(tx, uint(id))
-		if err != nil {
-			respondError(c, http.StatusNotFound, "未找到对话记录", gin.H{"error": "dialog not found"})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, dialog, "获取对话记录成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }
 
-// handleAgentDeleteHistoryDialog 删除Agent的单条对话记录
-// @Summary 删除Agent的单条对话记录
-// @Description 根据对话ID删除Agent的单条对话记录
-// @Tags Agent
-// @Produce json
-// @Param dialog_id path int true "对话ID"
-// @Success 200 {object} map[string]interface{} "删除结果"
-// @Router /user/agent/history_dialog/{dialog_id} [delete]
 func (s *DefaultUserService) handleAgentDeleteHistoryDialog(c *gin.Context) {
-	dialogID := c.Param("dialog_id")
-	id, err := strconv.Atoi(dialogID)
-	if err != nil {
-		respondError(c, http.StatusBadRequest, "对话ID 非法", gin.H{"error": "invalid dialog id"})
-		return
-	}
-	WithTx(c, func(tx *gorm.DB) error {
-		if err := database.DeleteAgentDialogByID(tx, uint(id)); err != nil {
-			respondError(c, http.StatusNotFound, "未找到对话记录", gin.H{"error": "dialog not found"})
-			return err
-		}
-		respondSuccess(c, http.StatusOK, nil, "删除对话记录成功")
-		return nil
-	})
+	respondError(c, http.StatusNotImplemented, "数据库功能已移除", gin.H{"error": "database functionality removed"})
 }

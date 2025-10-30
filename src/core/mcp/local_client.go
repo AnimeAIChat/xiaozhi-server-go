@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -18,10 +18,10 @@ type LocalClient struct {
 	ctx     context.Context
 	logger  *utils.Logger
 	handler map[string]HandlerFunc
-	cfg     *configs.Config
+	cfg     *config.Config
 }
 
-func NewLocalClient(logger *utils.Logger, cfg *configs.Config) (*LocalClient, error) {
+func NewLocalClient(logger *utils.Logger, cfg *config.Config) (*LocalClient, error) {
 	c := &LocalClient{
 		tools:   make([]Tool, 0),
 		handler: make(map[string]HandlerFunc),

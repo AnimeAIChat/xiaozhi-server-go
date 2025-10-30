@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/google/uuid"
@@ -19,7 +19,7 @@ import (
 
 // ImageProcessor 图片处理器
 type ImageProcessor struct {
-	config     *configs.VLLMConfig
+	config     *config.VLLLMConfig
 	validator  *ImageSecurityValidator
 	logger     *utils.Logger
 	tempDir    string
@@ -28,7 +28,7 @@ type ImageProcessor struct {
 }
 
 // NewImageProcessor 创建新的图片处理器
-func NewImageProcessor(config *configs.VLLMConfig, logger *utils.Logger) (*ImageProcessor, error) {
+func NewImageProcessor(config *config.VLLLMConfig, logger *utils.Logger) (*ImageProcessor, error) {
 	// 创建临时目录
 	tempDir := filepath.Join("tmp", "images")
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
