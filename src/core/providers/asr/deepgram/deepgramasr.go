@@ -193,6 +193,11 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 			break
 		}
 
+		// 检查是否是401认证错误，如果是则直接返回配置错误提示
+		if resp != nil && resp.StatusCode == 401 {
+			return fmt.Errorf("ASR配置错误: API密钥无效(401认证失败)，请检查配置文件中的api_key")
+		}
+
 		if i < maxRetries {
 			backoffTime := time.Duration(500*(i+1)) * time.Millisecond
 			p.logger.Debug("WebSocket connection failed (attempt %d/%d): %v, retrying in %v",
