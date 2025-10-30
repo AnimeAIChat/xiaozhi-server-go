@@ -14,6 +14,10 @@ func DefaultConfig() *Config {
 					Expiry: 24 * 60 * 60 * 1000000000, // 24 hours in nanoseconds
 				},
 			},
+			Device: DeviceRegistrationConfig{
+				RequireActivationCode: false, // 默认不需要激活码
+				DefaultAdminUserID:    1,     // 默认管理员用户ID
+			},
 		},
 		Log: LogConfig{
 			Level: "INFO",
