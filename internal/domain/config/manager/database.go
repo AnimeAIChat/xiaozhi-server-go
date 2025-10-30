@@ -197,7 +197,7 @@ func (r *DatabaseRepository) loadConfigFromDB() (*config.Config, error) {
 		return nil, err
 	}
 
-	fmt.Printf("DEBUG: Unmarshaled config ASR field: %v\n", cfg.ASR)
+	// fmt.Printf("DEBUG: Unmarshaled config ASR field: %v\n", cfg.ASR)
 
 	return &cfg, nil
 }
