@@ -60,12 +60,12 @@ jobs:
       - name: Build & compress Windows binaries
         run: |
           go mod tidy
-          cd src
+          swag init -g main.go -d cmd/xiaozhi-server,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models -o src/docs --parseDependency=false --parseGoList=false || echo "swag init failed, continuing..."
           go build -v \
             -ldflags "-s -w -extldflags '-static'" \
-            -o ../windows-amd64-server.exe
-          cp ../windows-amd64-server.exe ../windows-amd64-server-upx.exe
-          upx --lzma ../windows-amd64-server-upx.exe
+            -o windows-amd64-server.exe ./cmd/xiaozhi-server
+          cp windows-amd64-server.exe windows-amd64-server-upx.exe
+          upx --lzma windows-amd64-server-upx.exe
 
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
@@ -104,13 +104,14 @@ jobs:
               cd opus-${OPUS_VERSION} && \
               ./configure --enable-static --disable-shared --disable-doc --disable-extra-programs && \
               make -j$(nproc) && make install && \
-              cd /src && go mod tidy && cd src && \
+              cd /src && go mod tidy && \
+              swag init -g main.go -d cmd/xiaozhi-server,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models -o src/docs --parseDependency=false --parseGoList=false || echo 'swag init failed, continuing...' && \
               CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.arch }} \
                 go build -v -ldflags '-s -w -extldflags \"-static\"' \
-                -o ../linux-${{ matrix.arch }}-server && \
+                -o linux-${{ matrix.arch }}-server ./cmd/xiaozhi-server && \
               # copy original binary before compression
-              cp ../linux-${{ matrix.arch }}-server ../linux-${{ matrix.arch }}-server-upx && \
-              upx --lzma ../linux-${{ matrix.arch }}-server-upx\
+              cp linux-${{ matrix.arch }}-server linux-${{ matrix.arch }}-server-upx && \
+              upx --lzma linux-${{ matrix.arch }}-server-upx\
             "
 
       - name: Upload Linux binaries
@@ -210,7 +211,8 @@ jobs:
 
       - name: Build Go binary for Android
         run: |
-          cd src && go build -v -ldflags="-s -w" -o ../android-${{ matrix.arch }}-server
+          swag init -g main.go -d cmd/xiaozhi-server,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models -o src/docs --parseDependency=false --parseGoList=false || echo "swag init failed, continuing..."
+          go build -v -ldflags="-s -w" -o android-${{ matrix.arch }}-server ./cmd/xiaozhi-server
 
       - name: Upload Android binary
         uses: actions/upload-artifact@v4
