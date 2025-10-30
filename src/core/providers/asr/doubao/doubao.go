@@ -132,7 +132,7 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, sess
 		chunkDuration: 200, // 固定使用200ms分片
 		connectID:     connectID,
 		logger:        logger, // 使用简单的logger
-		session:       session, // 添加 session
+		session:       session, // session 可以为 nil
 
 		// 默认配置
 		modelName:     "bigmodel",
@@ -450,6 +450,12 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 		"X-Api-Resource-Id": {"volc.bigasr.sauc.duration"},
 		"X-Api-Connect-Id":  {p.connectID},
 	}
+
+	// 添加日志记录请求头信息，用于调试认证问题
+	p.logger.InfoTag("ASR", "豆包ASR请求头信息: appID=%s, accessToken=%s..., connectID=%s", 
+		p.appID, 
+		p.accessToken[:min(10, len(p.accessToken))]+"...", // 只显示前10个字符
+		p.connectID)
 
 	// 重试机制
 	var conn *websocket.Conn
@@ -801,9 +807,6 @@ func (h *emptySessionHandler) GetSessionID() string { return "empty-session" }
 func init() {
 	// 注册豆包ASR提供者
 	asr.Register("doubao", func(config *asr.Config, deleteFile bool, logger *utils.Logger) (asr.Provider, error) {
-		handler := &emptySessionHandler{} // 使用占位实现
-		conn := &ws.Connection{}         // 使用空的 Connection 实例
-		session := ws.NewSession(context.Background(), handler, conn, logger)
-		return NewProvider(config, deleteFile, logger, session)
+		return NewProvider(config, deleteFile, logger, nil)
 	})
 }

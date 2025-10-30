@@ -14,6 +14,7 @@ import (
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
+	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/eventbus"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
@@ -92,26 +93,6 @@ type appState struct {
 	observabilityShutdown platformobservability.ShutdownFunc
 	authManager           *domainauth.AuthManager
 	mcpManager            *mcp.Manager
-}
-
-// noOpConfigRepository implements types.Repository with no-op operations
-// since we no longer use database-backed configuration
-type noOpConfigRepository struct{}
-
-func (r *noOpConfigRepository) LoadConfig() (*platformconfig.Config, error) {
-	return platformconfig.DefaultConfig(), nil
-}
-
-func (r *noOpConfigRepository) SaveConfig(config *platformconfig.Config) error {
-	return nil
-}
-
-func (r *noOpConfigRepository) InitDefaultConfig() (*platformconfig.Config, error) {
-	return platformconfig.DefaultConfig(), nil
-}
-
-func (r *noOpConfigRepository) IsInitialized() (bool, error) {
-	return true, nil
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -270,8 +251,8 @@ func InitGraph() []initStep {
 		},
 		{
 			ID:        "config:load-default",
-			Title:     "Load default configuration",
-			DependsOn: []string{"storage:init-config-store"},
+			Title:     "Load configuration from database",
+			DependsOn: []string{"storage:init-config-store", "storage:init-database"},
 			Kind:      platformerrors.KindConfig,
 			Execute:   loadDefaultConfigStep,
 		},
@@ -321,11 +302,18 @@ func initDatabaseStep(_ context.Context, _ *appState) error {
 }
 
 func loadDefaultConfigStep(_ context.Context, state *appState) error {
-	config := platformconfig.DefaultConfig()
+	// Create database-backed config repository
+	configRepo := manager.NewDatabaseRepository(platformstorage.GetDB())
+	state.configRepo = configRepo
+
+	// Load configuration from database, fallback to defaults if not found
+	config, err := configRepo.LoadConfig()
+	if err != nil {
+		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-default", "failed to load config from database", err)
+	}
+
 	state.config = config
-	state.configPath = "default:config"
-	// Create a no-op config repository since we no longer use database-backed configuration
-	state.configRepo = &noOpConfigRepository{}
+	state.configPath = "database:config"
 	return nil
 }
 
@@ -802,8 +790,8 @@ func loadConfigAndLogger() (*platformconfig.Config, *utils.Logger, error) {
 		},
 		{
 			ID:        "config:load-default",
-			Title:     "Load default configuration",
-			DependsOn: []string{"storage:init-config-store"},
+			Title:     "Load configuration from database",
+			DependsOn: []string{"storage:init-config-store", "storage:init-database"},
 			Kind:      platformerrors.KindConfig,
 			Execute:   loadDefaultConfigStep,
 		},
