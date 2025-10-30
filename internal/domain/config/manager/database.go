@@ -303,6 +303,61 @@ func (r *DatabaseRepository) getCategoryFromKey(key string) string {
 	return "general"
 }
 
+// GetConfigValue 获取单个配置项的值
+func (r *DatabaseRepository) GetConfigValue(key string) (interface{}, error) {
+	var valueStr string
+	row := r.db.Raw("SELECT value FROM config_records WHERE key = ? AND is_active = ?", key, true).Row()
+	if err := row.Scan(&valueStr); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.Wrap(errors.KindDomain, "config.get_value", fmt.Sprintf("config key %s not found", key), err)
+		}
+		return nil, errors.Wrap(errors.KindStorage, "config.get_value", fmt.Sprintf("failed to get config value for key %s", key), err)
+	}
+
+	var value interface{}
+	if err := json.Unmarshal([]byte(valueStr), &value); err != nil {
+		return nil, errors.Wrap(errors.KindStorage, "config.get_value", fmt.Sprintf("failed to unmarshal config value for key %s", key), err)
+	}
+
+	return value, nil
+}
+
+// GetBoolConfigValue 获取布尔类型的配置值
+func (r *DatabaseRepository) GetBoolConfigValue(key string) (bool, error) {
+	value, err := r.GetConfigValue(key)
+	if err != nil {
+		return false, err
+	}
+
+	if boolValue, ok := value.(bool); ok {
+		return boolValue, nil
+	}
+
+	return false, errors.Wrap(errors.KindDomain, "config.get_bool", fmt.Sprintf("config key %s is not a boolean value", key), nil)
+}
+
+// GetStringArrayConfigValue 获取字符串数组类型的配置值
+func (r *DatabaseRepository) GetStringArrayConfigValue(key string) ([]string, error) {
+	value, err := r.GetConfigValue(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if arrayValue, ok := value.([]interface{}); ok {
+		result := make([]string, len(arrayValue))
+		for i, v := range arrayValue {
+			if str, ok := v.(string); ok {
+				result[i] = str
+			} else {
+				return nil, errors.Wrap(errors.KindDomain, "config.get_string_array", fmt.Sprintf("config key %s contains non-string value at index %d", key, i), nil)
+			}
+		}
+		return result, nil
+	}
+
+	return nil, errors.Wrap(errors.KindDomain, "config.get_string_array", fmt.Sprintf("config key %s is not a string array", key), nil)
+}
+
 // getDescriptionFromKey 从键获取描述
 func (r *DatabaseRepository) getDescriptionFromKey(key string) string {
 	descriptions := map[string]string{
