@@ -179,6 +179,7 @@ type SystemConfig struct {
 	DefaultPrompt string
 	Roles         []Role
 	CMDExit       []string
+	MusicDir      string
 }
 
 type Role struct {
