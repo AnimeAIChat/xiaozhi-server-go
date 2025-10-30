@@ -244,11 +244,31 @@ func initializeAdminUser(db *gorm.DB) error {
 		return fmt.Errorf("failed to create admin user: %w", err)
 	}
 
+	// 为管理员用户创建默认的模型选择
+	defaultModelSelection := &ModelSelection{
+		UserID:       int(adminUser.ID),
+		ASRProvider:  "DoubaoASR",
+		TTSProvider:  "EdgeTTS",
+		LLMProvider:  "ChatGLMLLM",
+		VLLMProvider: "ChatGLMVLLM",
+		IsActive:     true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := db.Create(defaultModelSelection).Error; err != nil {
+		return fmt.Errorf("failed to create default model selection for admin user: %w", err)
+	}
+
 	// 打印管理员账号密码到控制台
 	fmt.Printf("=====================================\n")
 	fmt.Printf("管理员用户已创建\n")
 	fmt.Printf("用户名: %s\n", adminUser.Username)
 	fmt.Printf("密码: %s\n", password)
+	fmt.Printf("默认模型选择已创建:\n")
+	fmt.Printf("  LLM: %s\n", defaultModelSelection.LLMProvider)
+	fmt.Printf("  TTS: %s\n", defaultModelSelection.TTSProvider)
+	fmt.Printf("  ASR: %s\n", defaultModelSelection.ASRProvider)
 	fmt.Printf("请妥善保存此密码，首次登录后请修改密码\n")
 	fmt.Printf("=====================================\n")
 

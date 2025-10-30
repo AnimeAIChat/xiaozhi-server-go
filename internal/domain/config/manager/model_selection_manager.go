@@ -18,11 +18,7 @@ func NewModelSelectionManager(db *gorm.DB) *ModelSelectionManager {
 }
 
 // GetModelSelection 获取用户的模型选择
-func (m *ModelSelectionManager) GetModelSelection(userID string) (*storage.ModelSelection, error) {
-	if userID == "" {
-		userID = "admin" // 默认管理员用户
-	}
-
+func (m *ModelSelectionManager) GetModelSelection(userID int) (*storage.ModelSelection, error) {
 	var selection storage.ModelSelection
 	if err := m.db.Where("user_id = ? AND is_active = ?", userID, true).First(&selection).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -41,10 +37,6 @@ func (m *ModelSelectionManager) SaveModelSelection(selection *storage.ModelSelec
 		return errors.Wrap(errors.KindDomain, "model_selection.save", "selection cannot be nil", nil)
 	}
 
-	if selection.UserID == "" {
-		selection.UserID = "admin"
-	}
-
 	// 先将该用户的所有选择标记为非活跃
 	if err := m.db.Model(&storage.ModelSelection{}).Where("user_id = ?", selection.UserID).Update("is_active", false).Error; err != nil {
 		return errors.Wrap(errors.KindStorage, "model_selection.save", "failed to deactivate existing selections", err)
@@ -60,11 +52,7 @@ func (m *ModelSelectionManager) SaveModelSelection(selection *storage.ModelSelec
 }
 
 // UpdateModelSelection 更新用户的模型选择
-func (m *ModelSelectionManager) UpdateModelSelection(userID string, asrProvider, ttsProvider, llmProvider, vllmProvider string) error {
-	if userID == "" {
-		userID = "admin"
-	}
-
+func (m *ModelSelectionManager) UpdateModelSelection(userID int, asrProvider, ttsProvider, llmProvider, vllmProvider string) error {
 	// 首先尝试获取现有选择
 	existing, err := m.GetModelSelection(userID)
 	if err != nil {
@@ -107,11 +95,7 @@ func (m *ModelSelectionManager) GetAvailableProviders() map[string][]string {
 }
 
 // InitDefaultSelection 初始化默认的模型选择
-func (m *ModelSelectionManager) InitDefaultSelection(userID string) error {
-	if userID == "" {
-		userID = "admin"
-	}
-
+func (m *ModelSelectionManager) InitDefaultSelection(userID int) error {
 	// 检查是否已存在选择
 	var count int64
 	if err := m.db.Model(&storage.ModelSelection{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
@@ -128,7 +112,7 @@ func (m *ModelSelectionManager) InitDefaultSelection(userID string) error {
 }
 
 // getDefaultSelection 获取默认的模型选择
-func (m *ModelSelectionManager) getDefaultSelection(userID string) *storage.ModelSelection {
+func (m *ModelSelectionManager) getDefaultSelection(userID int) *storage.ModelSelection {
 	return &storage.ModelSelection{
 		UserID:       userID,
 		ASRProvider:  "DoubaoASR",

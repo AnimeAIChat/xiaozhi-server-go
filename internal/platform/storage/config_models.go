@@ -42,7 +42,7 @@ func (ConfigSnapshot) TableName() string {
 // ModelSelection 模型选择记录，用于管理用户选择的AI模型提供商
 type ModelSelection struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserID        string    `gorm:"not null;default:'admin';uniqueIndex" json:"user_id"` // 用户ID，默认为admin管理员
+	UserID        int       `gorm:"not null;uniqueIndex" json:"user_id"`                   // 用户ID（整数），外键关联users表
 	ASRProvider   string    `gorm:"not null" json:"asr_provider"`                        // 选择的ASR提供商
 	TTSProvider   string    `gorm:"not null" json:"tts_provider"`                        // 选择的TTS提供商
 	LLMProvider   string    `gorm:"not null" json:"llm_provider"`                        // 选择的LLM提供商
