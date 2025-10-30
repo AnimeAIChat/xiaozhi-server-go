@@ -1060,18 +1060,20 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 分析回复并发送相应的情绪
 	content := utils.JoinStrings(responseMessage)
+	// 为对话历史和事件发布移除表情符号，保持对话历史的清洁
+	cleanContent := utils.RemoveAllEmoji(content)
 
 	// 添加助手回复到对话历史
 	if !toolCallFlag {
 		h.dialogueManager.Put(chat.Message{
 			Role:    "assistant",
-			Content: content,
+			Content: cleanContent, // 使用清理后的内容
 		})
 	}
 
 	// 发布LLM完成事件
 	if publisher := llm.GetEventPublisher(h.providers.llm); publisher != nil {
-		publisher.PublishLLMResponse(content, true, round, nil, 0, "")
+		publisher.PublishLLMResponse(cleanContent, true, round, nil, 0, "") // 使用清理后的内容
 	}
 
 	return nil
@@ -1142,7 +1144,7 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 	// 添加助手回复到对话历史
 	h.dialogueManager.Put(chat.Message{
 		Role:    "assistant",
-		Content: responseText,
+		Content: utils.RemoveAllEmoji(responseText), // 移除表情符号
 	})
 
 	// 直接播放响应
@@ -1584,11 +1586,13 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 
 	// 获取完整回复内容
 	content := utils.JoinStrings(responseMessage)
+	// 为对话历史移除表情符号
+	cleanContent := utils.RemoveAllEmoji(content)
 
 	// 添加VLLLM回复到对话历史
 	h.dialogueManager.Put(chat.Message{
 		Role:    "assistant",
-		Content: content,
+		Content: cleanContent, // 使用清理后的内容
 	})
 
 	h.LogInfo(fmt.Sprintf("VLLLM回复处理完成 …%v", map[string]interface{}{
