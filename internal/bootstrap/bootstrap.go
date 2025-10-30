@@ -781,3 +781,44 @@ func startServices(
 
 	return nil
 }
+
+// loadConfigAndLogger 加载配置和日志记录器（用于测试）
+func loadConfigAndLogger() (*platformconfig.Config, *utils.Logger, error) {
+	state := &appState{}
+
+	// 执行必要的初始化步骤
+	steps := []initStep{
+		{
+			ID:      "storage:init-config-store",
+			Title:   "Initialise configuration store",
+			Kind:    platformerrors.KindStorage,
+			Execute: initStorageStep,
+		},
+		{
+			ID:      "storage:init-database",
+			Title:   "Initialise database",
+			Kind:    platformerrors.KindStorage,
+			Execute: initDatabaseStep,
+		},
+		{
+			ID:        "config:load-default",
+			Title:     "Load default configuration",
+			DependsOn: []string{"storage:init-config-store"},
+			Kind:      platformerrors.KindConfig,
+			Execute:   loadDefaultConfigStep,
+		},
+		{
+			ID:        "logging:init-provider",
+			Title:     "Initialise logging provider",
+			DependsOn: []string{"config:load-default"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initLoggingStep,
+		},
+	}
+
+	if err := executeInitSteps(context.Background(), steps, state); err != nil {
+		return nil, nil, err
+	}
+
+	return state.config, state.logger, nil
+}

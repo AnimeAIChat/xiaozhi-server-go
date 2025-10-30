@@ -28,8 +28,10 @@ func TestInitGraphOrder(t *testing.T) {
 	steps := InitGraph()
 	want := []string{
 		"storage:init-config-store",
-		"config:load-runtime",
+		"storage:init-database",
+		"config:load-default",
 		"logging:init-provider",
+		"mcp:init-manager",
 		"observability:setup-hooks",
 		"auth:init-manager",
 	}
@@ -89,8 +91,10 @@ func TestLogBootstrapGraphOutput(t *testing.T) {
 	}
 	for _, id := range []string{
 		"storage:init-config-store",
-		"config:load-runtime",
+		"storage:init-database",
+		"config:load-default",
 		"logging:init-provider",
+		"mcp:init-manager",
 		"observability:setup-hooks",
 		"auth:init-manager",
 	} {
