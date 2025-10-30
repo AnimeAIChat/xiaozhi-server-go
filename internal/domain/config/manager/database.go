@@ -119,6 +119,13 @@ func (r *DatabaseRepository) InitDefaultConfig() (*config.Config, error) {
 	if err := r.SaveConfig(defaultCfg); err != nil {
 		return nil, errors.Wrap(errors.KindDomain, "config.init", "failed to save default config", err)
 	}
+
+	// 初始化默认的模型选择
+	modelSelectionManager := NewModelSelectionManager(r.db)
+	if err := modelSelectionManager.InitDefaultSelection("admin"); err != nil {
+		return nil, errors.Wrap(errors.KindDomain, "config.init", "failed to init default model selection", err)
+	}
+
 	return defaultCfg, nil
 }
 
