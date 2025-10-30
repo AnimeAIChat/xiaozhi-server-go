@@ -238,78 +238,153 @@ func (m *Manager) Warmup(ctx context.Context) error {
 		ctx = context.Background()
 	}
 
-	minSize := int64(2) // Default minimum pool size
-
 	// Warmup ASR pool
 	if m.asrPool != nil {
-		for i := int64(0); i < minSize; i++ {
-			provider, err := m.asrPool.acquire(ctx)
-			if err != nil {
-				m.logger.Warn("Failed to warmup ASR provider: %v", err)
-				continue
-			}
-			if err := m.asrPool.release(ctx, provider); err != nil {
-				m.logger.Warn("Failed to release warmed up ASR provider: %v", err)
-			}
-		}
+		m.doWarmup(ctx, m.asrPool, "ASR")
 	}
 
 	// Warmup LLM pool
 	if m.llmPool != nil {
-		for i := int64(0); i < minSize; i++ {
-			provider, err := m.llmPool.acquire(ctx)
-			if err != nil {
-				m.logger.Warn("Failed to warmup LLM provider: %v", err)
-				continue
-			}
-			if err := m.llmPool.release(ctx, provider); err != nil {
-				m.logger.Warn("Failed to release warmed up LLM provider: %v", err)
-			}
-		}
+		m.doWarmup(ctx, m.llmPool, "LLM")
 	}
 
 	// Warmup TTS pool
 	if m.ttsPool != nil {
-		for i := int64(0); i < minSize; i++ {
-			provider, err := m.ttsPool.acquire(ctx)
-			if err != nil {
-				m.logger.Warn("Failed to warmup TTS provider: %v", err)
-				continue
-			}
-			if err := m.ttsPool.release(ctx, provider); err != nil {
-				m.logger.Warn("Failed to release warmed up TTS provider: %v", err)
-			}
-		}
+		m.doWarmup(ctx, m.ttsPool, "TTS")
 	}
 
 	// Warmup VLLLM pool
 	if m.vlllmPool != nil {
-		for i := int64(0); i < minSize; i++ {
-			provider, err := m.vlllmPool.acquire(ctx)
-			if err != nil {
-				m.logger.Warn("Failed to warmup VLLLM provider: %v", err)
-				continue
-			}
-			if err := m.vlllmPool.release(ctx, provider); err != nil {
-				m.logger.Warn("Failed to release warmed up VLLLM provider: %v", err)
-			}
-		}
+		m.doWarmup(ctx, m.vlllmPool, "VLLLM")
 	}
 
 	// Warmup MCP pool
 	if m.mcpPool != nil {
-		for i := int64(0); i < minSize; i++ {
-			manager, err := m.mcpPool.acquire(ctx)
-			if err != nil {
-				m.logger.Warn("Failed to warmup MCP manager: %v", err)
-				continue
+		m.doWarmup(ctx, m.mcpPool, "MCP")
+	}
+
+	return nil
+}
+
+// doWarmup performs the actual warmup for any provider pool
+func (m *Manager) doWarmup(ctx context.Context, pool interface{}, poolType string) {
+	// Use reflection to call the warmup logic
+	// We need to use a helper function that can work with any pool type
+
+	switch p := pool.(type) {
+	case *providerPool[coreproviders.ASRProvider]:
+		warmupConcretePool(ctx, p, poolType, m.logger)
+	case *providerPool[coreproviders.LLMProvider]:
+		warmupConcretePool(ctx, p, poolType, m.logger)
+	case *providerPool[coreproviders.TTSProvider]:
+		warmupConcretePool(ctx, p, poolType, m.logger)
+	case *providerPool[*vlllm.Provider]:
+		warmupConcretePool(ctx, p, poolType, m.logger)
+	case *providerPool[*domainmcp.Manager]:
+		warmupConcretePool(ctx, p, poolType, m.logger)
+	default:
+		m.logger.Warn("Unknown pool type for warmup: %T", pool)
+	}
+}
+
+// warmupConcretePool is a generic function to warmup any concrete pool type
+func warmupConcretePool[T any](ctx context.Context, pool *providerPool[T], poolType string, logger *utils.Logger) {
+	warmSize := pool.warmSize
+
+	for i := 0; i < warmSize; i++ {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Create a new resource
+		resource, err := pool.create(ctx)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("Failed to create %s provider for warmup: %v", poolType, err)
 			}
-			if err := m.mcpPool.release(ctx, manager); err != nil {
-				m.logger.Warn("Failed to release warmed up MCP manager: %v", err)
+			continue
+		}
+
+		pool.created.Add(1)
+
+		// Special handling for MCP Manager - try to pre-warm XiaoZhiMCPClient
+		if poolType == "MCP" {
+			if mcpManager, ok := any(resource).(*domainmcp.Manager); ok {
+				warmupMCPManager(ctx, mcpManager, logger)
+			}
+		}
+
+		// Try to put it in the warm pool
+		select {
+		case pool.warmPool <- resource:
+			pool.warmed.Add(1)
+			if logger != nil {
+				logger.Debug("Warmed up %s provider %d/%d", poolType, i+1, warmSize)
+			}
+		default:
+			// Warm pool is full, put in regular pool
+			pool.pool.Put(resource)
+			if logger != nil {
+				logger.Debug("Warm pool full for %s, using regular pool", poolType)
 			}
 		}
 	}
 
+	if logger != nil {
+		logger.Info("Successfully warmed up %s pool with %d instances", poolType, pool.warmed.Load())
+	}
+}
+
+// warmupMCPManager attempts to pre-warm the XiaoZhiMCPClient within an MCP Manager
+func warmupMCPManager(ctx context.Context, manager *domainmcp.Manager, logger *utils.Logger) {
+	if manager == nil {
+		return
+	}
+
+	// Try to pre-warm the XiaoZhiMCPClient by simulating a connection
+	// This is a best-effort attempt - if it fails, the client will be warmed up during actual connection
+	defer func() {
+		if r := recover(); r != nil {
+			if logger != nil {
+				logger.Debug("MCP manager warmup failed (expected): %v", r)
+			}
+		}
+	}()
+
+	// Create a mock connection for pre-warming
+	mockConn := &mockMCPConnection{}
+
+	// Try to bind with mock parameters to trigger XiaoZhiMCPClient initialization
+	mockParams := map[string]interface{}{
+		"session_id":  "warmup-session",
+		"vision_url":  "",
+		"device_id":   "warmup-device",
+		"client_id":   "warmup-client",
+		"token":       "warmup-token",
+	}
+
+	// This will attempt to initialize XiaoZhiMCPClient
+	err := manager.BindConnection(mockConn, nil, mockParams)
+	if err != nil {
+		if logger != nil {
+			logger.Debug("MCP manager warmup BindConnection failed (expected): %v", err)
+		}
+		return
+	}
+
+	if logger != nil {
+		logger.Debug("Successfully pre-warmed MCP manager XiaoZhiMCPClient")
+	}
+}
+
+// mockMCPConnection implements the Conn interface for MCP warmup
+type mockMCPConnection struct{}
+
+func (m *mockMCPConnection) WriteMessage(messageType int, data []byte) error {
+	// For warmup, we don't need to actually send messages
+	// Just return success to avoid errors
 	return nil
 }
 
@@ -394,9 +469,12 @@ type providerPool[T any] struct {
 	reset   func(context.Context, T) error
 	destroy func(T) error
 
-	pool    sync.Pool
-	created atomic.Int64
-	inUse   atomic.Int64
+	pool       sync.Pool      // 普通池，用于缓存已使用过的资源
+	warmPool   chan T         // 预热池，存放预先创建的资源，带缓冲
+	warmSize   int            // 预热池大小
+	created    atomic.Int64
+	inUse      atomic.Int64
+	warmed     atomic.Int64 // 预热池中的资源数量
 }
 
 func newProviderPool[T any](
@@ -406,12 +484,15 @@ func newProviderPool[T any](
 	reset func(context.Context, T) error,
 	destroy func(T) error,
 ) *providerPool[T] {
+	const defaultWarmSize = 4 // 默认预热池大小
 	return &providerPool[T]{
-		name:    name,
-		logger:  logger,
-		create:  create,
-		reset:   reset,
-		destroy: destroy,
+		name:      name,
+		logger:    logger,
+		create:    create,
+		reset:     reset,
+		destroy:   destroy,
+		warmPool:  make(chan T, defaultWarmSize),
+		warmSize:  defaultWarmSize,
 	}
 }
 
@@ -420,11 +501,29 @@ func (p *providerPool[T]) acquire(ctx context.Context) (T, error) {
 		ctx = context.Background()
 	}
 
+	// 1. 优先从预热池获取（非阻塞）
+	select {
+	case resource := <-p.warmPool:
+		p.warmed.Add(-1)
+		p.inUse.Add(1)
+		if p.logger != nil {
+			p.logger.Info("%s acquired from warm pool", p.name)
+		}
+		return resource, nil
+	default:
+		// 预热池为空，继续下一步
+	}
+
+	// 2. 从普通池获取（sync.Pool）
 	if resource := p.pool.Get(); resource != nil {
 		p.inUse.Add(1)
+		if p.logger != nil {
+			p.logger.Info("%s acquired from regular pool", p.name)
+		}
 		return resource.(T), nil
 	}
 
+	// 3. 动态创建新资源
 	res, err := p.create(ctx)
 	if err != nil {
 		var zero T
@@ -433,6 +532,9 @@ func (p *providerPool[T]) acquire(ctx context.Context) (T, error) {
 
 	p.created.Add(1)
 	p.inUse.Add(1)
+	if p.logger != nil {
+		p.logger.Info("%s created new instance", p.name)
+	}
 	return res, nil
 }
 
@@ -457,15 +559,25 @@ func (p *providerPool[T]) release(ctx context.Context, resource T) error {
 		}
 	}
 
-	p.pool.Put(resource)
-	return nil
+	// 优先放回预热池，如果预热池未满
+	select {
+	case p.warmPool <- resource:
+		p.warmed.Add(1)
+		if p.logger != nil {
+			p.logger.Info("%s returned to warm pool", p.name)
+		}
+		return nil
+	default:
+		// 预热池已满，放回普通池
+		p.pool.Put(resource)
+		if p.logger != nil {
+			p.logger.Info("%s returned to regular pool", p.name)
+		}
+		return nil
+	}
 }
 
 func (p *providerPool[T]) drop(ctx context.Context, resource T) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	p.inUse.Add(-1)
 	if p.destroy != nil {
 		if err := p.destroy(resource); err != nil && p.logger != nil {
@@ -477,6 +589,7 @@ func (p *providerPool[T]) drop(ctx context.Context, resource T) {
 func (p *providerPool[T]) stats() map[string]int64 {
 	total := p.created.Load()
 	inUse := p.inUse.Load()
+	warmed := p.warmed.Load()
 	available := total - inUse
 	if available < 0 {
 		available = 0
@@ -485,6 +598,7 @@ func (p *providerPool[T]) stats() map[string]int64 {
 		"total":     total,
 		"in_use":    inUse,
 		"available": available,
+		"warmed":    warmed,
 	}
 }
 
