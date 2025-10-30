@@ -46,7 +46,7 @@ type Manager struct {
 func NewManagerForPool(lg *utils.Logger, cfg *config.Config) *Manager {
 	lg.Debug("创建MCP Manager用于资源池")
 	projectDir := utils.GetProjectDir()
-	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
+	configPath := filepath.Join(projectDir, "data", ".mcp_server_settings.json")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		configPath = ""
