@@ -114,7 +114,7 @@ func (h *ConnectionHandler) handleVisionMessage(msgMap map[string]interface{}) e
 // handleHelloMessage 处理欢迎消息
 // 客户端会上传语音格式和采样率等信息
 func (h *ConnectionHandler) handleHelloMessage(msgMap map[string]interface{}) error {
-	h.LogInfo(fmt.Sprintf("[客户端] [hello 收到欢迎消息] %v", msgMap))
+	h.logger.InfoTag("客户端"," 收到欢迎消息")
 	// 获取客户端编码格式
 	if audioParams, ok := msgMap["audio_params"].(map[string]interface{}); ok {
 		if format, ok := audioParams["format"].(string); ok {
