@@ -484,7 +484,7 @@ func newProviderPool[T any](
 	reset func(context.Context, T) error,
 	destroy func(T) error,
 ) *providerPool[T] {
-	const defaultWarmSize = 4 // 默认预热池大小
+	const defaultWarmSize = 1
 	return &providerPool[T]{
 		name:      name,
 		logger:    logger,

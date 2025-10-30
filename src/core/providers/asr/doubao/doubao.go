@@ -167,8 +167,8 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger, sess
 	// 初始化音频处理
 	provider.InitAudioProcessing()
 
-	// 启动预连接
-	provider.startPreConnect()
+	// 注释掉预连接启动，改为按需连接
+	// provider.startPreConnect()
 
 	return provider, nil
 }

@@ -1487,10 +1487,10 @@ func (h *ConnectionHandler) cleanTTSAndAudioQueue(bClose bool) error {
 	for {
 		select {
 		case task := <-h.ttsQueue:
-			h.LogInfo(fmt.Sprintf(msgPrefix+"丢弃一个TTS任务: %s", utils.SanitizeForLog(task.text)))
+			h.LogInfo(fmt.Sprintf("[%sTTS队列] 丢弃待处理任务: %s", msgPrefix, utils.SanitizeForLog(task.text)))
 		default:
 			// 队列已清空，退出循环
-			h.LogInfo(msgPrefix + "ttsQueue队列已清空，停止处理TTS任务,准备清空音频队列")
+			h.LogInfo(fmt.Sprintf("[%sTTS队列] 已清空，准备清理音频队列", msgPrefix))
 			goto clearAudioQueue
 		}
 	}
@@ -1500,12 +1500,12 @@ clearAudioQueue:
 	for {
 		select {
 		case task := <-h.audioMessagesQueue:
-			h.LogInfo(fmt.Sprintf(msgPrefix+"丢弃一个音频任务: %s", utils.SanitizeForLog(task.text)))
+			h.LogInfo(fmt.Sprintf("[%s音频队列] 丢弃待播放任务: %s", msgPrefix, utils.SanitizeForLog(task.text)))
 			// 根据配置删除被丢弃的音频文件
 			h.deleteAudioFileIfNeeded(task.filepath, msgPrefix+"丢弃音频任务时")
 		default:
 			// 队列已清空，退出循环
-			h.LogInfo(msgPrefix + "audioMessagesQueue队列已清空，停止处理音频任务")
+			h.LogInfo(fmt.Sprintf("[%s音频队列] 已清空，队列清理完成", msgPrefix))
 			return nil
 		}
 	}
