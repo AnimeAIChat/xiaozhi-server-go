@@ -26,7 +26,7 @@ func StartSpan(ctx context.Context, component, operation string) (context.Contex
 	)
 
 	return ctx, func(err error) {
-		level := slog.LevelInfo
+		level := slog.LevelDebug
 		if err != nil {
 			level = slog.LevelError
 		}

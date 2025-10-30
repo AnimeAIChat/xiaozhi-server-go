@@ -297,7 +297,7 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 	}
 
 	// 调用设备服务进行注册
-	device, err := s.deviceService.RegisterDevice(
+	device, isNew, err := s.deviceService.RegisterDevice(
 		c.Request.Context(),
 		deviceID,
 		clientID,
@@ -324,6 +324,12 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 			Language:         req.Language,
 			OTA:              true,
 		}
+	}
+
+	// 只有新注册的设备才记录成功日志
+	if isNew {
+		utils.DefaultLogger.Info("设备注册成功: deviceID=%s, clientID=%s, name=%s, status=%s",
+			device.DeviceID, device.ClientID, device.Name, device.AuthStatus)
 	}
 
 	// 注册成功，返回包含注册信息的设备对象
