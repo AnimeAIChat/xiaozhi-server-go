@@ -5,219 +5,219 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig            `yaml:"server" mapstructure:"server"`
-	Log           LogConfig               `yaml:"log" mapstructure:"log"`
-	Web           WebConfig               `yaml:"web" mapstructure:"web"`
-	Transport     TransportConfig         `yaml:"transport" mapstructure:"transport"`
-	System        SystemConfig            `yaml:"system" mapstructure:"system"`
-	Audio         AudioConfig             `yaml:"audio" mapstructure:"audio"`
-	Pool          PoolConfig              `yaml:"pool_config" mapstructure:"pool_config"`
-	McpPool       McpPoolConfig           `yaml:"mcp_pool_config" mapstructure:"mcp_pool_config"`
-	QuickReply    QuickReplyConfig        `yaml:"quick_reply" mapstructure:"quick_reply"`
-	LocalMCPFun   []LocalMCPFun           `yaml:"local_mcp_fun" mapstructure:"local_mcp_fun"`
-	Selected      SelectedConfig          `yaml:"selected_module" mapstructure:"selected_module"`
-	ASR           map[string]interface{} `yaml:"ASR" mapstructure:"ASR"`
-	TTS           map[string]TTSConfig    `yaml:"TTS" mapstructure:"TTS"`
-	LLM           map[string]LLMConfig    `yaml:"LLM" mapstructure:"LLM"`
-	VLLLM         map[string]VLLLMConfig  `yaml:"VLLLM" mapstructure:"VLLLM"`
-	MCP           MCPConfig               `yaml:"mcp" mapstructure:"mcp"`
+	Server        ServerConfig
+	Log           LogConfig
+	Web           WebConfig
+	Transport     TransportConfig
+	System        SystemConfig
+	Audio         AudioConfig
+	Pool          PoolConfig
+	McpPool       McpPoolConfig
+	QuickReply    QuickReplyConfig
+	LocalMCPFun   []LocalMCPFun
+	Selected      SelectedConfig
+	ASR           map[string]interface{}
+	TTS           map[string]TTSConfig
+	LLM           map[string]LLMConfig
+	VLLLM         map[string]VLLLMConfig
+	MCP           MCPConfig
 }
 
 type ServerConfig struct {
-	IP     string        `yaml:"ip" mapstructure:"ip"`
-	Port   int           `yaml:"port" mapstructure:"port"`
-	Token  string        `yaml:"token" mapstructure:"token"`
-	Auth   AuthConfig    `yaml:"auth" mapstructure:"auth"`
+	IP     string
+	Port   int
+	Token  string
+	Auth   AuthConfig
 }
 
 type AuthConfig struct {
-	Enabled bool         `yaml:"enabled" mapstructure:"enabled"`
-	Store   StoreConfig  `yaml:"store" mapstructure:"store"`
+	Enabled bool
+	Store   StoreConfig
 }
 
 type StoreConfig struct {
-	Type           string                 `yaml:"type" mapstructure:"type"`
-	Expiry         time.Duration          `yaml:"expiry" mapstructure:"expiry"`
-	Cleanup        time.Duration          `yaml:"cleanup" mapstructure:"cleanup"`
-	Redis          AuthRedisStore         `yaml:"redis,omitempty" mapstructure:"redis"`
-	SQLite         AuthSQLiteStore        `yaml:"sqlite,omitempty" mapstructure:"sqlite"`
-	Memory         AuthMemoryStore        `yaml:"memory,omitempty" mapstructure:"memory"`
-	CustomMetadata map[string]interface{} `yaml:"metadata,omitempty" mapstructure:"metadata"`
-	Labels         map[string]string      `yaml:"labels,omitempty" mapstructure:"labels"`
+	Type           string
+	Expiry         time.Duration
+	Cleanup        time.Duration
+	Redis          AuthRedisStore
+	SQLite         AuthSQLiteStore
+	Memory         AuthMemoryStore
+	CustomMetadata map[string]interface{}
+	Labels         map[string]string
 }
 
 type AuthRedisStore struct {
-	Addr     string `yaml:"addr" mapstructure:"addr"`
-	Username string `yaml:"username,omitempty" mapstructure:"username"`
-	Password string `yaml:"password,omitempty" mapstructure:"password"`
-	DB       int    `yaml:"db,omitempty" mapstructure:"db"`
-	Prefix   string `yaml:"prefix,omitempty" mapstructure:"prefix"`
+	Addr     string
+	Username string
+	Password string
+	DB       int
+	Prefix   string
 }
 
 type AuthSQLiteStore struct {
-	DSN string `yaml:"dsn,omitempty" mapstructure:"dsn"`
+	DSN string
 }
 
 type AuthMemoryStore struct {
-	Cleanup time.Duration `yaml:"cleanup" mapstructure:"cleanup"`
+	Cleanup time.Duration
 }
 
 type LogConfig struct {
-	Level    string `yaml:"log_level" mapstructure:"log_level"`
-	Dir      string `yaml:"log_dir" mapstructure:"log_dir"`
-	File     string `yaml:"log_file" mapstructure:"log_file"`
-	Format   string `yaml:"log_format" mapstructure:"log_format"`
+	Level    string
+	Dir      string
+	File     string
+	Format   string
 }
 
 type WebConfig struct {
-	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
-	Port        int    `yaml:"port" mapstructure:"port"`
-	StaticDir   string `yaml:"static_dir" mapstructure:"static_dir"`
-	Websocket   string `yaml:"websocket" mapstructure:"websocket"`
-	VisionURL   string `yaml:"vision" mapstructure:"vision"`
-	ActivateText string `yaml:"activate_text" mapstructure:"activate_text"`
+	Enabled     bool
+	Port        int
+	StaticDir   string
+	Websocket   string
+	VisionURL   string
+	ActivateText string
 }
 
 type LLMConfig struct {
-	Type        string                 `yaml:"type" mapstructure:"type"`
-	ModelName   string                 `yaml:"model_name" mapstructure:"model_name"`
-	BaseURL     string                 `yaml:"url" mapstructure:"url"`
-	APIKey      string                 `yaml:"api_key" mapstructure:"api_key"`
-	Temperature float64                `yaml:"temperature" mapstructure:"temperature"`
-	MaxTokens   int                    `yaml:"max_tokens" mapstructure:"max_tokens"`
-	TopP        float64                `yaml:"top_p" mapstructure:"top_p"`
-	Extra       map[string]interface{} `yaml:",inline" mapstructure:",remain"`
+	Type        string
+	ModelName   string
+	BaseURL     string
+	APIKey      string
+	Temperature float64
+	MaxTokens   int
+	TopP        float64
+	Extra       map[string]interface{}
 }
 
 type TTSConfig struct {
-	Type            string      `yaml:"type" mapstructure:"type"`
-	Voice           string      `yaml:"voice" mapstructure:"voice"`
-	Format          string      `yaml:"format" mapstructure:"format"`
-	OutputDir       string      `yaml:"output_dir" mapstructure:"output_dir"`
-	AppID           string      `yaml:"appid" mapstructure:"appid"`
-	Token           string      `yaml:"token" mapstructure:"token"`
-	Cluster         string      `yaml:"cluster" mapstructure:"cluster"`
-	SupportedVoices []VoiceInfo `yaml:"supported_voices" mapstructure:"supported_voices"`
+	Type            string
+	Voice           string
+	Format          string
+	OutputDir       string
+	AppID           string
+	Token           string
+	Cluster         string
+	SupportedVoices []VoiceInfo
 }
 
 type VoiceInfo struct {
-	Name        string `yaml:"name" mapstructure:"name"`
-	DisplayName string `yaml:"display_name" mapstructure:"display_name"`
-	Sex         string `yaml:"sex" mapstructure:"sex"`
-	Description string `yaml:"description" mapstructure:"description"`
-	AudioURL    string `yaml:"audio_url" mapstructure:"audio_url"`
+	Name        string
+	DisplayName string
+	Sex         string
+	Description string
+	AudioURL    string
 }
 
 type VLLLMConfig struct {
-	Type        string                 `yaml:"type" mapstructure:"type"`
-	ModelName   string                 `yaml:"model_name" mapstructure:"model_name"`
-	BaseURL     string                 `yaml:"url" mapstructure:"url"`
-	APIKey      string                 `yaml:"api_key" mapstructure:"api_key"`
-	Temperature float64                `yaml:"temperature" mapstructure:"temperature"`
-	MaxTokens   int                    `yaml:"max_tokens" mapstructure:"max_tokens"`
-	TopP        float64                `yaml:"top_p" mapstructure:"top_p"`
-	Security    SecurityConfig         `yaml:"security" mapstructure:"security"`
-	Extra       map[string]interface{} `yaml:",inline" mapstructure:",remain"`
+	Type        string
+	ModelName   string
+	BaseURL     string
+	APIKey      string
+	Temperature float64
+	MaxTokens   int
+	TopP        float64
+	Security    SecurityConfig
+	Extra       map[string]interface{}
 }
 
 type SecurityConfig struct {
-	MaxFileSize       int64    `yaml:"max_file_size" mapstructure:"max_file_size"`
-	MaxPixels         int64    `yaml:"max_pixels" mapstructure:"max_pixels"`
-	MaxWidth          int      `yaml:"max_width" mapstructure:"max_width"`
-	MaxHeight         int      `yaml:"max_height" mapstructure:"max_height"`
-	AllowedFormats    []string `yaml:"allowed_formats" mapstructure:"allowed_formats"`
-	EnableDeepScan    bool     `yaml:"enable_deep_scan" mapstructure:"enable_deep_scan"`
-	ValidationTimeout string   `yaml:"validation_timeout" mapstructure:"validation_timeout"`
+	MaxFileSize       int64
+	MaxPixels         int64
+	MaxWidth          int
+	MaxHeight         int
+	AllowedFormats    []string
+	EnableDeepScan    bool
+	ValidationTimeout string
 }
 
 type MCPConfig struct {
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool
 }
 
 type SelectedConfig struct {
-	ASR   string `yaml:"ASR" mapstructure:"ASR"`
-	TTS   string `yaml:"TTS" mapstructure:"TTS"`
-	LLM   string `yaml:"LLM" mapstructure:"LLM"`
-	VLLLM string `yaml:"VLLLM" mapstructure:"VLLLM"`
+	ASR   string
+	TTS   string
+	LLM   string
+	VLLLM string
 }
 
 // TransportConfig 传输层配置
 type TransportConfig struct {
-	WebSocket WebSocketConfig `yaml:"websocket" mapstructure:"websocket"`
-	MQTTUDP   MQTTUDPConfig   `yaml:"mqtt_udp" mapstructure:"mqtt_udp"`
+	WebSocket WebSocketConfig
+	MQTTUDP   MQTTUDPConfig
 }
 
 type WebSocketConfig struct {
-	Enabled bool   `yaml:"enabled" mapstructure:"enabled"`
-	IP      string `yaml:"ip" mapstructure:"ip"`
-	Port    int    `yaml:"port" mapstructure:"port"`
+	Enabled bool
+	IP      string
+	Port    int
 }
 
 type MQTTUDPConfig struct {
-	Enabled bool         `yaml:"enabled" mapstructure:"enabled"`
-	MQTT    MQTTConfig   `yaml:"mqtt" mapstructure:"mqtt"`
-	UDP     UDPConfig    `yaml:"udp" mapstructure:"udp"`
+	Enabled bool
+	MQTT    MQTTConfig
+	UDP     UDPConfig
 }
 
 type MQTTConfig struct {
-	IP   string `yaml:"ip" mapstructure:"ip"`
-	Port int    `yaml:"port" mapstructure:"port"`
-	QoS  int    `yaml:"qos" mapstructure:"qos"`
+	IP   string
+	Port int
+	QoS  int
 }
 
 type UDPConfig struct {
-	IP                string `yaml:"ip" mapstructure:"ip"`
-	ShowPort          int    `yaml:"show_port" mapstructure:"show_port"`
-	Port              int    `yaml:"port" mapstructure:"port"`
-	SessionTimeout    string `yaml:"session_timeout" mapstructure:"session_timeout"`
-	MaxPacketSize     int    `yaml:"max_packet_size" mapstructure:"max_packet_size"`
-	EnableReliability bool   `yaml:"enable_reliability" mapstructure:"enable_reliability"`
+	IP                string
+	ShowPort          int
+	Port              int
+	SessionTimeout    string
+	MaxPacketSize     int
+	EnableReliability bool
 }
 
 // SystemConfig 系统级配置
 type SystemConfig struct {
-	DefaultPrompt string   `yaml:"prompt" mapstructure:"prompt"`
-	Roles         []Role   `yaml:"roles" mapstructure:"roles"`
-	CMDExit       []string `yaml:"CMD_exit" mapstructure:"CMD_exit"`
+	DefaultPrompt string
+	Roles         []Role
+	CMDExit       []string
 }
 
 type Role struct {
-	Name        string `yaml:"name" mapstructure:"name"`
-	Description string `yaml:"description" mapstructure:"description"`
-	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
+	Name        string
+	Description string
+	Enabled     bool
 }
 
 // AudioConfig 音频配置
 type AudioConfig struct {
-	DeleteAudio   bool `yaml:"delete_audio" mapstructure:"delete_audio"`
-	SaveTTSAudio  bool `yaml:"save_tts_audio" mapstructure:"save_tts_audio"`
-	SaveUserAudio bool `yaml:"save_user_audio" mapstructure:"save_user_audio"`
+	DeleteAudio   bool
+	SaveTTSAudio  bool
+	SaveUserAudio bool
 }
 
 // PoolConfig 连接池配置
 type PoolConfig struct {
-	MinSize       int `yaml:"pool_min_size" mapstructure:"pool_min_size"`
-	MaxSize       int `yaml:"pool_max_size" mapstructure:"pool_max_size"`
-	RefillSize    int `yaml:"pool_refill_size" mapstructure:"pool_refill_size"`
-	CheckInterval int `yaml:"pool_check_interval" mapstructure:"pool_check_interval"`
+	MinSize       int
+	MaxSize       int
+	RefillSize    int
+	CheckInterval int
 }
 
 type McpPoolConfig struct {
-	MinSize       int `yaml:"pool_min_size" mapstructure:"pool_min_size"`
-	MaxSize       int `yaml:"pool_max_size" mapstructure:"pool_max_size"`
-	RefillSize    int `yaml:"pool_refill_size" mapstructure:"pool_refill_size"`
-	CheckInterval int `yaml:"pool_check_interval" mapstructure:"pool_check_interval"`
+	MinSize       int
+	MaxSize       int
+	RefillSize    int
+	CheckInterval int
 }
 
 // QuickReplyConfig 快速回复配置
 type QuickReplyConfig struct {
-	Enabled bool     `yaml:"enabled" mapstructure:"enabled"`
-	Words   []string `yaml:"words" mapstructure:"words"`
+	Enabled bool
+	Words   []string
 }
 
 // LocalMCPFun 本地MCP函数配置
 type LocalMCPFun struct {
-	Name        string `yaml:"name" mapstructure:"name"`
-	Description string `yaml:"description" mapstructure:"description"`
-	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
+	Name        string
+	Description string
+	Enabled     bool
 }

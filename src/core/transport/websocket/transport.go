@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"net/http"
 
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/transport/ws"
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 // WebSocketTransport is a compatibility wrapper exposing the legacy transport interface.
 type WebSocketTransport struct {
-	config      *configs.Config
+	config      *config.Config
 	logger      *utils.Logger
 	server      *ws.Server
 	hub         *ws.Hub
@@ -21,7 +21,7 @@ type WebSocketTransport struct {
 }
 
 // NewWebSocketTransport creates a websocket transport backed by the refactored internal package.
-func NewWebSocketTransport(cfg *configs.Config, logger *utils.Logger) *WebSocketTransport {
+func NewWebSocketTransport(cfg *config.Config, logger *utils.Logger) *WebSocketTransport {
 	if logger == nil {
 		logger = utils.DefaultLogger
 	}

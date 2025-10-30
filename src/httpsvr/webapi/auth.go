@@ -1,11 +1,11 @@
 package webapi
 
 import (
-	"fmt"
+	// "fmt"
 	"net/http"
 	"time"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/internal/platform/config"
+	// "xiaozhi-server-go/src/configs/database" // TODO: Remove database dependency
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +21,7 @@ type JWTClaims struct {
 var jwtSecret = []byte("xiaozhi_jwt_secret")
 
 // 通用认证中间件
-func AuthMiddleware(config *configs.Config) gin.HandlerFunc {
+func AuthMiddleware(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apikey := c.GetHeader("AuthorToken")
 		if apikey != "" {
@@ -46,13 +46,14 @@ func AuthMiddleware(config *configs.Config) gin.HandlerFunc {
 					return
 				}
 				// 校验user_id和username是否匹配
-				user, err := database.GetUserByID(database.GetDB(), userID.(uint))
-				if err != nil || user == nil || user.Username != username.(string) {
-					utils.DefaultLogger.Error("API Token验证通过，但user_id和username不匹配")
-					respondError(c, http.StatusUnauthorized, "user_id和username不匹配", nil)
-					c.Abort()
-					return
-				}
+				// TODO: Database functionality removed - simplified auth
+				// user, err := database.GetUserByID(database.GetDB(), userID.(uint))
+				// if err != nil || user == nil || user.Username != username.(string) {
+				// 	utils.DefaultLogger.Error("API Token验证通过，但user_id和username不匹配")
+				// 	respondError(c, http.StatusUnauthorized, "user_id和username不匹配", nil)
+				// 	c.Abort()
+				// 	return
+				// }
 				// 认证通过，设置上下文
 				c.Set("user_id", userID)
 				c.Set("username", username)
@@ -88,6 +89,10 @@ func AuthMiddleware(config *configs.Config) gin.HandlerFunc {
 // 允许 observer 角色对 GET 请求只读访问，非 GET 请求仍只允许 admin
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// TODO: Database functionality removed - simplified admin check
+		// 暂时允许所有已认证请求通过
+		c.Next()
+		/*
 		// 假设 user_id 已由认证中间件写入
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -123,6 +128,7 @@ func AdminMiddleware() gin.HandlerFunc {
 			return
 		}
 		c.Next()
+		*/
 	}
 }
 

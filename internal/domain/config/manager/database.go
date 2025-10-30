@@ -1,68 +1,37 @@
 package manager
 
 import (
-	"fmt"
-
 	"xiaozhi-server-go/internal/domain/config/types"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 )
 
 // DatabaseRepository 基于数据库的配置存储库实现
-type DatabaseRepository struct {
-	db configs.ConfigDBInterface
-}
+// Note: Since we removed database-backed configuration, this is now a simple passthrough
+type DatabaseRepository struct{}
 
 // NewDatabaseRepository 创建新的数据库配置存储库
-func NewDatabaseRepository(db configs.ConfigDBInterface) types.Repository {
-	return &DatabaseRepository{
-		db: db,
-	}
+func NewDatabaseRepository(db interface{}) types.Repository {
+	return &DatabaseRepository{}
 }
 
 // LoadConfig 加载配置
-func (r *DatabaseRepository) LoadConfig() (*configs.Config, error) {
-	configStr, err := r.db.LoadServerConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config from database: %w", err)
-	}
-
-	config := &configs.Config{}
-	if configStr != "" {
-		err = config.FromString(configStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse config: %w", err)
-		}
-		return config, nil
-	}
-
-	// 如果数据库为空，返回默认配置
-	return r.InitDefaultConfig()
+func (r *DatabaseRepository) LoadConfig() (*config.Config, error) {
+	// Return default config since we no longer use database storage
+	return config.DefaultConfig(), nil
 }
 
 // SaveConfig 保存配置
-func (r *DatabaseRepository) SaveConfig(config *configs.Config) error {
-	configStr := config.ToString()
-	return r.db.UpdateServerConfig(configStr)
+func (r *DatabaseRepository) SaveConfig(config *config.Config) error {
+	// No-op since we don't save to database anymore
+	return nil
 }
 
 // InitDefaultConfig 初始化默认配置
-func (r *DatabaseRepository) InitDefaultConfig() (*configs.Config, error) {
-	defaultConfig := configs.NewDefaultInitConfig()
-	configStr := defaultConfig.ToString()
-
-	err := r.db.InitServerConfig(configStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize default config: %w", err)
-	}
-
-	return defaultConfig, nil
+func (r *DatabaseRepository) InitDefaultConfig() (*config.Config, error) {
+	return config.DefaultConfig(), nil
 }
 
 // IsInitialized 检查配置是否已初始化
 func (r *DatabaseRepository) IsInitialized() (bool, error) {
-	configStr, err := r.db.LoadServerConfig()
-	if err != nil {
-		return false, err
-	}
-	return configStr != "", nil
+	return true, nil
 }

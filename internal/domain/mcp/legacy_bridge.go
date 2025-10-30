@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	coremcp "xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
@@ -111,7 +111,7 @@ func wrapLegacyConn(conn Conn) coremcp.Conn {
 }
 
 // NewLegacyFromConfig constructs a bridge over the legacy MCP manager using the supplied config.
-func NewLegacyFromConfig(cfg *configs.Config, logger *utils.Logger) legacyBridge {
+func NewLegacyFromConfig(cfg *config.Config, logger *utils.Logger) legacyBridge {
 	if cfg == nil || logger == nil {
 		return nil
 	}
@@ -127,7 +127,7 @@ func NewLegacyFromManager(manager *coremcp.Manager) legacyBridge {
 }
 
 // NewFromConfig creates a manager instance pre-wired with the legacy bridge.
-func NewFromConfig(cfg *configs.Config, logger *utils.Logger) (*Manager, error) {
+func NewFromConfig(cfg *config.Config, logger *utils.Logger) (*Manager, error) {
 	if logger == nil {
 		return nil, errors.New("logger is required")
 	}

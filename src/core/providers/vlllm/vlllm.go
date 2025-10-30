@@ -13,7 +13,7 @@ import (
 	"time"
 
 	domainimage "xiaozhi-server-go/internal/domain/image"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -29,7 +29,7 @@ type Config struct {
 	Temperature float64
 	MaxTokens   int
 	TopP        float64
-	Security    configs.SecurityConfig
+	Security    config.SecurityConfig
 	Data        map[string]interface{}
 }
 
@@ -37,7 +37,7 @@ type Config struct {
 type Provider struct {
 	config        *Config
 	imagePipeline *domainimage.Pipeline
-	security      configs.SecurityConfig
+	security      config.SecurityConfig
 	logger        *utils.Logger
 
 	openaiClient *openai.Client

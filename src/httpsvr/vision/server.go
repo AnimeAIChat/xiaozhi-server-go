@@ -12,7 +12,7 @@ import (
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	domainimage "xiaozhi-server-go/internal/domain/image"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
@@ -28,14 +28,14 @@ const (
 
 type DefaultVisionService struct {
 	logger    *utils.Logger
-	config    *configs.Config
+	config    *config.Config
 	vlllmMap  map[string]*vlllm.Provider // 支持多个VLLLM provider
 	authToken *domainauth.AuthToken      // 认证工具
 }
 
 // NewDefaultVisionService 构造函数
 func NewDefaultVisionService(
-	config *configs.Config,
+	config *config.Config,
 	logger *utils.Logger,
 ) (*DefaultVisionService, error) {
 	service := &DefaultVisionService{
@@ -57,7 +57,7 @@ func NewDefaultVisionService(
 // initVLLMProviders 初始化VLLLM providers
 func (s *DefaultVisionService) initVLLMProviders() error {
 	// 先看配置中的VLLLM provider
-	selected_vlllm := s.config.SelectedModule["VLLLM"]
+	selected_vlllm := s.config.Selected.VLLLM
 	if selected_vlllm == "" {
 		s.logger.WarnTag("VLLLM", "请先设置 VLLLM provider 配置")
 		return fmt.Errorf("请设置好VLLLM provider配置")

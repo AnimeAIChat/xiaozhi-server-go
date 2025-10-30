@@ -13,19 +13,19 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 // SecurityValidator performs layered security checks against incoming image payloads.
 type SecurityValidator struct {
-	config *configs.SecurityConfig
+	config *config.SecurityConfig
 	logger *utils.Logger
 }
 
 // NewSecurityValidator constructs a new validator instance.
 func NewSecurityValidator(
-	config *configs.SecurityConfig,
+	config *config.SecurityConfig,
 	logger *utils.Logger,
 ) *SecurityValidator {
 	return &SecurityValidator{

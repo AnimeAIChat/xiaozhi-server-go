@@ -14,16 +14,14 @@ import (
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
-	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/eventbus"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
 	platformobservability "xiaozhi-server-go/internal/platform/observability"
 	platformstorage "xiaozhi-server-go/internal/platform/storage"
-	httptransport "xiaozhi-server-go/internal/transport/http"
-	"xiaozhi-server-go/src/configs"
-	"xiaozhi-server-go/src/configs/database"
+	platformconfig "xiaozhi-server-go/internal/platform/config"
+	"xiaozhi-server-go/internal/transport/http"
 	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/transport"
@@ -85,7 +83,7 @@ type initStep struct {
 }
 
 type appState struct {
-	config                *configs.Config
+	config                *platformconfig.Config
 	configPath            string
 	configRepo            types.Repository
 	logProvider           *platformlogging.Logger
@@ -94,6 +92,26 @@ type appState struct {
 	observabilityShutdown platformobservability.ShutdownFunc
 	authManager           *domainauth.AuthManager
 	mcpManager            *mcp.Manager
+}
+
+// noOpConfigRepository implements types.Repository with no-op operations
+// since we no longer use database-backed configuration
+type noOpConfigRepository struct{}
+
+func (r *noOpConfigRepository) LoadConfig() (*platformconfig.Config, error) {
+	return platformconfig.DefaultConfig(), nil
+}
+
+func (r *noOpConfigRepository) SaveConfig(config *platformconfig.Config) error {
+	return nil
+}
+
+func (r *noOpConfigRepository) InitDefaultConfig() (*platformconfig.Config, error) {
+	return platformconfig.DefaultConfig(), nil
+}
+
+func (r *noOpConfigRepository) IsInitialized() (bool, error) {
+	return true, nil
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -163,7 +181,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(config, logger, authManager, mcpManager, state.configRepo, group, groupCtx); err != nil {
+	if err := startServices(state.config, logger, authManager, mcpManager, state.configRepo, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -245,23 +263,22 @@ func InitGraph() []initStep {
 			Execute: initStorageStep,
 		},
 		{
-			ID:        "config:init-repository",
-			Title:     "Initialise configuration repository",
-			DependsOn: []string{"storage:init-config-store"},
-			Kind:      platformerrors.KindConfig,
-			Execute:   initConfigRepositoryStep,
+			ID:      "storage:init-database",
+			Title:   "Initialise database",
+			Kind:    platformerrors.KindStorage,
+			Execute: initDatabaseStep,
 		},
 		{
-			ID:        "config:load-runtime",
-			Title:     "Load runtime configuration",
-			DependsOn: []string{"config:init-repository"},
+			ID:        "config:load-default",
+			Title:     "Load default configuration",
+			DependsOn: []string{"storage:init-config-store"},
 			Kind:      platformerrors.KindConfig,
-			Execute:   loadConfigStep,
+			Execute:   loadDefaultConfigStep,
 		},
 		{
 			ID:        "logging:init-provider",
 			Title:     "Initialise logging provider",
-			DependsOn: []string{"config:load-runtime"},
+			DependsOn: []string{"config:load-default"},
 			Kind:      platformerrors.KindBootstrap,
 			Execute:   initLoggingStep,
 		},
@@ -282,7 +299,7 @@ func InitGraph() []initStep {
 		{
 			ID:        "auth:init-manager",
 			Title:     "Initialise auth manager",
-			DependsOn: []string{"observability:setup-hooks"},
+			DependsOn: []string{"observability:setup-hooks", "storage:init-database"},
 			Kind:      platformerrors.KindBootstrap,
 			Execute:   initAuthStep,
 		},
@@ -296,28 +313,19 @@ func initStorageStep(_ context.Context, _ *appState) error {
 	return nil
 }
 
-func initConfigRepositoryStep(_ context.Context, state *appState) error {
-	configRepo := manager.NewDatabaseRepository(platformstorage.ConfigStore())
-	state.configRepo = configRepo
+func initDatabaseStep(_ context.Context, _ *appState) error {
+	if err := platformstorage.InitDatabase(); err != nil {
+		return platformerrors.Wrap(platformerrors.KindStorage, "storage:init-database", "failed to initialize database", err)
+	}
 	return nil
 }
 
-func loadConfigStep(_ context.Context, state *appState) error {
-	if state.configRepo == nil {
-		return platformerrors.New(
-			platformerrors.KindConfig,
-			"config:load-runtime",
-			"config repository not initialized",
-		)
-	}
-
-	config, err := state.configRepo.LoadConfig()
-	if err != nil {
-		return platformerrors.Wrap(platformerrors.KindConfig, "config:load-runtime", "failed to load config", err)
-	}
-
+func loadDefaultConfigStep(_ context.Context, state *appState) error {
+	config := platformconfig.DefaultConfig()
 	state.config = config
-	state.configPath = "database:serverConfig"
+	state.configPath = "default:config"
+	// Create a no-op config repository since we no longer use database-backed configuration
+	state.configRepo = &noOpConfigRepository{}
 	return nil
 }
 
@@ -331,9 +339,9 @@ func initLoggingStep(_ context.Context, state *appState) error {
 	}
 
 	logProvider, err := platformlogging.New(platformlogging.Config{
-		Level:    state.config.Log.LogLevel,
-		Dir:      state.config.Log.LogDir,
-		Filename: state.config.Log.LogFile,
+		Level:    state.config.Log.Level,
+		Dir:      state.config.Log.Dir,
+		Filename: state.config.Log.File,
 	})
 	if err != nil {
 		return platformerrors.Wrap(platformerrors.KindBootstrap, "logging:init-provider", "failed to initialize logging provider", err)
@@ -348,16 +356,13 @@ func initLoggingStep(_ context.Context, state *appState) error {
 		state.logger.InfoTag(
 			"引导",
 			"日志模块就绪 [%s] %s",
-			state.config.Log.LogLevel,
+			state.config.Log.Level,
 			state.configPath,
 		)
 	}
 
 	// 设置事件处理器
 	eventbus.SetupEventHandlers()
-
-	database.SetLogger(state.logger)
-	database.InsertDefaultConfigIfNeeded(database.GetDB(), state.config)
 
 	return nil
 }
@@ -377,7 +382,7 @@ func setupObservabilityStep(ctx context.Context, state *appState) error {
 	}
 
 	cfg := platformobservability.Config{
-		Enabled: strings.EqualFold(state.config.Log.LogLevel, "debug"),
+		Enabled: strings.EqualFold(state.config.Log.Level, "debug"),
 	}
 
 	shutdown, err := platformobservability.Setup(ctx, cfg, slogger)
@@ -415,71 +420,39 @@ func initMCPManagerStep(_ context.Context, state *appState) error {
 		)
 	}
 
+	// Use new config format for MCP manager
 	mcpManager := mcp.NewManagerForPool(state.logger, state.config)
 	state.mcpManager = mcpManager
 	return nil
 }
 
-func loadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
-	state := &appState{}
-
-	// 初始化存储
-	if err := initStorageStep(context.Background(), state); err != nil {
-		return nil, nil, err
-	}
-
-	// 初始化配置Repository
-	if err := initConfigRepositoryStep(context.Background(), state); err != nil {
-		return nil, nil, err
-	}
-
-	// 加载配置
-	if err := loadConfigStep(context.Background(), state); err != nil {
-		return nil, nil, err
-	}
-
-	// 初始化日志
-	if err := initLoggingStep(context.Background(), state); err != nil {
-		return nil, nil, err
-	}
-
-	return state.config, state.logger, nil
-}
-
-func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.AuthManager, error) {
+func initAuthManager(config *platformconfig.Config, logger *utils.Logger) (*domainauth.AuthManager, error) {
 	storeType := strings.ToLower(strings.TrimSpace(config.Server.Auth.Store.Type))
 	storeCfg := authstore.Config{
 		Driver: storeType,
-		TTL:    time.Duration(config.Server.Auth.Store.Expiry) * time.Hour,
+		TTL:    config.Server.Auth.Store.Expiry,
 	}
 
 	if storeCfg.Driver == "" || storeCfg.Driver == "database" || storeCfg.Driver == "sqlite" {
 		storeCfg.Driver = authstore.DriverSQLite
 	}
 
-	cleanupInterval := parseDurationOrWarn(
-		logger,
-		config.Server.Auth.Store.Cleanup,
-		"auth store cleanup interval",
-	)
+	cleanupInterval := config.Server.Auth.Store.Cleanup
+	if cleanupInterval <= 0 {
+		cleanupInterval = 10 * time.Minute // default cleanup interval
+	}
 
 	switch storeCfg.Driver {
 	case authstore.DriverMemory:
-		if config.Server.Auth.Store.Memory.Cleanup != "" {
-			if d := parseDurationOrWarn(
-				logger,
-				config.Server.Auth.Store.Memory.Cleanup,
-				"auth memory cleanup interval",
-			); d > 0 {
-				cleanupInterval = d
-			}
+		if config.Server.Auth.Store.Memory.Cleanup > 0 {
+			cleanupInterval = config.Server.Auth.Store.Memory.Cleanup
 		}
 		storeCfg.Memory = &authstore.MemoryConfig{
 			GCInterval: cleanupInterval,
 		}
 	case authstore.DriverSQLite:
 		storeCfg.SQLite = &authstore.SQLiteConfig{
-			DSN: config.Server.Auth.Store.Sqlite.DSN,
+			DSN: config.Server.Auth.Store.SQLite.DSN,
 		}
 	case authstore.DriverRedis:
 		storeCfg.Redis = &authstore.RedisConfig{
@@ -489,12 +462,14 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 			DB:       config.Server.Auth.Store.Redis.DB,
 			Prefix:   config.Server.Auth.Store.Redis.Prefix,
 		}
+		if storeCfg.Redis.Addr == "" {
 			return nil, platformerrors.Wrap(
 				platformerrors.KindBootstrap,
 				"auth:init-manager",
 				"redis store addr is required",
 				errors.New("redis store addr is required"),
 			)
+		}
 	default:
 		logger.WarnTag("认证", "不支持的存储类型 %s，已自动回退至内存模式", storeType)
 		storeCfg.Driver = authstore.DriverMemory
@@ -502,7 +477,7 @@ func initAuthManager(config *configs.Config, logger *utils.Logger) (*domainauth.
 	}
 
 	storeDeps := authstore.Dependencies{
-		SQLiteDB: database.GetDB(),
+		SQLiteDB: platformstorage.GetDB(),
 	}
 	authStore, err := authstore.New(storeCfg, storeDeps)
 	if err != nil {
@@ -544,7 +519,7 @@ func parseDurationOrWarn(logger *utils.Logger, value string, field string) time.
 }
 
 func startTransportServer(
-	config *configs.Config,
+	config *platformconfig.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
 	mcpManager *mcp.Manager,
@@ -636,7 +611,7 @@ func startTransportServer(
 }
 
 func startHTTPServer(
-	config *configs.Config,
+	config *platformconfig.Config,
 	logger *utils.Logger,
 	configRepo types.Repository,
 	g *errgroup.Group,
@@ -703,8 +678,7 @@ func startHTTPServer(
 		return nil, err
 	}
 
-	systemConfigService := cfg.NewSystemConfigService(logger, database.GetDB(), config, configRepo)
-	systemConfigService.RegisterRoutes(apiGroup)
+	// Note: System config service removed as we no longer use database-backed configuration
 
 	httpServer := &http.Server{
 		Addr:    ":" + strconv.Itoa(config.Web.Port),
@@ -789,7 +763,7 @@ func waitForShutdown(
 }
 
 func startServices(
-	config *configs.Config,
+	config *platformconfig.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
 	mcpManager *mcp.Manager,

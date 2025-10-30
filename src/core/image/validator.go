@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"image"
 	"strings"
-	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 
 	_ "image/gif"  // 注册GIF解码器
@@ -18,13 +18,13 @@ import (
 
 // ImageSecurityValidator 图片安全验证器
 type ImageSecurityValidator struct {
-	config *configs.SecurityConfig
+	config *config.SecurityConfig
 	logger *utils.Logger
 }
 
 // NewImageSecurityValidator 创建新的图片安全验证器
 func NewImageSecurityValidator(
-	config *configs.SecurityConfig,
+	config *config.SecurityConfig,
 	logger *utils.Logger,
 ) *ImageSecurityValidator {
 	return &ImageSecurityValidator{

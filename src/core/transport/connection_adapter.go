@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/transport/ws"
-	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/utils"
@@ -30,7 +30,7 @@ type ConnectionContextAdapter struct {
 // NewConnectionContextAdapter 创建新的连接上下文适配器
 func NewConnectionContextAdapter(
 	conn Connection,
-	config *configs.Config,
+	config *config.Config,
 	providerSet *pool.ProviderSet,
 	poolManager *pool.PoolManager,
 	taskMgr *task.TaskManager,
@@ -153,7 +153,7 @@ func (a *ConnectionContextAdapter) CreateSafeCallback() func(func(*core.Connecti
 
 // DefaultConnectionHandlerFactory 默认连接处理器工厂
 type DefaultConnectionHandlerFactory struct {
-	config      *configs.Config
+	config      *config.Config
 	poolManager *pool.PoolManager
 	taskMgr     *task.TaskManager
 	logger      *utils.Logger
@@ -161,7 +161,7 @@ type DefaultConnectionHandlerFactory struct {
 
 // NewDefaultConnectionHandlerFactory 创建默认连接处理器工厂
 func NewDefaultConnectionHandlerFactory(
-	config *configs.Config,
+	config *config.Config,
 	poolManager *pool.PoolManager,
 	taskMgr *task.TaskManager,
 	logger *utils.Logger,
