@@ -466,7 +466,8 @@ const docTemplate = `{
                     "example": "543091"
                 },
                 "message": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Anime AI Chat 543091"
                 }
             }
         },

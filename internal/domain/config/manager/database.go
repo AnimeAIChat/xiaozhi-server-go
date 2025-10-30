@@ -3,7 +3,6 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/platform/config"
@@ -168,30 +167,30 @@ func (r *DatabaseRepository) loadConfigFromDB() (*config.Config, error) {
 	}
 
 	// 调试：打印展平的配置映射中的 ASR 相关键
-	fmt.Printf("DEBUG: Flattened config map ASR keys:\n")
-	for key, value := range configMap {
-		if strings.HasPrefix(key, "ASR.") {
-			fmt.Printf("  %s = %v (type: %T)\n", key, value, value)
-		}
-	}
+	// fmt.Printf("DEBUG: Flattened config map ASR keys:\n")
+	// for key, value := range configMap {
+	// 	if strings.HasPrefix(key, "ASR.") {
+	// 		fmt.Printf("  %s = %v (type: %T)\n", key, value, value)
+	// 	}
+	// }
 
 	// 将展平的映射重新构建为嵌套结构
 	nested := r.unflattenMap(configMap)
 
 	// 调试：打印重建后的嵌套结构
-	if asrSection, ok := nested["ASR"]; ok {
-		asrJSON, _ := json.MarshalIndent(asrSection, "", "  ")
-		fmt.Printf("DEBUG: Reconstructed nested config ASR section:\n%s\n", string(asrJSON))
-	} else {
-		fmt.Printf("DEBUG: ASR section not found in nested config\n")
-	}
+	// if asrSection, ok := nested["ASR"]; ok {
+	// 	asrJSON, _ := json.MarshalIndent(asrSection, "", "  ")
+	// 	fmt.Printf("DEBUG: Reconstructed nested config ASR section:\n%s\n", string(asrJSON))
+	// } else {
+	// 	fmt.Printf("DEBUG: ASR section not found in nested config\n")
+	// }
 
 	data, err := json.Marshal(nested)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("DEBUG: Final JSON data for unmarshaling:\n%s\n", string(data))
+	// fmt.Printf("DEBUG: Final JSON data for unmarshaling:\n%s\n", string(data))
 
 	var cfg config.Config
 	if err := json.Unmarshal(data, &cfg); err != nil {

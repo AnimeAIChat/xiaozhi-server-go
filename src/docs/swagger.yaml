@@ -66,6 +66,7 @@ definitions:
         example: "543091"
         type: string
       message:
+        example: Anime AI Chat 543091
         type: string
     type: object
   ota.ErrorResponse:
