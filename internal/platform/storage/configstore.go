@@ -51,7 +51,7 @@ func InitDatabase() error {
 	}
 
 	// Auto-migrate tables (fallback for backward compatibility)
-	if err := db.AutoMigrate(&AuthClient{}, &DomainEvent{}, &ConfigRecord{}, &ConfigSnapshot{}); err != nil {
+	if err := db.AutoMigrate(&AuthClient{}, &DomainEvent{}, &ConfigRecord{}, &ConfigSnapshot{}, &ModelSelection{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -59,6 +59,7 @@ func InitDatabase() error {
 	migrationManager := NewMigrationManager(db)
 	migrationManager.AddMigration(&migrations.Migration001Initial{})
 	migrationManager.AddMigration(&migrations.Migration002ConfigTables{})
+	migrationManager.AddMigration(&migrations.Migration003ModelSelections{})
 
 	if err := migrationManager.RunMigrations(); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

@@ -127,6 +127,25 @@ func DefaultConfig() *Config {
 				"appid":        "your_appid",
 				"access_token": "your_access_token",
 				"output_dir":   "data/tmp/",
+				"end_window_size": 300,
+			},
+			"GoSherpaASR": map[string]interface{}{
+				"type": "gosherpa",
+				"addr": "ws://127.0.0.1:8848/asr",
+			},
+			"DeepgramSST": map[string]interface{}{
+				"type":     "deepgram",
+				"addr":     "wss://api.deepgram.com/v1/listen",
+				"api_key":  "your_api_key",
+				"lang":     "zh-CN",
+				"output_dir": "data/tmp/",
+			},
+			"StepASR": map[string]interface{}{
+				"type":    "stepfun",
+				"api_key": "your_api_key",
+				"model":   "step-audio-2-mini",
+				"voice":   "qingchunshaonv",
+				"prompt":  "你是小智，一个机车可爱的台湾女孩。讲话短、带梗、有点调皮。",
 			},
 		},
 		TTS: map[string]TTSConfig{
@@ -145,6 +164,31 @@ func DefaultConfig() *Config {
 					{Name: "zh-CN-shaanxi-XiaoniNeural", DisplayName: "晓妮（陕西）", Sex: "女", Description: "陕西口音风格，质朴热情，适合方言文化场景"},
 				},
 			},
+			"DoubaoTTS": {
+				Type:      "doubao",
+				Voice:     "BV001_streaming",
+				OutputDir: "data/tmp/",
+				AppID:     "your_appid",
+				Token:     "your_token",
+				Cluster:   "volcano_tts",
+				SupportedVoices: []VoiceInfo{
+					{Name: "zh_female_wanwanxiaohe_moon_bigtts", DisplayName: "湾湾小何", Sex: "女", Description: "台湾腔调，活泼可爱"},
+					{Name: "BV002_streaming", DisplayName: "小明", Sex: "男", Description: "年轻男性声音"},
+					{Name: "BV001_streaming", DisplayName: "小智", Sex: "女", Description: "年轻女性声音"},
+				},
+			},
+			"GoSherpaTTS": {
+				Type:      "gosherpa",
+				Cluster:   "ws://127.0.0.1:8848/tts",
+				OutputDir: "data/tmp/",
+			},
+			"DeepgramTTS": {
+				Type:      "deepgram",
+				Voice:     "aura-2-zeus-en",
+				Cluster:   "wss://api.deepgram.com/v1/speak",
+				Token:     "your_token",
+				OutputDir: "data/tmp/",
+			},
 		},
 		LLM: map[string]LLMConfig{
 			"ChatGLMLLM": {
@@ -153,6 +197,29 @@ func DefaultConfig() *Config {
 				BaseURL:   "https://open.bigmodel.cn/api/paas/v4/",
 				APIKey:    "your_api_key",
 			},
+			"OllamaLLM": {
+				Type:      "ollama",
+				ModelName: "qwen3:14b",
+				BaseURL:   "http://127.0.0.1:11434",
+			},
+			"DoubaoLLM": {
+				Type:      "doubao",
+				ModelName: "deepseek-v3-1-terminus",
+				BaseURL:   "https://ark.cn-beijing.volces.com/api/v3",
+				APIKey:    "your_api_key",
+			},
+			"CozeLLM": {
+				Type:      "coze",
+				BaseURL:   "https://api.coze.cn",
+				Extra: map[string]interface{}{
+					"bot_id":                "your_bot_id",
+					"user_id":               "your_user_id",
+					"client_id":             "your_client_id",
+					"public_key":            "your_public_key",
+					"private_key":           "your_private_key",
+					"personal_access_token": "your_personal_access_token",
+				},
+			},
 		},
 		VLLLM: map[string]VLLLMConfig{
 			"ChatGLMVLLM": {
@@ -160,6 +227,23 @@ func DefaultConfig() *Config {
 				ModelName: "glm-4v-flash",
 				BaseURL:   "https://open.bigmodel.cn/api/paas/v4/",
 				APIKey:    "your_api_key",
+				MaxTokens: 4096,
+				Temperature: 0.7,
+				TopP:       0.9,
+				Security: SecurityConfig{
+					MaxFileSize:       10485760,
+					MaxPixels:         16777216,
+					MaxWidth:          4096,
+					MaxHeight:         4096,
+					AllowedFormats:    []string{"jpeg", "jpg", "png", "webp", "gif"},
+					EnableDeepScan:    true,
+					ValidationTimeout: "10s",
+				},
+			},
+			"OllamaVLLM": {
+				Type:      "ollama",
+				ModelName: "qwen2.5vl",
+				BaseURL:   "http://localhost:11434",
 				MaxTokens: 4096,
 				Temperature: 0.7,
 				TopP:       0.9,
