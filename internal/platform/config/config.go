@@ -28,6 +28,7 @@ type ServerConfig struct {
 	Port   int
 	Token  string
 	Auth   AuthConfig
+	Device DeviceRegistrationConfig
 }
 
 type AuthConfig struct {
@@ -60,6 +61,11 @@ type AuthSQLiteStore struct {
 
 type AuthMemoryStore struct {
 	Cleanup time.Duration
+}
+
+type DeviceRegistrationConfig struct {
+	RequireActivationCode bool // 是否需要激活码，默认false
+	DefaultAdminUserID    uint // 默认管理员用户ID，用于不需要激活码的情况
 }
 
 type LogConfig struct {

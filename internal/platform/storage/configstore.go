@@ -11,6 +11,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"crypto/rand"
+	"math/big"
 )
 
 // InitConfigStore ensures the underlying configuration store is ready.
@@ -51,7 +53,7 @@ func InitDatabase() error {
 	}
 
 	// Auto-migrate tables (fallback for backward compatibility)
-	if err := db.AutoMigrate(&AuthClient{}, &DomainEvent{}, &ConfigRecord{}, &ConfigSnapshot{}, &ModelSelection{}); err != nil {
+	if err := db.AutoMigrate(&AuthClient{}, &DomainEvent{}, &ConfigRecord{}, &ConfigSnapshot{}, &ModelSelection{}, &User{}, &Device{}, &Agent{}, &AgentDialog{}, &VerificationCode{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -63,6 +65,11 @@ func InitDatabase() error {
 
 	if err := migrationManager.RunMigrations(); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Initialize default admin user
+	if err := initializeAdminUser(db); err != nil {
+		return fmt.Errorf("failed to initialize admin user: %w", err)
 	}
 
 	return nil
@@ -162,6 +169,11 @@ type Device struct {
 	Extra            string         `gorm:"type:text"`
 	Conversationid   string
 	Mode             string
+	LastIP           string
+	Stats            string         `gorm:"type:text"`
+	TotalTokens      int64          `gorm:"default:0"`
+	UsedTokens       int64          `gorm:"default:0"`
+	LastSessionEndAt *time.Time
 }
 
 // User 用户模型
@@ -186,12 +198,70 @@ type ServerConfig struct {
 	CfgStr string `gorm:"type:text"`
 }
 
-// ServerStatus 服务器状态模型
-type ServerStatus struct {
-	ID               uint      `gorm:"primaryKey"`
-	OnlineDeviceNum  int
-	OnlineSessionNum int
-	CPUUsage         string
-	MemoryUsage      string
-	UpdatedAt        time.Time
+// VerificationCode 验证码模型
+type VerificationCode struct {
+	ID        uint           `gorm:"primarykey"`
+	Code      string         `gorm:"unique;not null;size:6"`
+	Purpose   string         `gorm:"not null;size:50"`
+	UserID    *string        `gorm:"size:100"`
+	DeviceID  *string        `gorm:"size:100"`
+	ExpiresAt time.Time      `gorm:"not null"`
+	UsedAt    *time.Time
+	IsUsed    bool           `gorm:"default:false"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+// initializeAdminUser 初始化管理员用户
+func initializeAdminUser(db *gorm.DB) error {
+	// 检查是否已存在管理员用户
+	var count int64
+	if err := db.Model(&User{}).Where("role = ?", "admin").Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check admin user count: %w", err)
+	}
+
+	if count > 0 {
+		// 管理员用户已存在，跳过初始化
+		return nil
+	}
+
+	// 生成随机密码
+	password := generateRandomPassword(12)
+
+	// 创建管理员用户
+	adminUser := &User{
+		Username:  "admin",
+		Password:  password, // 注意：实际应用中应该加密密码
+		Nickname:  "管理员",
+		Role:      "admin",
+		Status:    1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := db.Create(adminUser).Error; err != nil {
+		return fmt.Errorf("failed to create admin user: %w", err)
+	}
+
+	// 打印管理员账号密码到控制台
+	fmt.Printf("=====================================\n")
+	fmt.Printf("管理员用户已创建\n")
+	fmt.Printf("用户名: %s\n", adminUser.Username)
+	fmt.Printf("密码: %s\n", password)
+	fmt.Printf("请妥善保存此密码，首次登录后请修改密码\n")
+	fmt.Printf("=====================================\n")
+
+	return nil
+}
+
+// generateRandomPassword 生成随机密码
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	password := make([]byte, length)
+	for i := range password {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		password[i] = charset[n.Int64()]
+	}
+	return string(password)
 }

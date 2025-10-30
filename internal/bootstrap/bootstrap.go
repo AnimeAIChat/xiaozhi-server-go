@@ -16,6 +16,7 @@ import (
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
 	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
+	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/domain/eventbus"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
@@ -629,6 +630,21 @@ func startHTTPServer(
 
 		c.File("./web/index.html")
 	})
+
+	// 初始化设备服务
+	db := platformstorage.GetDB()
+	deviceRepo := platformstorage.NewDeviceRepository(db)
+	verificationRepo := platformstorage.NewVerificationCodeRepository(db)
+
+	deviceService := service.NewDeviceService(
+		deviceRepo,
+		verificationRepo,
+		config.Server.Device.RequireActivationCode,
+		int(config.Server.Device.DefaultAdminUserID),
+	)
+
+	otaHandler := httptransport.NewOTAHandler(deviceService)
+	otaHandler.RegisterRoutes(httpRouter)
 
 	otaService := ota.NewDefaultOTAService(config.Web.Websocket, config)
 	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
