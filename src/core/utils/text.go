@@ -130,6 +130,11 @@ func findLastPunctuationWithMinLength(text string, punctuations []string, minLen
 				}
 			}
 
+			// 检查标点符号是否在括号内，如果是则跳过
+			if isInsideParentheses(text, actualIdx) {
+				continue
+			}
+
 			if actualIdx > lastIndex {
 				lastIndex = actualIdx
 				foundPunctuation = punct
@@ -323,11 +328,16 @@ func GenerateSecurePassword(length int) string {
 
 // RemoveParentheses 移除括号及括号内的内容
 // 支持中文括号（）和英文括号()
+// 同时移除不匹配的单个括号
 func RemoveParentheses(text string) string {
 	// 移除中文括号及其内容
 	text = reRemoveParenthesesCN.ReplaceAllString(text, "")
 	// 移除英文括号及其内容
 	text = reRemoveParenthesesEN.ReplaceAllString(text, "")
+	
+	// 移除剩余的不匹配括号
+	text = regexp.MustCompile(`[（）()]`).ReplaceAllString(text, "")
+	
 	return text
 }
 
@@ -343,4 +353,30 @@ func SanitizeForLog(text string) string {
 		return ""
 	}
 	return strings.Join(fields, " ")
+}
+
+// isInsideParentheses 检查指定位置是否在括号内
+func isInsideParentheses(text string, pos int) bool {
+	// 记录括号的嵌套层级
+	parenLevel := 0
+	bracketLevel := 0
+
+	for i, char := range text {
+		if i >= pos {
+			break
+		}
+
+		switch char {
+		case '(', '（':
+			parenLevel++
+		case ')', '）':
+			parenLevel--
+		case '[', '【':
+			bracketLevel++
+		case ']', '】':
+			bracketLevel--
+		}
+	}
+
+	return parenLevel > 0 || bracketLevel > 0
 }

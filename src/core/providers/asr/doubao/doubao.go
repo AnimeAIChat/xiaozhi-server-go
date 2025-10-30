@@ -452,10 +452,10 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	}
 
 	// 添加日志记录请求头信息，用于调试认证问题
-	p.logger.InfoTag("ASR", "豆包ASR请求头信息: appID=%s, accessToken=%s..., connectID=%s", 
-		p.appID, 
-		p.accessToken[:min(10, len(p.accessToken))]+"...", // 只显示前10个字符
-		p.connectID)
+	// p.logger.InfoTag("ASR", "豆包ASR请求头信息: appID=%s, accessToken=%s..., connectID=%s", 
+	// 	p.appID, 
+	// 	p.accessToken[:min(10, len(p.accessToken))]+"...", // 只显示前10个字符
+	// 	p.connectID)
 
 	// 重试机制
 	var conn *websocket.Conn
