@@ -101,11 +101,15 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, text))
 		h.providers.asr.ResetStartListenTime()
 		if textIndex == h.tts_last_text_index {
-			h.sendTTSMessage("stop", "", textIndex)
-			if h.closeAfterChat {
-				h.Close()
+			if round != h.talkRound {
+				h.LogInfo("sendTTSMessage stop: 跳过结束状态发送，轮次已变化")
 			} else {
-				h.clearSpeakStatus()
+				h.sendTTSMessage("stop", "", textIndex)
+				if h.closeAfterChat {
+					h.Close()
+				} else {
+					h.clearSpeakStatus()
+				}
 			}
 		}
 	}()
