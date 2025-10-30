@@ -1456,7 +1456,15 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 	h.LogInfo("[服务端] [讲话状态] 已清除")
 	h.tts_last_text_index = -1
 	h.tts_last_audio_index = -1
+
+	// 先清理音频队列，防止在恢复ASR接收时立即重新启动ASR
+	h.cleanTTSAndAudioQueue(false)
+
 	h.providers.asr.Reset() // 重置ASR状态
+
+	// 等待一小段时间，确保ASR协程完全停止
+	time.Sleep(50 * time.Millisecond)
+
 	// 恢复ASR接收，避免打断后无法重新启动ASR
 	atomic.StoreInt32(&h.asrPause, 0)
 }

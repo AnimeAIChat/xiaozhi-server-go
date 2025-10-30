@@ -80,6 +80,8 @@ type Provider struct {
 	connMutex   sync.Mutex // 添加互斥锁保护连接状态
 
 	sendDataCnt int // 计数器，用于跟踪发送的音频数据包数量
+	ticker      *time.Ticker // 用于定期发送心跳包保持连接
+	tickerDone  chan struct{} // 用于停止ticker的信号通道
 }
 
 // NewProvider 创建豆包ASR提供者实例
@@ -544,11 +546,48 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 
 	p.isStreaming = true
 	p.logger.DebugTag("ASR", "流式识别初始化成功 connectID=%s reqID=%s", p.connectID, p.reqID)
+
+	// 启动心跳包ticker，每200ms发送一次心跳包保持连接
+	p.tickerDone = make(chan struct{})
+	p.ticker = time.NewTicker(200 * time.Millisecond)
+	go p.keepAlive()
+
 	// 开启一个协程来处理响应，读取最后的结果，读取完成后关闭协程
 	go func() {
 		p.ReadMessage()
 	}()
 	return nil
+}
+
+// keepAlive 定期发送心跳包保持连接活跃
+func (p *Provider) keepAlive() {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Error("心跳包协程发生错误: %v", r)
+		}
+	}()
+
+	for {
+		select {
+		case <-p.ticker.C:
+			p.connMutex.Lock()
+			if !p.isStreaming || p.conn == nil {
+				p.connMutex.Unlock()
+				return
+			}
+			p.connMutex.Unlock()
+
+			// 发送一个空的音频包作为心跳包
+			emptyAudio := []byte{}
+			if err := p.sendAudioData(emptyAudio, false); err != nil {
+				p.logger.Warn("发送心跳包失败: %v", err)
+				// 如果心跳包发送失败，停止心跳
+				return
+			}
+		case <-p.tickerDone:
+			return
+		}
+	}
 }
 
 func (p *Provider) ReadMessage() {
@@ -559,6 +598,17 @@ func (p *Provider) ReadMessage() {
 		}
 		p.connMutex.Lock()
 		p.isStreaming = false // 标记流式识别结束
+
+		// 停止心跳包ticker
+		if p.ticker != nil {
+			p.ticker.Stop()
+			p.ticker = nil
+		}
+		if p.tickerDone != nil {
+			close(p.tickerDone)
+			p.tickerDone = nil
+		}
+
 		if p.conn != nil {
 			p.closeConnection()
 		}
@@ -576,8 +626,6 @@ func (p *Provider) ReadMessage() {
 		}
 		conn := p.conn
 		p.connMutex.Unlock()
-
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
 		_, response, err := conn.ReadMessage()
 		if err != nil {
@@ -752,6 +800,17 @@ func (p *Provider) Reset() error {
 	defer p.connMutex.Unlock()
 
 	p.isStreaming = false
+
+	// 停止心跳包ticker
+	if p.ticker != nil {
+		p.ticker.Stop()
+		p.ticker = nil
+	}
+	if p.tickerDone != nil {
+		close(p.tickerDone)
+		p.tickerDone = nil
+	}
+
 	p.closeConnection()
 
 	p.reqID = ""
