@@ -21,6 +21,8 @@ import (
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	domaintts "xiaozhi-server-go/internal/domain/tts"
 	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
+	"xiaozhi-server-go/internal/domain/config/manager"
+	"xiaozhi-server-go/internal/domain/config/service"
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/core/chat"
@@ -76,6 +78,7 @@ type ConnectionHandler struct {
 	// 新架构管理器
 	llmManager *domainllm.Manager
 	ttsManager *domaintts.Manager
+	configService *service.ConfigService // 配置服务
 
 	initialVoice    string // 初始语音名称
 	ttsProviderName string // 默认TTS提供者名称
@@ -234,6 +237,11 @@ func NewConnectionHandler(
 		handler.mcpManager = providerSet.MCP
 	}
 	handler.checkDeviceInfo()
+
+	// 初始化配置服务
+	configRepo := manager.NewDatabaseRepository(nil)
+	handler.configService = service.NewConfigService(configRepo)
+
 	agent, prompt := handler.InitWithAgent()
 	handler.checkTTSProvider(agent, config) // 检查TTS提供者
 	handler.checkLLMProvider(agent, config) // 检查LLM提供者是否匹配
@@ -427,7 +435,7 @@ func (h *ConnectionHandler) getUserModelSelection() (llmProvider, ttsProvider, a
 					llmProvider = modelSelection.LLMProvider
 					ttsProvider = modelSelection.TTSProvider
 					asrProvider = modelSelection.ASRProvider
-					h.LogInfo(fmt.Sprintf("使用用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", h.userID, llmProvider, ttsProvider, asrProvider))
+					// h.LogInfo(fmt.Sprintf("使用用户 %s 的模型选择: LLM=%s, TTS=%s, ASR=%s", h.userID, llmProvider, ttsProvider, asrProvider))
 				}
 			}
 		}
@@ -1131,14 +1139,20 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 		h.LogWarn(fmt.Sprintf("设备 %s 未绑定用户，回复请先激活设备", h.deviceID))
 	} else {
 		// 用户已绑定，使用快速回复词
-		var wakeUpResponses []string
-		if h.config.QuickReply.Enabled && len(h.config.QuickReply.Words) > 0 {
-			wakeUpResponses = h.config.QuickReply.Words
-		} else {
-			// 默认回复词
-			wakeUpResponses = []string{"在呢", "您好", "我在听", "请讲"}
+		enabled, words, err := h.configService.GetQuickReplyConfig()
+		if err != nil {
+			h.LogError(fmt.Sprintf("获取快速回复配置失败: %v，使用默认配置", err))
+			enabled = false
+			words = []string{"在呢", "您好", "我在听", "请讲"}
 		}
-		responseText = utils.RandomSelectFromArray(wakeUpResponses)
+
+		if enabled && len(words) > 0 {
+			responseText = utils.RandomSelectFromArray(words)
+		} else {
+			// 如果关闭快速回复，使用LLM生成回复
+			h.LogInfo("[唤醒] [LLM回复] 快速回复已关闭，使用LLM生成回复")
+			return h.genResponseByLLM(ctx, h.dialogueManager.GetLLMDialogue(), currentRound)
+		}
 	}
 
 	// 添加助手回复到对话历史

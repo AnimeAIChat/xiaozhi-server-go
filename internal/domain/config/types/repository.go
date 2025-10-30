@@ -15,4 +15,13 @@ type Repository interface {
 
 	// IsInitialized 检查配置是否已初始化
 	IsInitialized() (bool, error)
+
+	// GetConfigValue 获取单个配置项的值
+	GetConfigValue(key string) (interface{}, error)
+
+	// GetBoolConfigValue 获取布尔类型的配置值
+	GetBoolConfigValue(key string) (bool, error)
+
+	// GetStringArrayConfigValue 获取字符串数组类型的配置值
+	GetStringArrayConfigValue(key string) ([]string, error)
 }
