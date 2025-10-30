@@ -1122,14 +1122,22 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 	})
 
 	// 直接回复简单的唤醒响应，不需要调用LLM
-	var wakeUpResponses []string
-	if h.config.QuickReply.Enabled && len(h.config.QuickReply.Words) > 0 {
-		wakeUpResponses = h.config.QuickReply.Words
+	var responseText string
+	if h.userID == "" {
+		// 用户未绑定，直接回复激活提示
+		responseText = "请先激活设备"
+		h.LogWarn(fmt.Sprintf("设备 %s 未绑定用户，回复请先激活设备", h.deviceID))
 	} else {
-		// 默认回复词
-		wakeUpResponses = []string{"在呢", "您好", "我在听", "请讲"}
+		// 用户已绑定，使用快速回复词
+		var wakeUpResponses []string
+		if h.config.QuickReply.Enabled && len(h.config.QuickReply.Words) > 0 {
+			wakeUpResponses = h.config.QuickReply.Words
+		} else {
+			// 默认回复词
+			wakeUpResponses = []string{"在呢", "您好", "我在听", "请讲"}
+		}
+		responseText = utils.RandomSelectFromArray(wakeUpResponses)
 	}
-	responseText := utils.RandomSelectFromArray(wakeUpResponses)
 
 	// 添加助手回复到对话历史
 	h.dialogueManager.Put(chat.Message{
@@ -1143,6 +1151,39 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 	if err != nil {
 		h.LogError(fmt.Sprintf("播放唤醒响应失败: %v", err))
 		return fmt.Errorf("播放唤醒响应失败: %v", err)
+	}
+
+	// 如果是未绑定用户，等待TTS播放完成后再关闭连接
+	if h.userID == "" {
+		// 等待TTS播放完成，检查TTS队列和音频队列是否都为空
+		timeout := time.After(10 * time.Second) // 最多等待10秒
+		ticker := time.NewTicker(1600 * time.Millisecond)
+		defer ticker.Stop()
+		
+		for {
+			select {
+			case <-timeout:
+				h.LogInfo("等待TTS播放超时，强制关闭连接")
+				goto closeConnection
+			case <-ticker.C:
+				// 检查TTS队列和音频队列是否都为空
+				select {
+				case <-h.ttsQueue:
+					// TTS队列不为空，继续等待
+					continue
+				case <-h.audioMessagesQueue:
+					// 音频队列不为空，继续等待
+					continue
+				default:
+					// 两个队列都为空，TTS播放完成
+					h.LogInfo("TTS播放完成，关闭连接")
+					goto closeConnection
+				}
+			}
+		}
+	closeConnection:
+		h.Close()
+		return fmt.Errorf("设备未绑定用户")
 	}
 
 	h.LogInfo(fmt.Sprintf("[唤醒] [响应完成] %s", responseText))
