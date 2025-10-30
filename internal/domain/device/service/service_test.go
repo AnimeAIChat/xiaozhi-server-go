@@ -132,11 +132,12 @@ func TestDeviceService_RegisterDevice_NoActivation(t *testing.T) {
 	deviceRepo.On("Save", ctx, mock.AnythingOfType("*aggregate.Device")).Return(nil)
 
 	// 执行注册
-	device, err := service.RegisterDevice(ctx, "test-device-001", "client-001", "Test Device", "1.0.0", "192.168.1.100", "app-info")
+	device, isNew, err := service.RegisterDevice(ctx, "test-device-001", "client-001", "Test Device", "1.0.0", "192.168.1.100", "app-info")
 
 	// 验证结果
 	assert.NoError(t, err)
 	assert.NotNil(t, device)
+	assert.True(t, isNew) // 应该是新设备
 	assert.Equal(t, "test-device-001", device.DeviceID)
 	assert.Equal(t, "client-001", device.ClientID)
 	assert.Equal(t, "Test Device", device.Name)
@@ -165,11 +166,12 @@ func TestDeviceService_RegisterDevice_WithActivation(t *testing.T) {
 	deviceRepo.On("Save", ctx, mock.AnythingOfType("*aggregate.Device")).Return(nil)
 
 	// 执行注册
-	device, err := service.RegisterDevice(ctx, "test-device-002", "client-002", "Test Device 2", "2.0.0", "192.168.1.101", "app-info-2")
+	device, isNew, err := service.RegisterDevice(ctx, "test-device-002", "client-002", "Test Device 2", "2.0.0", "192.168.1.101", "app-info-2")
 
 	// 验证结果
 	assert.NoError(t, err)
 	assert.NotNil(t, device)
+	assert.True(t, isNew) // 应该是新设备
 	assert.Equal(t, "test-device-002", device.DeviceID)
 	assert.Equal(t, "client-002", device.ClientID)
 	assert.Equal(t, "Test Device 2", device.Name)

@@ -37,23 +37,23 @@ func (s *DeviceService) RegisterDevice(
 	ctx context.Context,
 	deviceID, clientID, name, version, ip string,
 	appInfo string,
-) (*aggregate.Device, error) {
+) (*aggregate.Device, bool, error) {
 	// 检查设备是否已存在
 	existingDevice, err := s.deviceRepo.FindByDeviceID(ctx, deviceID)
 	if err != nil {
-		return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to check existing device", err)
+		return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to check existing device", err)
 	}
 
 	if existingDevice != nil {
 		// 设备已存在，更新信息
 		existingDevice.UpdateActivity(ip, appInfo)
-		return existingDevice, s.deviceRepo.Update(ctx, existingDevice)
+		return existingDevice, false, s.deviceRepo.Update(ctx, existingDevice)
 	}
 
 	// 创建新设备
 	device, err := aggregate.NewDevice(deviceID, clientID, name, version)
 	if err != nil {
-		return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to create device", err)
+		return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to create device", err)
 	}
 
 	// 设置初始信息
@@ -69,28 +69,28 @@ func (s *DeviceService) RegisterDevice(
 			24, // 24小时有效期
 		)
 		if err != nil {
-			return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to generate verification code", err)
+			return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to generate verification code", err)
 		}
 
 		device.SetAuthCode(verificationCode.Code)
 
 		// 保存验证码
 		if err := s.verificationRepo.Save(ctx, verificationCode); err != nil {
-			return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to save verification code", err)
+			return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to save verification code", err)
 		}
 	} else {
 		// 直接绑定管理员用户
 		if err := device.Approve(s.defaultAdminUserID); err != nil {
-			return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to approve device", err)
+			return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to approve device", err)
 		}
 	}
 
 	// 保存设备
 	if err := s.deviceRepo.Save(ctx, device); err != nil {
-		return nil, errors.Wrap(errors.KindDomain, "device.register", "failed to save device", err)
+		return nil, false, errors.Wrap(errors.KindDomain, "device.register", "failed to save device", err)
 	}
 
-	return device, nil
+	return device, true, nil
 }
 
 // ActivateDevice 激活设备

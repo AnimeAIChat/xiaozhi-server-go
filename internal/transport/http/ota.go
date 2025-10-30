@@ -70,7 +70,7 @@ func (h *OTAHandler) RegisterDevice(c *gin.Context) {
 	}
 
 	// 注册设备
-	device, err := h.deviceService.RegisterDevice(
+	device, _, err := h.deviceService.RegisterDevice(
 		c.Request.Context(),
 		req.DeviceID,
 		req.ClientID,
