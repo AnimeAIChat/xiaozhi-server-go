@@ -35,7 +35,7 @@ import (
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/models"
-	"xiaozhi-server-go/src/task"
+	"xiaozhi-server-go/internal/domain/task"
 )
 
 type Connection interface {

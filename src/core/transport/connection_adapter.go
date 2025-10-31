@@ -11,7 +11,7 @@ import (
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/task"
+	"xiaozhi-server-go/internal/domain/task"
 )
 
 // ConnectionContextAdapter 连接上下文适配器，完全兼容现有的ConnectionContext逻辑

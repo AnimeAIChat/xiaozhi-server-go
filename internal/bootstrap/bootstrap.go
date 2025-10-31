@@ -32,7 +32,7 @@ import (
 	_ "xiaozhi-server-go/internal/platform/docs"
 	"xiaozhi-server-go/src/httpsvr/ota"
 	"xiaozhi-server-go/src/httpsvr/vision"
-	"xiaozhi-server-go/src/task"
+	"xiaozhi-server-go/internal/domain/task"
 
 	cfg "xiaozhi-server-go/src/httpsvr/webapi"
 
