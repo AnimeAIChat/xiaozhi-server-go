@@ -8,7 +8,7 @@ MAIN_PKG=./cmd/xiaozhi-server
 BINARY_NAME=xiaozhi-server
 SWAG_MAIN=main.go
 SWAG_DIRS=cmd/xiaozhi-server,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models
-SWAG_OUT=src/docs
+SWAG_OUT=internal/platform/docs
 SWAG_FLAGS=--parseDependency=false --parseGoList=false
 
 BUILD_DEPS := swag

@@ -29,7 +29,7 @@ import (
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/transport/websocket"
 	"xiaozhi-server-go/src/core/utils"
-	_ "xiaozhi-server-go/src/docs"
+	_ "xiaozhi-server-go/internal/platform/docs"
 	"xiaozhi-server-go/src/httpsvr/ota"
 	"xiaozhi-server-go/src/httpsvr/vision"
 	"xiaozhi-server-go/src/task"
