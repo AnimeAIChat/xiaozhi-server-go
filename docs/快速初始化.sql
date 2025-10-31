@@ -31,3 +31,9 @@ UPDATE config_records SET value = '"deepseek-v3-1-terminus"', updated_at = datet
 UPDATE config_records SET value = '"id"', updated_at = datetime('now', 'localtime') WHERE key = 'TTS.DoubaoTTS.AppID';
 UPDATE config_records SET value = '"api"', updated_at = datetime('now', 'localtime') WHERE key = 'TTS.DoubaoTTS.Token';
 UPDATE config_records SET value = '"BV001_streaming"', updated_at = datetime('now', 'localtime') WHERE key = 'TTS.DoubaoTTS.Voice';
+
+-- 系统默认提示语
+UPDATE config_records SET value = '"你是小智，一个可爱的女孩。讲话短、废话少、带梗、有点调皮。爱乱吹牛、逗人笑。语气轻松、搞笑、自然，像聊天一样说话。"', updated_at = datetime('now', 'localtime') WHERE key = 'System.DefaultPrompt';
+
+-- 快速回复配置
+UPDATE config_records SET value = 'false', updated_at = datetime('now', 'localtime') WHERE key = 'QuickReply.Enabled';
