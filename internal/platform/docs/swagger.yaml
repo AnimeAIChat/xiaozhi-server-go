@@ -1,62 +1,5 @@
 basePath: /api
 definitions:
-  models.Agent:
-    properties:
-      LLM:
-        type: string
-      asrSpeed:
-        description: ASR 语音识别速度，1=耐心，2=正常，3=快速
-        type: integer
-      catalogy_id:
-        description: 分类ID
-        type: integer
-      conversationId:
-        description: 关联的对话AgentDialog的ID
-        type: string
-      createdAt:
-        description: 创建时间
-        type: string
-      description:
-        description: 智能体描述
-        type: string
-      enabledTools:
-        description: 启用的工具列表，字符串格式，如 "tool1,tool2"
-        type: string
-      extra:
-        description: 额外信息，JSON格式
-        type: string
-      head_img:
-        description: 头像URL
-        type: string
-      id:
-        type: integer
-      language:
-        description: 语言，默认为中文
-        type: string
-      lastConversationAt:
-        description: 最后对话时间
-        type: string
-      name:
-        description: 智能体名称
-        type: string
-      prompt:
-        type: string
-      speakSpeed:
-        description: TTS 角色语速，1=慢速，2=正常，3=快速
-        type: integer
-      tone:
-        description: TTS 角色音调，1-100，低音-高音
-        type: integer
-      updatedAt:
-        description: 更新时间
-        type: string
-      voice:
-        description: 语音，默认为zh_female_wanwanxiaohe_moon_bigtts
-        type: string
-      voiceName:
-        description: 语音，默认为湾湾小何
-        type: string
-    type: object
   ota.Activation:
     properties:
       challenge:
@@ -68,15 +11,6 @@ definitions:
       message:
         example: Anime AI Chat 543091
         type: string
-    type: object
-  ota.ErrorResponse:
-    properties:
-      message:
-        example: 缺少 device-id
-        type: string
-      success:
-        example: false
-        type: boolean
     type: object
   ota.FirmwareInfo:
     properties:
@@ -108,84 +42,6 @@ definitions:
         example: base64string
         type: string
     type: object
-  ota.OTARequestBody:
-    properties:
-      application:
-        properties:
-          compile_time:
-            type: string
-          elf_sha256:
-            type: string
-          idf_version:
-            type: string
-          name:
-            type: string
-          version:
-            type: string
-        type: object
-      board:
-        properties:
-          channel:
-            type: integer
-          ip:
-            type: string
-          mac:
-            type: string
-          name:
-            type: string
-          rssi:
-            type: integer
-          ssid:
-            type: string
-          type:
-            type: string
-        type: object
-      chip_info:
-        properties:
-          cores:
-            type: integer
-          features:
-            type: integer
-          model:
-            type: integer
-          revision:
-            type: integer
-        type: object
-      chip_model_name:
-        type: string
-      flash_size:
-        type: number
-      language:
-        type: string
-      mac_address:
-        type: string
-      minimum_free_heap_size:
-        type: string
-      ota:
-        properties:
-          label:
-            type: string
-        type: object
-      partition_table:
-        items:
-          properties:
-            address:
-              type: number
-            label:
-              type: string
-            size:
-              type: number
-            subtype:
-              type: integer
-            type:
-              type: integer
-          type: object
-        type: array
-      uuid:
-        type: string
-      version:
-        type: integer
-    type: object
   ota.OTAResponse:
     properties:
       activation:
@@ -198,33 +54,6 @@ definitions:
         $ref: '#/definitions/ota.ServerTimeInfo'
       websocket:
         $ref: '#/definitions/ota.WebSocketInfo'
-    type: object
-  ota.OtaFirmwareResponse:
-    properties:
-      firmware:
-        properties:
-          url:
-            example: /ota_bin/1.0.3.bin
-            type: string
-          version:
-            example: 1.0.3
-            type: string
-        type: object
-      server_time:
-        properties:
-          timestamp:
-            example: 1688443200000
-            type: integer
-          timezone_offset:
-            example: 480
-            type: integer
-        type: object
-      websocket:
-        properties:
-          url:
-            example: wss://example.com/ota
-            type: string
-        type: object
     type: object
   ota.ServerTimeInfo:
     properties:
@@ -241,127 +70,27 @@ definitions:
         example: wss://your-server/ws
         type: string
     type: object
-  webapi.APIResponse:
+  vision.VisionAnalysisData:
     properties:
-      code:
-        type: integer
-      data: {}
-      message:
+      error:
+        description: 错误信息（失败时）
         type: string
-      success:
-        type: boolean
+      result:
+        description: 分析结果（成功时）
+        type: string
     type: object
-  webapi.AgentCreateRequest:
+  webapi.SystemConfig:
     properties:
-      LLM:
-        type: string
-      asrSpeed:
-        description: ASR 语音识别速度，1=耐心，2=正常，3=快速
-        type: integer
-      language:
-        description: 语言，默认为中文
-        type: string
-      name:
-        description: 智能体名称
-        type: string
       prompt:
         type: string
-      speakSpeed:
-        description: TTS 角色语速，1=慢速，2=正常，3=快速
-        type: integer
-      tone:
-        description: TTS 角色音调，1-100，低音-高音
-        type: integer
-      voice:
-        description: 语音，默认为湾湾小何的音色id
+      selectedASR:
         type: string
-      voiceName:
-        description: 语音名称，默认为湾湾小何
+      selectedLLM:
         type: string
-    type: object
-  webapi.AgentWithDeviceIDs:
-    properties:
-      LLM:
+      selectedTTS:
         type: string
-      asrSpeed:
-        description: ASR 语音识别速度，1=耐心，2=正常，3=快速
-        type: integer
-      catalogy_id:
-        description: 分类ID
-        type: integer
-      conversationId:
-        description: 关联的对话AgentDialog的ID
+      selectedVLLLM:
         type: string
-      createdAt:
-        description: 创建时间
-        type: string
-      description:
-        description: 智能体描述
-        type: string
-      deviceIDs:
-        items:
-          type: integer
-        type: array
-      enabledTools:
-        description: 启用的工具列表，字符串格式，如 "tool1,tool2"
-        type: string
-      extra:
-        description: 额外信息，JSON格式
-        type: string
-      head_img:
-        description: 头像URL
-        type: string
-      id:
-        type: integer
-      language:
-        description: 语言，默认为中文
-        type: string
-      lastConversationAt:
-        description: 最后对话时间
-        type: string
-      name:
-        description: 智能体名称
-        type: string
-      prompt:
-        type: string
-      speakSpeed:
-        description: TTS 角色语速，1=慢速，2=正常，3=快速
-        type: integer
-      tone:
-        description: TTS 角色音调，1-100，低音-高音
-        type: integer
-      updatedAt:
-        description: 更新时间
-        type: string
-      voice:
-        description: 语音，默认为zh_female_wanwanxiaohe_moon_bigtts
-        type: string
-      voiceName:
-        description: 语音，默认为湾湾小何
-        type: string
-    type: object
-  webapi.ChangePasswordRequest:
-    description: 修改密码参数
-    properties:
-      new_password:
-        minLength: 6
-        type: string
-      old_password:
-        type: string
-    required:
-    - new_password
-    - old_password
-    type: object
-  webapi.LoginRequest:
-    description: 用户登录参数
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
     type: object
 host: localhost:8080
 info:
@@ -372,185 +101,80 @@ info:
 paths:
   /admin/system:
     get:
-      description: 获取当前系统配置
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 系统配置信息
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 获取系统配置
-      tags:
-      - System
-  /ota/:
-    post:
-      consumes:
-      - application/json
-      description: 设备上传信息后，返回最新固件版本和下载地址
-      parameters:
-      - description: 设备ID
-        in: header
-        name: device-id
-        required: true
-        type: string
-      - description: 请求体
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/ota.OTARequestBody'
+      description: 获取服务器的系统配置信息，包括选择的提供商和默认提示词
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/ota.OtaFirmwareResponse'
-        "400":
-          description: Bad Request
+            $ref: '#/definitions/webapi.SystemConfig'
+        "401":
+          description: Unauthorized
           schema:
-            $ref: '#/definitions/ota.ErrorResponse'
-      summary: 上传设备信息获取最新固件
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取系统配置
       tags:
-      - OTA
-  /user/agent/create:
-    post:
-      consumes:
-      - application/json
-      description: 创建新的智能体
-      parameters:
-      - description: Agent创建参数
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/webapi.AgentCreateRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 创建成功返回Agent信息
-          schema:
-            $ref: '#/definitions/models.Agent'
-      summary: 创建新的智能体
-      tags:
-      - Agent
-  /user/agent/list:
+      - Admin
+  /cfg:
     get:
-      description: 获取当前用户的所有Agent及其设备ID列表
+      description: 检查配置服务的运行状态
       produces:
       - application/json
       responses:
         "200":
-          description: Agent列表
+          description: OK
           schema:
-            items:
-              $ref: '#/definitions/webapi.AgentWithDeviceIDs'
-            type: array
-      summary: 获取当前用户的所有Agent
+            type: object
+      summary: 检查配置服务状态
       tags:
-      - Agent
-  /user/change-password:
+      - Config
+  /ota/:
     post:
       consumes:
       - application/json
-      description: 修改当前登录用户的密码
+      description: 处理设备OTA请求，包括设备注册、激活码生成和固件信息返回
       parameters:
-      - description: 修改密码参数
+      - description: 设备ID
+        in: header
+        name: device-id
+        required: true
+        type: string
+      - description: 客户端ID
+        in: header
+        name: client-id
+        required: true
+        type: string
+      - description: 设备信息
         in: body
-        name: data
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/webapi.ChangePasswordRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 修改密码结果
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 修改密码
-      tags:
-      - User
-  /user/login:
-    post:
-      consumes:
-      - application/json
-      description: 用户登录接口
-      parameters:
-      - description: 登录参数
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/webapi.LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 登录成功返回token和用户信息
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 用户登录
-      tags:
-      - User
-  /user/logout:
-    post:
-      description: 用户登出接口
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 登出结果
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 用户登出
-      tags:
-      - User
-  /user/profile:
-    get:
-      description: 获取当前登录用户的个人信息
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 用户资料
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 获取用户资料
-      tags:
-      - User
-    put:
-      consumes:
-      - application/json
-      description: 更新当前登录用户的个人信息
-      parameters:
-      - description: 用户资料参数
-        in: body
-        name: data
-        required: true
-        schema:
+          additionalProperties: true
           type: object
       produces:
       - application/json
       responses:
         "200":
-          description: 更新后的用户资料
+          description: OK
           schema:
-            additionalProperties: true
+            $ref: '#/definitions/ota.OTAResponse'
+        "400":
+          description: Bad Request
+          schema:
             type: object
-      summary: 更新用户资料
+        "500":
+          description: Internal Server Error
+          schema:
+            type: object
+      summary: OTA设备注册和固件更新
       tags:
-      - User
+      - OTA
   /vision:
     get:
-      description: 检查Vision服务是否正常运行
+      description: 获取Vision服务的运行状态和可用模型信息
       produces:
       - text/plain
       responses:
@@ -558,15 +182,15 @@ paths:
           description: 服务状态信息
           schema:
             type: string
-      summary: Vision服务状态检查
+      summary: 检查Vision服务状态
       tags:
       - Vision
     post:
       consumes:
       - multipart/form-data
-      description: 上传图片并进行视觉分析，返回分析结果
+      description: 上传图片并进行视觉分析，支持问题询问
       parameters:
-      - description: Bearer Token
+      - description: Bearer token
         in: header
         name: Authorization
         required: true
@@ -576,36 +200,41 @@ paths:
         name: Device-Id
         required: true
         type: string
-      - description: 问题文本
-        in: formData
-        name: question
+      - description: 客户端ID
+        in: header
+        name: Client-Id
         required: true
         type: string
       - description: 图片文件
         in: formData
-        name: image
+        name: file
         required: true
         type: file
+      - description: 分析问题
+        in: formData
+        name: question
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
+            $ref: '#/definitions/vision.VisionAnalysisData'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
+            type: object
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/webapi.APIResponse'
-      summary: 图片分析
+            type: object
+      summary: 图片视觉分析
       tags:
       - Vision
 swagger: "2.0"

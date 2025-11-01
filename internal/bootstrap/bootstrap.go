@@ -12,29 +12,28 @@ import (
 	"syscall"
 	"time"
 
+	domainimage "xiaozhi-server-go/internal/domain/image"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
 	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/domain/eventbus"
+	"xiaozhi-server-go/internal/domain/task"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
 	platformobservability "xiaozhi-server-go/internal/platform/observability"
 	platformstorage "xiaozhi-server-go/internal/platform/storage"
 	platformconfig "xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/internal/transport/http"
+	httptransport "xiaozhi-server-go/internal/transport/http"
+	httpvision "xiaozhi-server-go/internal/transport/http/vision"
+	httpwebapi "xiaozhi-server-go/internal/transport/http/webapi"
+	httpota "xiaozhi-server-go/internal/transport/http/ota"
 	"xiaozhi-server-go/src/core/mcp"
+	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/transport/websocket"
-	"xiaozhi-server-go/src/core/utils"
-	_ "xiaozhi-server-go/internal/platform/docs"
-	"xiaozhi-server-go/src/httpsvr/ota"
-	"xiaozhi-server-go/src/httpsvr/vision"
-	"xiaozhi-server-go/internal/domain/task"
-
-	cfg "xiaozhi-server-go/src/httpsvr/webapi"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swaggo/swag"
@@ -619,7 +618,7 @@ func startHTTPServer(
 	router.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/api") {
-			c.JSON(http.StatusNotFound, cfg.APIResponse{
+			c.JSON(http.StatusNotFound, httptransport.APIResponse{
 				Success: false,
 				Data:    gin.H{},
 				Message: "api Not found",
@@ -643,44 +642,46 @@ func startHTTPServer(
 		int(config.Server.Device.DefaultAdminUserID),
 	)
 
-	otaHandler := httptransport.NewOTAHandler(deviceService)
-	otaHandler.RegisterRoutes(httpRouter)
-
-	otaService := ota.NewDefaultOTAService(config.Web.Websocket, config, deviceService)
-	if err := otaService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.ErrorTag("OTA", "OTA 服务启动失败: %v", err)
-		return nil, err
+	// 初始化图像处理管道
+	imagePipeline, err := domainimage.NewPipeline(domainimage.Options{
+		Security: &platformconfig.SecurityConfig{
+			MaxFileSize:       5 * 1024 * 1024, // 5MB
+			MaxPixels:         16777216,        // 16M pixels
+			MaxWidth:          4096,
+			MaxHeight:         4096,
+			AllowedFormats:    []string{"jpeg", "jpg", "png", "webp", "gif"},
+			EnableDeepScan:    true,
+			ValidationTimeout: "10s",
+		},
+		Logger: logger,
+	})
+	if err != nil {
+		return nil, platformerrors.Wrap(platformerrors.KindBootstrap, "http:init-image-pipeline", "failed to create image pipeline", err)
 	}
 
-	visionService, err := vision.NewDefaultVisionService(config, logger)
+	// 初始化新的HTTP服务
+	visionService, err := httpvision.NewService(config, logger, imagePipeline)
 	if err != nil {
 		logger.ErrorTag("视觉", "Vision 服务初始化失败: %v", err)
 		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:new-service", "failed to create vision service", err)
 	}
-	if err := visionService.Start(groupCtx, router, apiGroup); err != nil {
-		logger.ErrorTag("视觉", "Vision 服务启动失败: %v", err)
-		return nil, platformerrors.Wrap(platformerrors.KindVision, "vision:start-service", "failed to start vision service", err)
+
+	webapiService, err := httpwebapi.NewService(config, logger)
+	if err != nil {
+		logger.ErrorTag("WebAPI", "WebAPI 服务初始化失败: %v", err)
+		return nil, platformerrors.Wrap(platformerrors.KindTransport, "webapi:new-service", "failed to create webapi service", err)
 	}
 
-	cfgServer, err := cfg.NewDefaultAdminService(config, logger)
+	otaService, err := httpota.NewService(config.Web.Websocket, config, deviceService, logger)
 	if err != nil {
-		logger.ErrorTag("管理后台", "Admin 服务初始化失败: %v", err)
-		return nil, err
-	}
-	if err := cfgServer.Start(groupCtx, router, apiGroup); err != nil {
-		logger.ErrorTag("管理后台", "Admin 服务启动失败: %v", err)
-		return nil, err
+		logger.ErrorTag("OTA", "OTA 服务初始化失败: %v", err)
+		return nil, platformerrors.Wrap(platformerrors.KindTransport, "ota:new-service", "failed to create ota service", err)
 	}
 
-	userServer, err := cfg.NewDefaultUserService(config, logger)
-	if err != nil {
-		logger.ErrorTag("用户服务", "用户服务初始化失败: %v", err)
-		return nil, err
-	}
-	if err := userServer.Start(groupCtx, router, apiGroup); err != nil {
-		logger.ErrorTag("用户服务", "用户服务启动失败: %v", err)
-		return nil, err
-	}
+	// 注册服务路由
+	visionService.Register(groupCtx, apiGroup)
+	webapiService.Register(groupCtx, apiGroup)
+	otaService.Register(groupCtx, apiGroup)
 
 	// Note: System config service removed as we no longer use database-backed configuration
 
@@ -693,7 +694,7 @@ func startHTTPServer(
 		doc, err := swag.ReadDoc()
 		if err != nil {
 			logger.ErrorTag("HTTP", "生成 OpenAPI 文档失败: %v", err)
-			c.JSON(http.StatusInternalServerError, cfg.APIResponse{
+			c.JSON(http.StatusInternalServerError, httptransport.APIResponse{
 				Success: false,
 				Data:    gin.H{"error": err.Error()},
 				Message: "failed to generate openapi spec",

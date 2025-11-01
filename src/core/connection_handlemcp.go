@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/httpsvr/vision"
+	"xiaozhi-server-go/internal/transport/http/vision"
 )
 
 func (h *ConnectionHandler) initMCPResultHandlers() {

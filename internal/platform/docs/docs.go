@@ -17,20 +17,50 @@ const docTemplate = `{
     "paths": {
         "/admin/system": {
             "get": {
-                "description": "获取当前系统配置",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取服务器的系统配置信息，包括选择的提供商和默认提示词",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "System"
+                    "Admin"
                 ],
                 "summary": "获取系统配置",
                 "responses": {
                     "200": {
-                        "description": "系统配置信息",
+                        "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/webapi.SystemConfig"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/cfg": {
+            "get": {
+                "description": "检查配置服务的运行状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "检查配置服务状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
                         }
                     }
                 }
@@ -38,7 +68,7 @@ const docTemplate = `{
         },
         "/ota/": {
             "post": {
-                "description": "设备上传信息后，返回最新固件版本和下载地址",
+                "description": "处理设备OTA请求，包括设备注册、激活码生成和固件信息返回",
                 "consumes": [
                     "application/json"
                 ],
@@ -48,7 +78,7 @@ const docTemplate = `{
                 "tags": [
                     "OTA"
                 ],
-                "summary": "上传设备信息获取最新固件",
+                "summary": "OTA设备注册和固件更新",
                 "parameters": [
                     {
                         "type": "string",
@@ -58,12 +88,20 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "请求体",
+                        "type": "string",
+                        "description": "客户端ID",
+                        "name": "client-id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "设备信息",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ota.OTARequestBody"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 ],
@@ -71,215 +109,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/ota.OtaFirmwareResponse"
+                            "$ref": "#/definitions/ota.OTAResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/ota.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/agent/create": {
-            "post": {
-                "description": "创建新的智能体",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Agent"
-                ],
-                "summary": "创建新的智能体",
-                "parameters": [
-                    {
-                        "description": "Agent创建参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/webapi.AgentCreateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "创建成功返回Agent信息",
-                        "schema": {
-                            "$ref": "#/definitions/models.Agent"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/agent/list": {
-            "get": {
-                "description": "获取当前用户的所有Agent及其设备ID列表",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Agent"
-                ],
-                "summary": "获取当前用户的所有Agent",
-                "responses": {
-                    "200": {
-                        "description": "Agent列表",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/webapi.AgentWithDeviceIDs"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/user/change-password": {
-            "post": {
-                "description": "修改当前登录用户的密码",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "User"
-                ],
-                "summary": "修改密码",
-                "parameters": [
-                    {
-                        "description": "修改密码参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/webapi.ChangePasswordRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "修改密码结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/user/login": {
-            "post": {
-                "description": "用户登录接口",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "User"
-                ],
-                "summary": "用户登录",
-                "parameters": [
-                    {
-                        "description": "登录参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/webapi.LoginRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "登录成功返回token和用户信息",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/user/logout": {
-            "post": {
-                "description": "用户登出接口",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "User"
-                ],
-                "summary": "用户登出",
-                "responses": {
-                    "200": {
-                        "description": "登出结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/user/profile": {
-            "get": {
-                "description": "获取当前登录用户的个人信息",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "User"
-                ],
-                "summary": "获取用户资料",
-                "responses": {
-                    "200": {
-                        "description": "用户资料",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "put": {
-                "description": "更新当前登录用户的个人信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "User"
-                ],
-                "summary": "更新用户资料",
-                "parameters": [
-                    {
-                        "description": "用户资料参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
                             "type": "object"
                         }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "更新后的用户资料",
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "type": "object"
                         }
                     }
                 }
@@ -287,14 +129,14 @@ const docTemplate = `{
         },
         "/vision": {
             "get": {
-                "description": "检查Vision服务是否正常运行",
+                "description": "获取Vision服务的运行状态和可用模型信息",
                 "produces": [
                     "text/plain"
                 ],
                 "tags": [
                     "Vision"
                 ],
-                "summary": "Vision服务状态检查",
+                "summary": "检查Vision服务状态",
                 "responses": {
                     "200": {
                         "description": "服务状态信息",
@@ -305,7 +147,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "上传图片并进行视觉分析，返回分析结果",
+                "description": "上传图片并进行视觉分析，支持问题询问",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -315,11 +157,11 @@ const docTemplate = `{
                 "tags": [
                     "Vision"
                 ],
-                "summary": "图片分析",
+                "summary": "图片视觉分析",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bearer Token",
+                        "description": "Bearer token",
                         "name": "Authorization",
                         "in": "header",
                         "required": true
@@ -333,15 +175,22 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "问题文本",
-                        "name": "question",
-                        "in": "formData",
+                        "description": "客户端ID",
+                        "name": "Client-Id",
+                        "in": "header",
                         "required": true
                     },
                     {
                         "type": "file",
                         "description": "图片文件",
-                        "name": "image",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "分析问题",
+                        "name": "question",
                         "in": "formData",
                         "required": true
                     }
@@ -350,25 +199,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "$ref": "#/definitions/vision.VisionAnalysisData"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "type": "object"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "type": "object"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/webapi.APIResponse"
+                            "type": "object"
                         }
                     }
                 }
@@ -376,84 +225,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "models.Agent": {
-            "type": "object",
-            "properties": {
-                "LLM": {
-                    "type": "string"
-                },
-                "asrSpeed": {
-                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "catalogy_id": {
-                    "description": "分类ID",
-                    "type": "integer"
-                },
-                "conversationId": {
-                    "description": "关联的对话AgentDialog的ID",
-                    "type": "string"
-                },
-                "createdAt": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "description": {
-                    "description": "智能体描述",
-                    "type": "string"
-                },
-                "enabledTools": {
-                    "description": "启用的工具列表，字符串格式，如 \"tool1,tool2\"",
-                    "type": "string"
-                },
-                "extra": {
-                    "description": "额外信息，JSON格式",
-                    "type": "string"
-                },
-                "head_img": {
-                    "description": "头像URL",
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "language": {
-                    "description": "语言，默认为中文",
-                    "type": "string"
-                },
-                "lastConversationAt": {
-                    "description": "最后对话时间",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "智能体名称",
-                    "type": "string"
-                },
-                "prompt": {
-                    "type": "string"
-                },
-                "speakSpeed": {
-                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "tone": {
-                    "description": "TTS 角色音调，1-100，低音-高音",
-                    "type": "integer"
-                },
-                "updatedAt": {
-                    "description": "更新时间",
-                    "type": "string"
-                },
-                "voice": {
-                    "description": "语音，默认为zh_female_wanwanxiaohe_moon_bigtts",
-                    "type": "string"
-                },
-                "voiceName": {
-                    "description": "语音，默认为湾湾小何",
-                    "type": "string"
-                }
-            }
-        },
         "ota.Activation": {
             "type": "object",
             "properties": {
@@ -468,19 +239,6 @@ const docTemplate = `{
                 "message": {
                     "type": "string",
                     "example": "Anime AI Chat 543091"
-                }
-            }
-        },
-        "ota.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "缺少 device-id"
-                },
-                "success": {
-                    "type": "boolean",
-                    "example": false
                 }
             }
         },
@@ -526,126 +284,6 @@ const docTemplate = `{
                 }
             }
         },
-        "ota.OTARequestBody": {
-            "type": "object",
-            "properties": {
-                "application": {
-                    "type": "object",
-                    "properties": {
-                        "compile_time": {
-                            "type": "string"
-                        },
-                        "elf_sha256": {
-                            "type": "string"
-                        },
-                        "idf_version": {
-                            "type": "string"
-                        },
-                        "name": {
-                            "type": "string"
-                        },
-                        "version": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "board": {
-                    "type": "object",
-                    "properties": {
-                        "channel": {
-                            "type": "integer"
-                        },
-                        "ip": {
-                            "type": "string"
-                        },
-                        "mac": {
-                            "type": "string"
-                        },
-                        "name": {
-                            "type": "string"
-                        },
-                        "rssi": {
-                            "type": "integer"
-                        },
-                        "ssid": {
-                            "type": "string"
-                        },
-                        "type": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "chip_info": {
-                    "type": "object",
-                    "properties": {
-                        "cores": {
-                            "type": "integer"
-                        },
-                        "features": {
-                            "type": "integer"
-                        },
-                        "model": {
-                            "type": "integer"
-                        },
-                        "revision": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "chip_model_name": {
-                    "type": "string"
-                },
-                "flash_size": {
-                    "type": "number"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "mac_address": {
-                    "type": "string"
-                },
-                "minimum_free_heap_size": {
-                    "type": "string"
-                },
-                "ota": {
-                    "type": "object",
-                    "properties": {
-                        "label": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "partition_table": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "address": {
-                                "type": "number"
-                            },
-                            "label": {
-                                "type": "string"
-                            },
-                            "size": {
-                                "type": "number"
-                            },
-                            "subtype": {
-                                "type": "integer"
-                            },
-                            "type": {
-                                "type": "integer"
-                            }
-                        }
-                    }
-                },
-                "uuid": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "integer"
-                }
-            }
-        },
         "ota.OTAResponse": {
             "type": "object",
             "properties": {
@@ -663,46 +301,6 @@ const docTemplate = `{
                 },
                 "websocket": {
                     "$ref": "#/definitions/ota.WebSocketInfo"
-                }
-            }
-        },
-        "ota.OtaFirmwareResponse": {
-            "type": "object",
-            "properties": {
-                "firmware": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "example": "/ota_bin/1.0.3.bin"
-                        },
-                        "version": {
-                            "type": "string",
-                            "example": "1.0.3"
-                        }
-                    }
-                },
-                "server_time": {
-                    "type": "object",
-                    "properties": {
-                        "timestamp": {
-                            "type": "integer",
-                            "example": 1688443200000
-                        },
-                        "timezone_offset": {
-                            "type": "integer",
-                            "example": 480
-                        }
-                    }
-                },
-                "websocket": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "example": "wss://example.com/ota"
-                        }
-                    }
                 }
             }
         },
@@ -728,173 +326,35 @@ const docTemplate = `{
                 }
             }
         },
-        "webapi.APIResponse": {
+        "vision.VisionAnalysisData": {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {},
-                "message": {
+                "error": {
+                    "description": "错误信息（失败时）",
                     "type": "string"
                 },
-                "success": {
-                    "type": "boolean"
+                "result": {
+                    "description": "分析结果（成功时）",
+                    "type": "string"
                 }
             }
         },
-        "webapi.AgentCreateRequest": {
+        "webapi.SystemConfig": {
             "type": "object",
             "properties": {
-                "LLM": {
-                    "type": "string"
-                },
-                "asrSpeed": {
-                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "language": {
-                    "description": "语言，默认为中文",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "智能体名称",
-                    "type": "string"
-                },
                 "prompt": {
                     "type": "string"
                 },
-                "speakSpeed": {
-                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "tone": {
-                    "description": "TTS 角色音调，1-100，低音-高音",
-                    "type": "integer"
-                },
-                "voice": {
-                    "description": "语音，默认为湾湾小何的音色id",
+                "selectedASR": {
                     "type": "string"
                 },
-                "voiceName": {
-                    "description": "语音名称，默认为湾湾小何",
-                    "type": "string"
-                }
-            }
-        },
-        "webapi.AgentWithDeviceIDs": {
-            "type": "object",
-            "properties": {
-                "LLM": {
+                "selectedLLM": {
                     "type": "string"
                 },
-                "asrSpeed": {
-                    "description": "ASR 语音识别速度，1=耐心，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "catalogy_id": {
-                    "description": "分类ID",
-                    "type": "integer"
-                },
-                "conversationId": {
-                    "description": "关联的对话AgentDialog的ID",
+                "selectedTTS": {
                     "type": "string"
                 },
-                "createdAt": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "description": {
-                    "description": "智能体描述",
-                    "type": "string"
-                },
-                "deviceIDs": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "enabledTools": {
-                    "description": "启用的工具列表，字符串格式，如 \"tool1,tool2\"",
-                    "type": "string"
-                },
-                "extra": {
-                    "description": "额外信息，JSON格式",
-                    "type": "string"
-                },
-                "head_img": {
-                    "description": "头像URL",
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "language": {
-                    "description": "语言，默认为中文",
-                    "type": "string"
-                },
-                "lastConversationAt": {
-                    "description": "最后对话时间",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "智能体名称",
-                    "type": "string"
-                },
-                "prompt": {
-                    "type": "string"
-                },
-                "speakSpeed": {
-                    "description": "TTS 角色语速，1=慢速，2=正常，3=快速",
-                    "type": "integer"
-                },
-                "tone": {
-                    "description": "TTS 角色音调，1-100，低音-高音",
-                    "type": "integer"
-                },
-                "updatedAt": {
-                    "description": "更新时间",
-                    "type": "string"
-                },
-                "voice": {
-                    "description": "语音，默认为zh_female_wanwanxiaohe_moon_bigtts",
-                    "type": "string"
-                },
-                "voiceName": {
-                    "description": "语音，默认为湾湾小何",
-                    "type": "string"
-                }
-            }
-        },
-        "webapi.ChangePasswordRequest": {
-            "description": "修改密码参数",
-            "type": "object",
-            "required": [
-                "new_password",
-                "old_password"
-            ],
-            "properties": {
-                "new_password": {
-                    "type": "string",
-                    "minLength": 6
-                },
-                "old_password": {
-                    "type": "string"
-                }
-            }
-        },
-        "webapi.LoginRequest": {
-            "description": "用户登录参数",
-            "type": "object",
-            "required": [
-                "password",
-                "username"
-            ],
-            "properties": {
-                "password": {
-                    "type": "string"
-                },
-                "username": {
+                "selectedVLLLM": {
                     "type": "string"
                 }
             }

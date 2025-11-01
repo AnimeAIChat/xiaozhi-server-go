@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// 兼容 string/number 的类型
+// StringOrNumber 兼容 string/number 的类型
 type StringOrNumber string
 
 func (s *StringOrNumber) UnmarshalJSON(b []byte) error {
@@ -38,6 +38,7 @@ func (s *StringOrNumber) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// OTARequestBody OTA请求体结构
 type OTARequestBody struct {
 	Application struct {
 		Name        string `json:"name"`
@@ -80,39 +81,51 @@ type OTARequestBody struct {
 	Version int    `json:"version"`
 }
 
-// 命名结构体用于响应
+// ServerTimeInfo 服务器时间信息
 type ServerTimeInfo struct {
-	Timestamp      int64 `json:"timestamp"       example:"1720065289451"`
+	Timestamp      int64 `json:"timestamp" example:"1720065289451"`
 	TimezoneOffset int   `json:"timezone_offset" example:"480"`
 }
 
+// FirmwareInfo 固件信息
 type FirmwareInfo struct {
 	Version string `json:"version" example:"1.2.4"`
-	URL     string `json:"url"     example:"/ota_bin/1.2.4.bin"`
+	URL     string `json:"url" example:"/ota_bin/1.2.4.bin"`
 }
 
+// WebSocketInfo WebSocket连接信息
 type WebSocketInfo struct {
 	URL string `json:"url" example:"wss://your-server/ws"`
 }
 
+// MQTTInfo MQTT连接信息
 type MQTTInfo struct {
-	Endpoint       string `json:"endpoint"        example:"mqtt://broker:1883"`
-	ClientID       string `json:"client_id"       example:"CGID_test@@@mac@@@client"`
-	Username       string `json:"username"        example:"base64string"`
-	Password       string `json:"password"        example:"randomPwd"`
-	PublishTopic   string `json:"publish_topic"   example:"device-server"`
+	Endpoint       string `json:"endpoint" example:"mqtt://broker:1883"`
+	ClientID       string `json:"client_id" example:"CGID_test@@@mac@@@client"`
+	Username       string `json:"username" example:"base64string"`
+	Password       string `json:"password" example:"randomPwd"`
+	PublishTopic   string `json:"publish_topic" example:"device-server"`
 	SubscribeTopic string `json:"subscribe_topic" example:"null"`
 }
 
+// Activation 设备激活信息
 type Activation struct {
-	Code    string `json:"code"                example:"543091"`
-	Message string `json:"message"             example:"Anime AI Chat 543091"`
+	Code      string `json:"code" example:"543091"`
+	Message   string `json:"message" example:"Anime AI Chat 543091"`
 	Challenge string `json:"challenge,omitempty"` // 用于设备认证挑战
 }
+
+// OTAResponse OTA响应结构
 type OTAResponse struct {
 	ServerTime ServerTimeInfo `json:"server_time"`
 	Firmware   FirmwareInfo   `json:"firmware"`
 	WebSocket  WebSocketInfo  `json:"websocket"`
 	MQTT       *MQTTInfo      `json:"mqtt,omitempty"`
 	Activation *Activation    `json:"activation,omitempty"`
+}
+
+// ErrorResponse 错误响应结构
+type ErrorResponse struct {
+	Success bool   `json:"success" example:"false"`
+	Message string `json:"message" example:"缺少 device-id"`
 }

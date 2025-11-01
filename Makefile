@@ -7,7 +7,7 @@ GOCLEAN=$(GOCMD) clean
 MAIN_PKG=./cmd/xiaozhi-server
 BINARY_NAME=xiaozhi-server
 SWAG_MAIN=main.go
-SWAG_DIRS=cmd/xiaozhi-server,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models
+SWAG_DIRS=cmd/xiaozhi-server,internal/transport/http/webapi,internal/transport/http/vision,internal/transport/http/ota,src/models
 SWAG_OUT=internal/platform/docs
 SWAG_FLAGS=--parseDependency=false --parseGoList=false
 
