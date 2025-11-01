@@ -42,7 +42,11 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "xiaozhi.db")
+	// Use environment variable for database path if set (for testing)
+	dbPath := os.Getenv("XIAOZHI_DB_PATH")
+	if dbPath == "" {
+		dbPath = filepath.Join(dataDir, "xiaozhi.db")
+	}
 
 	var err error
 	db, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{

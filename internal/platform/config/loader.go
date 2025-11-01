@@ -57,9 +57,9 @@ func (l *Loader) setDefaults() {
 	l.viper.SetDefault("server.ip", "0.0.0.0")
 	l.viper.SetDefault("server.port", 8000)
 	l.viper.SetDefault("web.port", 8080)
-	l.viper.SetDefault("log.log_level", "INFO")
-	l.viper.SetDefault("log.log_dir", "logs")
-	l.viper.SetDefault("log.log_file", "server.log")
+	l.viper.SetDefault("log.level", "INFO")
+	l.viper.SetDefault("log.dir", "logs")
+	l.viper.SetDefault("log.file", "server.log")
 }
 
 func (l *Loader) validate(cfg *Config) error {

@@ -7,10 +7,33 @@ import (
 	"strings"
 	"testing"
 
+	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/core/utils"
 )
 
 func TestSmokeLoadConfigAndLogger(t *testing.T) {
+	// Create temporary database for test
+	tempDir := t.TempDir()
+	tempDBPath := filepath.Join(tempDir, "test.db")
+	
+	// Set environment variable to use temp database
+	originalDBPath := os.Getenv("XIAOZHI_DB_PATH")
+	os.Setenv("XIAOZHI_DB_PATH", tempDBPath)
+	defer func() {
+		if originalDBPath != "" {
+			os.Setenv("XIAOZHI_DB_PATH", originalDBPath)
+		} else {
+			os.Unsetenv("XIAOZHI_DB_PATH")
+		}
+		// Close database connection after test
+		if db := storage.GetDB(); db != nil {
+			sqlDB, _ := db.DB()
+			if sqlDB != nil {
+				sqlDB.Close()
+			}
+		}
+	}()
+
 	config, logger, err := loadConfigAndLogger()
 	if err != nil {
 		t.Fatalf("loadConfigAndLogger failed: %v", err)

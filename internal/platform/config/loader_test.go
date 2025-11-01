@@ -16,9 +16,9 @@ server:
   ip: "127.0.0.1"
   port: 8080
 log:
-  log_level: "DEBUG"
-  log_dir: "/tmp/logs"
-  log_file: "test.log"
+  level: "DEBUG"
+  dir: "/tmp/logs"
+  file: "test.log"
 web:
   enabled: true
   port: 8081
