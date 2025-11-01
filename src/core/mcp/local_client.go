@@ -45,7 +45,7 @@ func (c *LocalClient) RegisterTools() {
 
 	funcs := c.cfg.LocalMCPFun
 	if len(funcs) == 0 {
-		c.logger.Info("RegisterTools: LocalMCPFun is empty")
+		c.logger.Debug("RegisterTools: LocalMCPFun is empty")
 		return
 	}
 
@@ -80,7 +80,7 @@ func (c *LocalClient) RegisterTools() {
 func (c *LocalClient) Start(ctx context.Context) error {
 	c.ctx = ctx
 	c.RegisterTools()
-	c.logger.Info("Local MCP client started")
+	c.logger.Debug("Local MCP client started")
 	return nil
 }
 

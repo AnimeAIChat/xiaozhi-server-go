@@ -73,7 +73,7 @@ func (s *DefaultUserService) Start(
 		authGroup.PUT("/providers/:type/:name", s.handleUserProvidersUpdate)
 	}
 
-	s.logger.Info("用户HTTP服务路由注册完成")
+	s.logger.Info("[HTTP] [用户] 服务路由注册完成")
 	return nil
 }
 
