@@ -58,6 +58,7 @@ type FunctionRegistryInterface interface {
 	RegisterFunction(name string, function interface{}) error
 	GetFunction(name string) (interface{}, error)
 	GetAllFunctions() []interface{}
+	GetFunctionByFilter(filter []string) []interface{}
 	UnregisterFunction(name string) error
 	UnregisterAllFunctions() error
 	FunctionExists(name string) bool

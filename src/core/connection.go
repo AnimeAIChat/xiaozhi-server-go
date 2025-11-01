@@ -26,7 +26,7 @@ import (
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/core/chat"
-	"xiaozhi-server-go/src/core/function"
+	domainllminfra "xiaozhi-server-go/internal/domain/llm/infrastructure"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -148,7 +148,7 @@ type ConnectionHandler struct {
 	roundStartTime time.Time // 轮次开始时间
 	lastWakeUpTime time.Time // 上次唤醒处理时间
 	// functions
-	functionRegister *function.FunctionRegistry
+	functionRegister domainllm.FunctionRegistryInterface
 	mcpManager       *domainmcp.Manager
 
 	mcpResultHandlers map[string]func(interface{}) // MCP处理器映射
@@ -250,7 +250,7 @@ func NewConnectionHandler(
 	// 初始化对话管理器
 	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
 	handler.dialogueManager.SetSystemMessage(prompt)
-	handler.functionRegister = function.NewFunctionRegistry()
+	handler.functionRegister = domainllminfra.NewFunctionRegistry()
 	handler.initMCPResultHandlers()
 
 	return handler
