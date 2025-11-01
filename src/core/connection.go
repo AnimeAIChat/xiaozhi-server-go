@@ -32,7 +32,6 @@ import (
 	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/providers/tts"
 	"xiaozhi-server-go/src/core/providers/vlllm"
-	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/internal/domain/task"
 )
@@ -830,7 +829,12 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 转换工具格式
 	interTools := make([]domainllminter.Tool, len(tools))
-	for i, tool := range tools {
+	for i, toolInterface := range tools {
+		tool, ok := toolInterface.(openai.Tool)
+		if !ok {
+			h.LogError(fmt.Sprintf("工具类型转换失败: %T", toolInterface))
+			continue
+		}
 		interTools[i] = domainllminter.Tool{
 			Type: string(tool.Type),
 			Function: domainllminter.ToolFunction{
@@ -986,13 +990,13 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 						result = "MCP工具调用失败"
 					}
 				}
-				// 判断result 是否是types.ActionResponse类型
-				if actionResult, ok := result.(types.ActionResponse); ok {
+				// 判断result 是否是domainllm.ActionResponse类型
+				if actionResult, ok := result.(domainllm.ActionResponse); ok {
 					h.handleFunctionResult(actionResult, functionCallData, textIndex)
 				} else {
 					h.LogInfo(fmt.Sprintf("MCP函数调用结果: %v", result))
-					actionResult := types.ActionResponse{
-						Action: types.ActionTypeReqLLM, // 动作类型
+					actionResult := domainllm.ActionResponse{
+						Action: domainllm.ActionTypeReqLLM, // 动作类型
 						Result: result,                 // 动作产生的结果
 					}
 					h.handleFunctionResult(actionResult, functionCallData, textIndex)
@@ -1171,14 +1175,13 @@ func (h *ConnectionHandler) addToolCallMessage(toolResultText string, functionCa
 	// 添加 assistant 消息，包含 tool_calls
 	h.dialogueManager.Put(chat.Message{
 		Role: "assistant",
-		ToolCalls: []types.ToolCall{{
+		ToolCalls: []domainllminter.ToolCall{{
 			ID: functionID,
-			Function: types.FunctionCall{
+			Function: domainllminter.ToolCallFunction{
 				Arguments: functionArguments,
 				Name:      functionName,
 			},
-			Type:  "function",
-			Index: 0,
+			Type: "function",
 		}},
 	})
 
@@ -1194,21 +1197,21 @@ func (h *ConnectionHandler) addToolCallMessage(toolResultText string, functionCa
 	})
 }
 
-func (h *ConnectionHandler) handleFunctionResult(result types.ActionResponse, functionCallData map[string]interface{}, textIndex int) {
+func (h *ConnectionHandler) handleFunctionResult(result domainllm.ActionResponse, functionCallData map[string]interface{}, textIndex int) {
 	switch result.Action {
-	case types.ActionTypeError:
+	case domainllm.ActionTypeError:
 		h.LogError(fmt.Sprintf("函数调用错误: %v", result.Result))
-	case types.ActionTypeNotFound:
+	case domainllm.ActionTypeNotFound:
 		h.LogError(fmt.Sprintf("函数未找到: %v", result.Result))
-	case types.ActionTypeNone:
+	case domainllm.ActionTypeNone:
 		h.LogInfo(fmt.Sprintf("函数调用无操作: %v", result.Result))
-	case types.ActionTypeResponse:
+	case domainllm.ActionTypeResponse:
 		h.LogInfo(fmt.Sprintf("函数调用直接回复: %v", result.Response))
 		h.SystemSpeak(result.Response.(string))
-	case types.ActionTypeCallHandler:
+	case domainllm.ActionTypeCallHandler:
 		resultStr := h.handleMCPResultCall(result)
 		h.addToolCallMessage(resultStr, functionCallData)
-	case types.ActionTypeReqLLM:
+	case domainllm.ActionTypeReqLLM:
 		h.LogInfo(fmt.Sprintf("函数调用后请求LLM: %v", result.Result))
 		text, ok := result.Result.(string)
 		if ok && len(text) > 0 {

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/internal/transport/http/vision"
 )
 
@@ -67,10 +67,10 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) {
 	return
 }
 
-func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) string {
+func (h *ConnectionHandler) handleMCPResultCall(result llm.ActionResponse) string {
 	errResult := "调用工具失败"
 	// 先取result
-	if result.Action != types.ActionTypeCallHandler {
+	if result.Action != llm.ActionTypeCallHandler {
 		h.logger.Error("handleMCPResultCall: result.Action is not ActionTypeCallHandler, but %d", result.Action)
 		return errResult
 	}
@@ -80,7 +80,7 @@ func (h *ConnectionHandler) handleMCPResultCall(result types.ActionResponse) str
 	}
 
 	// 取出result.Result结构体，包括函数名和参数
-	if Caller, ok := result.Result.(types.ActionResponseCall); ok {
+	if Caller, ok := result.Result.(llm.ActionResponseCall); ok {
 		if handler, exists := h.mcpResultHandlers[Caller.FuncName]; exists {
 			// 调用对应的处理函数
 			handler(Caller.Args)

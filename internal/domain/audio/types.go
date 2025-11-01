@@ -1,5 +1,6 @@
-package types
+package audio
 
+// AudioChunk 音频数据块结构
 type AudioChunk struct {
 	Text      string // 关联的文本内容
 	Index     int    // 文本的索引，用于标文本在本轮的顺序

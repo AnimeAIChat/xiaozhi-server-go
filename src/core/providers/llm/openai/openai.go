@@ -3,8 +3,9 @@ package openai
 import (
 	"context"
 	"fmt"
+	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm/inter"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -57,7 +58,7 @@ func (p *Provider) Cleanup() error {
 }
 
 // Response types.LLMProvider接口实现
-func (p *Provider) Response(ctx context.Context, sessionID string, messages []types.Message) (<-chan string, error) {
+func (p *Provider) Response(ctx context.Context, sessionID string, messages []providers.Message) (<-chan string, error) {
 	responseChan := make(chan string, 10)
 
 	go func() {
@@ -110,8 +111,8 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 }
 
 // ResponseWithFunctions types.LLMProvider接口实现
-func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []types.Message, tools []openai.Tool) (<-chan types.Response, error) {
-	responseChan := make(chan types.Response, 10)
+func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []providers.Message, tools []providers.Tool) (<-chan providers.Response, error) {
+	responseChan := make(chan providers.Response, 10)
 
 	go func() {
 		defer close(responseChan)
@@ -148,19 +149,32 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 			chatMessages[i] = chatMessage
 		}
 
+		// 转换工具格式
+		openaiTools := make([]openai.Tool, len(tools))
+		for i, tool := range tools {
+			openaiTools[i] = openai.Tool{
+				Type: openai.ToolType(tool.Type),
+				Function: &openai.FunctionDefinition{
+					Name:        tool.Function.Name,
+					Description: tool.Function.Description,
+					Parameters:  tool.Function.Parameters,
+				},
+			}
+		}
+
 		stream, err := p.client.CreateChatCompletionStream(
 			ctx,
 			openai.ChatCompletionRequest{
 				Model:    p.Config().ModelName,
 				Messages: chatMessages,
-				Tools:    tools,
+				Tools:    openaiTools,
 				Stream:   true,
 			},
 		)
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【OpenAI服务响应异常: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
@@ -174,18 +188,18 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 			if len(response.Choices) > 0 {
 				delta := response.Choices[0].Delta
-				chunk := types.Response{
+				chunk := providers.Response{
 					Content: delta.Content,
 				}
 				//fmt.Println("openai delta:", delta)
 
 				if len(delta.ToolCalls) > 0 {
-					toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
+					toolCalls := make([]inter.ToolCall, len(delta.ToolCalls))
 					for i, tc := range delta.ToolCalls {
-						toolCalls[i] = types.ToolCall{
+						toolCalls[i] = inter.ToolCall{
 							ID:   tc.ID,
 							Type: string(tc.Type),
-							Function: types.FunctionCall{
+							Function: inter.ToolCallFunction{
 								Name:      tc.Function.Name,
 								Arguments: tc.Function.Arguments,
 							},

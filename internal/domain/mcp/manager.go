@@ -10,8 +10,8 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/src/core/mcp"
-	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -32,7 +32,7 @@ type Conn interface {
 type legacyBridge interface {
 	ExecuteTool(ctx context.Context, name string, args map[string]any) (any, error)
 	ToolNames() []string
-	BindConnection(conn Conn, fh types.FunctionRegistryInterface, params any) error
+	BindConnection(conn Conn, fh llm.FunctionRegistryInterface, params any) error
 	Cleanup() error
 	CleanupAll(ctx context.Context)
 	Reset() error
@@ -254,7 +254,7 @@ func (m *Manager) AutoReturn() bool {
 // BindConnection attaches the websocket connection to the MCP clients.
 func (m *Manager) BindConnection(
 	conn Conn,
-	fh types.FunctionRegistryInterface,
+	fh llm.FunctionRegistryInterface,
 	params any,
 ) error {
 	if m.legacy == nil {

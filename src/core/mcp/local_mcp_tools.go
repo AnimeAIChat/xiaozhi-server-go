@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 	"time"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm"
 )
 
 func (c *LocalClient) AddToolExit() error {
@@ -23,9 +23,9 @@ func (c *LocalClient) AddToolExit() error {
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			c.logger.Info("用户请求退出对话，告别语：%s", args["say_goodbye"])
-			res := types.ActionResponse{
-				Action: types.ActionTypeCallHandler, // 动作类型
-				Result: types.ActionResponseCall{
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeCallHandler, // 动作类型
+				Result: llm.ActionResponseCall{
 					FuncName: "mcp_handler_exit",  // 函数名
 					Args:     args["say_goodbye"], // 函数参数
 				},
@@ -51,8 +51,8 @@ func (c *LocalClient) AddToolTime() error {
 			time := now.Format("2006-01-02 15点04分05秒")
 			week := now.Weekday().String()
 			str := "当前时间是 " + time + "，今天是" + week + "。"
-			res := types.ActionResponse{
-				Action: types.ActionTypeReqLLM, // 动作类型
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeReqLLM, // 动作类型
 				Result: str,                    // 函数参数
 			}
 			return res, nil
@@ -94,9 +94,9 @@ func (c *LocalClient) AddToolChangeRole() error {
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			role := args["role"].(string)
-			res := types.ActionResponse{
-				Action: types.ActionTypeCallHandler, // 动作类型
-				Result: types.ActionResponseCall{
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeCallHandler, // 动作类型
+				Result: llm.ActionResponseCall{
 					FuncName: "mcp_handler_change_role", // 函数名
 					Args: map[string]string{
 						"role":   role, // 函数参数
@@ -130,9 +130,9 @@ func (c *LocalClient) AddToolChangeVoice() error {
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			voice := args["voice"].(string)
-			res := types.ActionResponse{
-				Action: types.ActionTypeCallHandler, // 动作类型
-				Result: types.ActionResponseCall{
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeCallHandler, // 动作类型
+				Result: llm.ActionResponseCall{
 					FuncName: "mcp_handler_change_voice", // 函数名
 					Args:     voice,                      // 函数参数
 				},
@@ -160,9 +160,9 @@ func (c *LocalClient) AddToolPlayMusic() error {
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			song_name := args["song_name"].(string)
-			res := types.ActionResponse{
-				Action: types.ActionTypeCallHandler, // 动作类型
-				Result: types.ActionResponseCall{
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeCallHandler, // 动作类型
+				Result: llm.ActionResponseCall{
 					FuncName: "mcp_handler_play_music", // 函数名
 					Args:     song_name,                // 函数参数
 				},
@@ -197,17 +197,17 @@ func (c *LocalClient) AddToolSwitchAgent() error {
 			if _, hasID := args["agent_id"]; !hasID {
 				if _, hasName := args["agent_name"]; !hasName {
 					c.logger.Warn("switch_agent: 必须提供 agent_id 或 agent_name 其中之一")
-					return types.ActionResponse{
-						Action: types.ActionTypeReqLLM,
+					return llm.ActionResponse{
+						Action: llm.ActionTypeReqLLM,
 						Result: "切换智能体需要提供智能体ID或名称",
 					}, nil
 				}
 			}
 
 			// 将完整的参数传给连接处理器的 handler，由 handler 解析并执行切换
-			res := types.ActionResponse{
-				Action: types.ActionTypeCallHandler,
-				Result: types.ActionResponseCall{
+			res := llm.ActionResponse{
+				Action: llm.ActionTypeCallHandler,
+				Result: llm.ActionResponseCall{
 					FuncName: "mcp_handler_switch_agent",
 					Args:     args,
 				},

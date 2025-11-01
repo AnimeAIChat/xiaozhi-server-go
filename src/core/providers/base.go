@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm/inter"
 )
 
 // Provider 所有提供者的基础接口
@@ -65,11 +65,23 @@ type TTSProvider interface {
 
 // LLMProvider 大语言模型提供者接口
 type LLMProvider interface {
-	types.LLMProvider
-
-	// 获取会话ID（用于事件发布）
-	GetSessionID() string
+	Provider
+	Response(ctx context.Context, sessionID string, messages []Message) (<-chan string, error)
+	ResponseWithFunctions(
+		ctx context.Context,
+		sessionID string,
+		messages []Message,
+		tools []Tool,
+	) (<-chan Response, error)
+	GetSessionID() string                       // 获取会话ID
+	SetIdentityFlag(idType string, flag string) // 设置身份标识
 }
 
 // Message 对话消息
-type Message = types.Message
+type Message = inter.Message
+
+// Tool LLM工具
+type Tool = inter.Tool
+
+// Response LLM响应
+type Response = inter.ResponseChunk

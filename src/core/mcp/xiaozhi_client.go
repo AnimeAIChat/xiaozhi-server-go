@@ -9,7 +9,7 @@ import (
 	"time"
 
 	domainauth "xiaozhi-server-go/internal/domain/auth"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/sashabaranov/go-openai"
@@ -308,9 +308,9 @@ func (c *XiaoZhiMCPClient) CallTool(
 				if textMap, ok := content[0].(map[string]interface{}); ok {
 					if text, ok := textMap["text"].(string); ok {
 						if strings.Contains(originalName, "self.camera.take_photo") {
-							ret := types.ActionResponse{
-								Action: types.ActionTypeCallHandler,
-								Result: types.ActionResponseCall{
+							ret := llm.ActionResponse{
+								Action: llm.ActionTypeCallHandler,
+								Result: llm.ActionResponseCall{
 									FuncName: "mcp_handler_take_photo",
 									Args:     text,
 								},
@@ -318,8 +318,8 @@ func (c *XiaoZhiMCPClient) CallTool(
 							return ret, nil
 						}
 						c.logger.Info("工具调用返回文本: %s", text)
-						ret := types.ActionResponse{
-							Action: types.ActionTypeReqLLM,
+						ret := llm.ActionResponse{
+							Action: llm.ActionTypeReqLLM,
 							Result: text,
 						}
 						return ret, nil

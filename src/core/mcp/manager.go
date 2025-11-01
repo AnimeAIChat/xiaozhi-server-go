@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/src/core/utils"
 
 	go_openai "github.com/sashabaranov/go-openai"
@@ -23,7 +23,7 @@ type Conn interface {
 // Manager MCP客户端管理器
 type Manager struct {
 	logger                *utils.Logger
-	funcHandler           types.FunctionRegistryInterface
+	funcHandler           llm.FunctionRegistryInterface
 	conn                  Conn
 	configPath            string
 	clients               map[string]MCPClient
@@ -241,7 +241,7 @@ func (m *Manager) GetAllToolsNames() []string {
 // BindConnection 绑定连接到MCP Manager
 func (m *Manager) BindConnection(
 	conn Conn,
-	fh types.FunctionRegistryInterface,
+	fh llm.FunctionRegistryInterface,
 	params interface{},
 ) error {
 	m.mu.Lock()

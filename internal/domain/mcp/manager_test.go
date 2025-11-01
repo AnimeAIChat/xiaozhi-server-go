@@ -9,7 +9,7 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
-	"xiaozhi-server-go/src/core/types"
+	domainllm "xiaozhi-server-go/internal/domain/llm"
 )
 
 type testLogger struct {
@@ -130,7 +130,7 @@ func (m *mockLegacy) ExecuteTool(context.Context, string, map[string]any) (any, 
 
 func (m *mockLegacy) ToolNames() []string { return nil }
 
-func (m *mockLegacy) BindConnection(conn Conn, _ types.FunctionRegistryInterface, _ any) error {
+func (m *mockLegacy) BindConnection(conn Conn, _ domainllm.FunctionRegistryInterface, _ any) error {
 	if conn == nil {
 		return fmt.Errorf("connection nil")
 	}

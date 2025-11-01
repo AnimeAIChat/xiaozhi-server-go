@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm/inter"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -106,7 +107,7 @@ func (p *Provider) Cleanup() error {
 }
 
 // Response types.LLMProvider接口实现
-func (p *Provider) Response(ctx context.Context, sessionID string, messages []types.Message) (<-chan string, error) {
+func (p *Provider) Response(ctx context.Context, sessionID string, messages []providers.Message) (<-chan string, error) {
 	responseChan := make(chan string, 10)
 
 	go func() {
@@ -217,8 +218,8 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 }
 
 // ResponseWithFunctions types.LLMProvider接口实现
-func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []types.Message, tools []openai.Tool) (<-chan types.Response, error) {
-	responseChan := make(chan types.Response, 10)
+func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []providers.Message, tools []providers.Tool) (<-chan providers.Response, error) {
+	responseChan := make(chan providers.Response, 10)
 
 	go func() {
 		defer close(responseChan)
@@ -255,11 +256,24 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 			reqMessages[i] = msgMap
 		}
 
+		// 转换工具格式
+		openaiTools := make([]openai.Tool, len(tools))
+		for i, tool := range tools {
+			openaiTools[i] = openai.Tool{
+				Type: openai.ToolType(tool.Type),
+				Function: &openai.FunctionDefinition{
+					Name:        tool.Function.Name,
+					Description: tool.Function.Description,
+					Parameters:  tool.Function.Parameters,
+				},
+			}
+		}
+
 		// 构建自定义请求
 		reqBody := doubaoRequest{
 			Model:    p.Config().ModelName,
 			Messages: reqMessages,
-			Tools:    tools,
+			Tools:    openaiTools,
 			Stream:   true,
 		}
 
@@ -273,9 +287,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		// 序列化请求
 		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【请求序列化失败: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
@@ -287,9 +301,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		url := fmt.Sprintf("%s/chat/completions", p.baseURL)
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【创建请求失败: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
@@ -300,9 +314,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		// 发送请求
 		resp, err := p.client.Do(req)
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【Doubao服务响应异常: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
@@ -310,9 +324,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【Doubao服务错误 %d: %s】", resp.StatusCode, string(body)),
-				Error:   fmt.Sprintf("HTTP %d", resp.StatusCode),
+				Error:   fmt.Errorf("HTTP %d", resp.StatusCode),
 			}
 			return
 		}
@@ -323,9 +337,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 			line, err := reader.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
-					responseChan <- types.Response{
+					responseChan <- providers.Response{
 						Content: fmt.Sprintf("【读取响应失败: %v】", err),
-						Error:   err.Error(),
+						Error:   err,
 					}
 				}
 				break
@@ -357,18 +371,18 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 					// 处理工具调用
 					if len(delta.ToolCalls) > 0 {
-						toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
+						toolCalls := make([]inter.ToolCall, len(delta.ToolCalls))
 						for i, tc := range delta.ToolCalls {
-							toolCalls[i] = types.ToolCall{
+							toolCalls[i] = inter.ToolCall{
 								ID:   tc.ID,
 								Type: string(tc.Type),
-								Function: types.FunctionCall{
+								Function: inter.ToolCallFunction{
 									Name:      tc.Function.Name,
 									Arguments: tc.Function.Arguments,
 								},
 							}
 						}
-						responseChan <- types.Response{
+						responseChan <- providers.Response{
 							ToolCalls: toolCalls,
 						}
 						continue
@@ -377,7 +391,7 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 					// 处理文本内容
 					if delta.Content != "" {
 						// 暂时输出原始内容，不进行过滤
-						responseChan <- types.Response{
+						responseChan <- providers.Response{
 							Content: delta.Content,
 						}
 					}

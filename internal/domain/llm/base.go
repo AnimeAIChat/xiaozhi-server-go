@@ -7,7 +7,6 @@ import (
 
 	"xiaozhi-server-go/internal/domain/llm/inter"
 	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/types"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -65,9 +64,9 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 	}
 
 	// 转换消息格式
-	coreMessages := make([]types.Message, len(messages))
+	coreMessages := make([]inter.Message, len(messages))
 	for i, msg := range messages {
-		coreMsg := types.Message{
+		coreMsg := inter.Message{
 			Role:       msg.Role,
 			Content:    msg.Content,
 			ToolCallID: msg.ToolCallID,
@@ -75,16 +74,15 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 		
 		// 转换ToolCalls
 		if len(msg.ToolCalls) > 0 {
-			coreMsg.ToolCalls = make([]types.ToolCall, len(msg.ToolCalls))
+			coreMsg.ToolCalls = make([]inter.ToolCall, len(msg.ToolCalls))
 			for j, tc := range msg.ToolCalls {
-				coreMsg.ToolCalls[j] = types.ToolCall{
+				coreMsg.ToolCalls[j] = inter.ToolCall{
 					ID:   tc.ID,
 					Type: tc.Type,
-					Function: types.FunctionCall{
+					Function: inter.ToolCallFunction{
 						Name:      tc.Function.Name,
 						Arguments: tc.Function.Arguments,
 					},
-					Index: j, // 使用数组索引作为Index
 				}
 			}
 		}
@@ -106,7 +104,7 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 	}
 
 	// 调用提供商的ResponseWithFunctions方法
-	responseChan, err := provider.ResponseWithFunctions(ctx, sessionID, coreMessages, coreTools)
+	responseChan, err := provider.ResponseWithFunctions(ctx, sessionID, coreMessages, tools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get LLM response: %w", err)
 	}
@@ -122,9 +120,8 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 		for response := range responseChan {
 			chunk := inter.ResponseChunk{
 				Content: response.Content,
-				IsDone:  response.StopReason != "", // 假设有StopReason表示完成
-				// Usage字段在types.Response中不存在，暂时设为nil
-				Usage: nil,
+				IsDone:  response.IsDone,
+				Usage:   response.Usage,
 			}
 
 			// 转换工具调用
@@ -140,11 +137,6 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 						},
 					}
 				}
-			}
-
-			// 检查是否完成
-			if response.StopReason != "" {
-				chunk.IsDone = true
 			}
 
 			outChan <- chunk

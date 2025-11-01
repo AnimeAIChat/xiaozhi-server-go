@@ -3,11 +3,11 @@ package chat
 import (
 	"encoding/json"
 
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
 )
 
-type Message = types.Message
+type Message = providers.Message
 
 // DialogueManager 管理对话上下文和历史
 type DialogueManager struct {

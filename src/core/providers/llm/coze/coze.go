@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/coze-dev/coze-go"
-	"github.com/sashabaranov/go-openai"
 	"io"
 	"sync"
 	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/src/core/providers"
 )
 
 type Provider struct {
@@ -100,7 +99,7 @@ func (p *Provider) Initialize() error {
 }
 
 // Response types.LLMProvider接口实现
-func (p *Provider) Response(ctx context.Context, sessionID string, messages []types.Message) (<-chan string, error) {
+func (p *Provider) Response(ctx context.Context, sessionID string, messages []providers.Message) (<-chan string, error) {
 	responseChan := make(chan string, 10)
 
 	go func() {
@@ -159,8 +158,8 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 }
 
 // ResponseWithFunctions types.LLMProvider接口实现
-func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []types.Message, tools []openai.Tool) (<-chan types.Response, error) {
-	responseChan := make(chan types.Response, 10)
+func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []providers.Message, tools []providers.Tool) (<-chan providers.Response, error) {
+	responseChan := make(chan providers.Response, 10)
 
 	go func() {
 		defer close(responseChan)
@@ -171,9 +170,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 			functionBytes, err := json.Marshal(tools)
 			if err != nil {
-				responseChan <- types.Response{
+				responseChan <- providers.Response{
 					Content: fmt.Sprintf("【序列化工具失败: %v】", err),
-					Error:   err.Error(),
+					Error:   err,
 				}
 				return
 			}
@@ -197,16 +196,16 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		// 调用普通 Response 接口获取结果流
 		respChan, err := p.Response(ctx, sessionID, messages)
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【调用Response失败: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
 
 		// 透传结果
 		for token := range respChan {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: token,
 			}
 		}

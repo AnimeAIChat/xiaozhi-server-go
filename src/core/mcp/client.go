@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/src/core/utils"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
@@ -256,8 +256,8 @@ func (c *Client) CallTool(
 			if textContent, ok := result.Content[0].(mcp.TextContent); ok {
 				return textContent.Text, nil
 			}
-			ret := types.ActionResponse{
-				Action: types.ActionTypeReqLLM,
+			ret := llm.ActionResponse{
+				Action: llm.ActionTypeReqLLM,
 				Result: result.Content[0],
 			}
 			return ret, nil
@@ -272,8 +272,8 @@ func (c *Client) CallTool(
 				processedContent = append(processedContent, content)
 			}
 		}
-		ret := types.ActionResponse{
-			Action: types.ActionTypeReqLLM,
+		ret := llm.ActionResponse{
+			Action: llm.ActionTypeReqLLM,
 			Result: processedContent,
 		}
 		return ret, nil

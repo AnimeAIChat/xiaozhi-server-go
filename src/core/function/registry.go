@@ -18,34 +18,38 @@ func NewFunctionRegistry() *FunctionRegistry {
 	}
 }
 
-func (fr *FunctionRegistry) RegisterFunction(name string, function openai.Tool) error {
+func (fr *FunctionRegistry) RegisterFunction(name string, function interface{}) error {
+	tool, ok := function.(openai.Tool)
+	if !ok {
+		return fmt.Errorf("function must be of type openai.Tool")
+	}
 	if _, exists := fr.functions[name]; exists {
 		utils.DefaultLogger.Info("function already registered: %s", name)
 	}
-	fr.functions[name] = function
+	fr.functions[name] = tool
 	return nil
 }
 
-func (fr *FunctionRegistry) GetFunction(name string) (openai.Tool, error) {
+func (fr *FunctionRegistry) GetFunction(name string) (interface{}, error) {
 	if function, exists := fr.functions[name]; exists {
 		return function, nil
 	}
-	return openai.Tool{}, fmt.Errorf("function not found: %s", name)
+	return nil, fmt.Errorf("function not found: %s", name)
 }
 
-func (fr *FunctionRegistry) GetAllFunctions() []openai.Tool {
-	functions := make([]openai.Tool, 0, len(fr.functions))
+func (fr *FunctionRegistry) GetAllFunctions() []interface{} {
+	functions := make([]interface{}, 0, len(fr.functions))
 	for _, function := range fr.functions {
 		functions = append(functions, function)
 	}
 	return functions
 }
 
-func (fr *FunctionRegistry) GetFunctionByFilter(filter []string) []openai.Tool {
+func (fr *FunctionRegistry) GetFunctionByFilter(filter []string) []interface{} {
 	if len(filter) == 0 {
 		return fr.GetAllFunctions()
 	}
-	functions := make([]openai.Tool, 0)
+	functions := make([]interface{}, 0)
 	for name, function := range fr.functions {
 		// 返回self和local开头的函数
 		if strings.HasPrefix(name, "self") || strings.HasPrefix(name, "local") {

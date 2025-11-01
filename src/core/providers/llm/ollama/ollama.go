@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/internal/domain/llm/inter"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -70,7 +71,7 @@ func (p *Provider) Cleanup() error {
 }
 
 // Response types.LLMProvider接口实现
-func (p *Provider) Response(ctx context.Context, sessionID string, messages []types.Message) (<-chan string, error) {
+func (p *Provider) Response(ctx context.Context, sessionID string, messages []providers.Message) (<-chan string, error) {
 	responseChan := make(chan string, 10)
 
 	go func() {
@@ -136,8 +137,8 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 }
 
 // ResponseWithFunctions types.LLMProvider接口实现
-func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []types.Message, tools []openai.Tool) (<-chan types.Response, error) {
-	responseChan := make(chan types.Response, 10)
+func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, messages []providers.Message, tools []providers.Tool) (<-chan providers.Response, error) {
+	responseChan := make(chan providers.Response, 10)
 
 	go func() {
 		defer close(responseChan)
@@ -179,19 +180,32 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 			chatMessages[i] = chatMessage
 		}
 
+		// 转换工具格式
+		openaiTools := make([]openai.Tool, len(tools))
+		for i, tool := range tools {
+			openaiTools[i] = openai.Tool{
+				Type: openai.ToolType(tool.Type),
+				Function: &openai.FunctionDefinition{
+					Name:        tool.Function.Name,
+					Description: tool.Function.Description,
+					Parameters:  tool.Function.Parameters,
+				},
+			}
+		}
+
 		stream, err := p.client.CreateChatCompletionStream(
 			ctx,
 			openai.ChatCompletionRequest{
 				Model:    p.modelName,
 				Messages: chatMessages,
-				Tools:    tools,
+				Tools:    openaiTools,
 				Stream:   true,
 			},
 		)
 		if err != nil {
-			responseChan <- types.Response{
+			responseChan <- providers.Response{
 				Content: fmt.Sprintf("【Ollama服务响应异常: %v】", err),
-				Error:   err.Error(),
+				Error:   err,
 			}
 			return
 		}
@@ -211,18 +225,18 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 				// 处理工具调用
 				if len(delta.ToolCalls) > 0 {
-					toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
+					toolCalls := make([]inter.ToolCall, len(delta.ToolCalls))
 					for i, tc := range delta.ToolCalls {
-						toolCalls[i] = types.ToolCall{
+						toolCalls[i] = inter.ToolCall{
 							ID:   tc.ID,
 							Type: string(tc.Type),
-							Function: types.FunctionCall{
+							Function: inter.ToolCallFunction{
 								Name:      tc.Function.Name,
 								Arguments: tc.Function.Arguments,
 							},
 						}
 					}
-					responseChan <- types.Response{
+					responseChan <- providers.Response{
 						ToolCalls: toolCalls,
 					}
 					continue
@@ -238,7 +252,7 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 
 					// 如果当前处于活动状态且缓冲区有内容，则输出
 					if isActive && buffer != "" {
-						responseChan <- types.Response{
+						responseChan <- providers.Response{
 							Content: buffer,
 						}
 						buffer = ""
@@ -252,9 +266,9 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 }
 
 // addNoThinkDirective 为qwen3模型在用户最后一条消息中添加/no_think指令
-func (p *Provider) addNoThinkDirective(messages []types.Message) []types.Message {
+func (p *Provider) addNoThinkDirective(messages []providers.Message) []providers.Message {
 	// 复制消息列表
-	messagesCopy := make([]types.Message, len(messages))
+	messagesCopy := make([]providers.Message, len(messages))
 	copy(messagesCopy, messages)
 
 	// 找到最后一条用户消息

@@ -2,7 +2,7 @@ package llm
 
 import (
 	"fmt"
-	"xiaozhi-server-go/src/core/types"
+	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/internal/domain/eventbus"
 )
 
@@ -21,7 +21,7 @@ type Config struct {
 
 // Provider LLM提供者接口
 type Provider interface {
-	types.LLMProvider
+	providers.LLMProvider
 }
 
 // BaseProvider LLM基础实现

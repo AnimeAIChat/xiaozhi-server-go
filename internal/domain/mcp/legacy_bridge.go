@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/internal/platform/config"
 	coremcp "xiaozhi-server-go/src/core/mcp"
-	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -41,7 +41,7 @@ func (a *coreLegacyAdapter) ToolNames() []string {
 
 func (a *coreLegacyAdapter) BindConnection(
 	conn Conn,
-	fh types.FunctionRegistryInterface,
+	fh llm.FunctionRegistryInterface,
 	params any,
 ) error {
 	if a.manager == nil {
