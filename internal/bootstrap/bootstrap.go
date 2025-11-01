@@ -162,7 +162,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(state.config, logger, authManager, state.configRepo, group, groupCtx); err != nil {
+	if err := startServices(state.config, logger, authManager, state.configRepo, state.domainMCPManager, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -514,6 +514,7 @@ func startTransportServer(
 	config *platformconfig.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
+	domainMCPManager *domainmcp.Manager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
@@ -524,7 +525,7 @@ func startTransportServer(
 	poolInitDone := make(chan struct{})
 	go func() {
 		defer close(poolInitDone)
-		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, nil)
+		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, domainMCPManager)
 		if poolErr != nil {
 			logger.ErrorTag("引导", "初始化资源池管理器失败: %v", poolErr)
 			return
@@ -775,10 +776,11 @@ func startServices(
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
 	configRepo types.Repository,
+	domainMCPManager *domainmcp.Manager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {
-	if _, err := startTransportServer(config, logger, authManager, g, groupCtx); err != nil {
+	if _, err := startTransportServer(config, logger, authManager, domainMCPManager, g, groupCtx); err != nil {
 		return fmt.Errorf("启动 Transport 服务失败: %w", err)
 	}
 
