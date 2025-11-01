@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"xiaozhi-server-go/internal/domain/device/aggregate"
 	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/errors"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/models"
 
 	"github.com/gin-gonic/gin"
 )
@@ -339,7 +339,7 @@ func (s *Service) checkAndUpdateDevice(
 	c *gin.Context,
 	req OTARequestBody,
 	deviceID, clientID, deviceName, version string,
-) *models.Device {
+) *aggregate.Device {
 	// 获取客户端IP地址
 	ip := req.Board.IP
 	if ip == "" {
@@ -369,19 +369,24 @@ func (s *Service) checkAndUpdateDevice(
 	if err != nil {
 		// 注册失败时记录错误，但不中断OTA流程，返回mock设备
 		s.logger.Error("设备注册失败: %v", err)
-		return &models.Device{
-			DeviceID:         deviceID,
-			ClientID:         clientID,
-			Name:             deviceName,
-			Version:          version,
-			RegisterTimeV2:   time.Now(),
-			LastActiveTimeV2: time.Now(),
-			BoardType:        req.Board.Type,
-			ChipModelName:    req.ChipModelName,
-			Channel:          req.Board.Channel,
-			SSID:             req.Board.SSID,
-			Language:         req.Language,
-			OTA:              true,
+		// 创建一个domain.Device实例作为mock
+		now := time.Now()
+		return &aggregate.Device{
+			DeviceID:       deviceID,
+			ClientID:       clientID,
+			Name:           deviceName,
+			Version:        version,
+			RegisterTime:   now,
+			LastActiveTime: now,
+			AuthStatus:     aggregate.DeviceStatusPending, // 待认证状态
+			OTA:            true,
+			Language:       req.Language,
+			BoardType:      req.Board.Type,
+			ChipModelName:  req.ChipModelName,
+			Channel:        req.Board.Channel,
+			SSID:           req.Board.SSID,
+			LastIP:         ip,
+			Application:    appInfo,
 		}
 	}
 
@@ -391,22 +396,8 @@ func (s *Service) checkAndUpdateDevice(
 			device.DeviceID, device.ClientID, device.Name, device.AuthStatus)
 	}
 
-	// 注册成功，返回包含注册信息的设备对象
-	return &models.Device{
-		DeviceID:         device.DeviceID,
-		ClientID:         device.ClientID,
-		Name:             device.Name,
-		Version:          device.Version,
-		RegisterTimeV2:   device.RegisterTime,
-		LastActiveTimeV2: device.LastActiveTime,
-		BoardType:        req.Board.Type,
-		ChipModelName:    req.ChipModelName,
-		Channel:          req.Board.Channel,
-		SSID:             req.Board.SSID,
-		Language:         req.Language,
-		AuthStatus:       string(device.AuthStatus), // 设置认证状态
-		OTA:              true,
-	}
+	// 直接返回domain模型
+	return device
 }
 
 // handleFirmwareDownload 处理固件下载请求
@@ -452,9 +443,9 @@ func (s *Service) versionLess(a, b string) bool {
 }
 
 // isDeviceActivated 检查设备是否已激活
-func (s *Service) isDeviceActivated(device *models.Device) bool {
-	// 根据 domain 层定义，approved 状态表示已激活
-	return device.AuthStatus == "approved"
+func (s *Service) isDeviceActivated(device *aggregate.Device) bool {
+	// 直接检查domain模型的激活状态
+	return device.IsActivated()
 }
 
 // generateActivationCode 生成激活码

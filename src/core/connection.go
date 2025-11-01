@@ -34,7 +34,6 @@ import (
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/models"
 	"xiaozhi-server-go/internal/domain/task"
 )
 
@@ -242,9 +241,9 @@ func NewConnectionHandler(
 	configRepo := manager.NewDatabaseRepository(nil)
 	handler.configService = service.NewConfigService(configRepo)
 
-	agent, prompt := handler.InitWithAgent()
-	handler.checkTTSProvider(agent, config) // 检查TTS提供者
-	handler.checkLLMProvider(agent, config) // 检查LLM提供者是否匹配
+	prompt := handler.InitWithAgent()
+	handler.checkTTSProvider(config) // 检查TTS提供者
+	handler.checkLLMProvider(config) // 检查LLM提供者是否匹配
 
 	// 初始化新架构的 LLM 和 TTS Manager
 	handler.initManagers(config)
@@ -258,14 +257,14 @@ func NewConnectionHandler(
 	return handler
 }
 
-func (h *ConnectionHandler) InitWithAgent() (*models.Agent, string) {
+func (h *ConnectionHandler) InitWithAgent() string {
 	// Database functionality removed - return default prompt
 	prompt := h.config.System.DefaultPrompt
 	h.LogInfo("Database functionality removed - using default agent configuration")
-	return nil, prompt
+	return prompt
 }
 
-func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config.Config) {
+func (h *ConnectionHandler) checkTTSProvider(config *config.Config) {
 	h.ttsProviderName = "default" // 默认TTS提供者名称
 	h.voiceName = "default"
 
@@ -277,52 +276,17 @@ func (h *ConnectionHandler) checkTTSProvider(agent *models.Agent, config *config
 		h.LogInfo(fmt.Sprintf("使用用户选择的TTS提供者: %s", ttsName))
 
 		h.ttsProviderName = getter.Config().Type
-		// 从agent配置中获取
+		// 使用TTS提供者的默认语音
 		h.voiceName = getter.Config().Voice
-		if agent != nil && agent.Voice != "" {
-			err, newVoice := h.providers.tts.SetVoice(agent.Voice) // 设置TTS语音
-			if err != nil {
-				h.LogError(fmt.Sprintf("设置TTS语音为agent配置失败: %v", err))
-			} else {
-				h.voiceName = newVoice
-			}
-		}
 		h.initialVoice = h.voiceName // 保存初始语音名称
 	}
 	h.logger.InfoTag("TTS", "使用 TTS 提供者 %s，语音 %s", h.ttsProviderName, h.voiceName)
 
 }
 
-func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config.Config) {
-	if agent == nil {
-		return
-	}
-	agentLLMName := agent.LLM
-	// 从agent里获取extra
-	apiKey := ""
-	baseUrl := ""
-	if agent.Extra != "" {
-		// 解析Extra字段
-		var extra map[string]interface{}
-		if err := json.Unmarshal([]byte(agent.Extra), &extra); err == nil {
-			if key, ok := extra["api_key"].(string); ok {
-				apiKey = key
-			}
-			if url, ok := extra["base_url"].(string); ok {
-				baseUrl = url
-			}
-		} else {
-			h.LogError(fmt.Sprintf("Agent %d 的 Extra 字段格式错误: %v， err:%v", agent.ID, agent.Extra, err))
-		}
-	}
-
+func (h *ConnectionHandler) checkLLMProvider(config *config.Config) {
 	// 获取用户的模型选择
 	llmName, _, _ := h.getUserModelSelection()
-
-	// 如果用户没有选择，使用agent的LLM
-	if llmName == "" {
-		llmName = agentLLMName
-	}
 
 	// 判断handler.providers.llm 类型是否和用户选择的LLM相同
 	if getter, ok := h.providers.llm.(llmConfigGetter); ok {
@@ -332,12 +296,6 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 			if cfg, ok := config.LLM[llmName]; !ok {
 				h.LogError(fmt.Sprintf("用户选择的LLM类型 %s 不存在", llmName))
 			} else {
-				if apiKey != "" {
-					cfg.APIKey = apiKey // 使用Agent的API密钥
-				}
-				if baseUrl != "" {
-					cfg.BaseURL = baseUrl // 使用Agent的BaseURL
-				}
 				llmCfg := &llm.Config{
 					Name:        llmName,
 					Type:        cfg.Type,
@@ -358,13 +316,7 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 				}
 			}
 		} else {
-			if apiKey != "" {
-				getter.Config().APIKey = apiKey
-			}
-			if baseUrl != "" {
-				getter.Config().BaseURL = baseUrl
-			}
-			h.LogInfo(fmt.Sprintf("使用用户选择的LLM类型: %s, BaseURL:%s", llmName, getter.Config().BaseURL))
+			h.LogInfo(fmt.Sprintf("使用用户选择的LLM类型: %s", llmName))
 		}
 	}
 }

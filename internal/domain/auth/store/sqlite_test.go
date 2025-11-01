@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/internal/domain/auth/model"
-	"xiaozhi-server-go/src/models"
+	"xiaozhi-server-go/internal/platform/storage"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -20,7 +20,7 @@ func newTestSQLiteDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&models.AuthClient{}); err != nil {
+	if err := db.AutoMigrate(&storage.AuthClient{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
