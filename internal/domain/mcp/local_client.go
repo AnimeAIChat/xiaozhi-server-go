@@ -36,43 +36,43 @@ func NewLocalClient(logger Logger, cfg *config.Config) (*LocalClient, error) {
 
 func (c *LocalClient) RegisterTools() {
 	if c.cfg == nil {
-		c.logger.Error("RegisterTools: config is nil")
+		c.logger.ErrorTag("MCP", "配置为空")
 		return
 	}
 
 	if c.cfg.LocalMCPFun == nil {
-		c.logger.Warn("RegisterTools: LocalMCPFun is nil")
+		c.logger.WarnTag("MCP", "本地MCP功能未配置")
 		return
 	}
 
 	funcs := c.cfg.LocalMCPFun
 	if len(funcs) == 0 {
-		c.logger.Debug("RegisterTools: LocalMCPFun is empty")
+		c.logger.DebugTag("MCP", "本地MCP功能列表为空")
 		return
 	}
 
 	for _, localFunc := range funcs {
 		if localFunc.Name == "exit" && localFunc.Enabled {
 			c.AddToolExit()
-			c.logger.Info("RegisterTools: exit tool registered")
+			c.logger.InfoTag("MCP", "退出工具已注册")
 		} else if localFunc.Name == "time" && localFunc.Enabled {
 			c.AddToolTime()
-			c.logger.Info("RegisterTools: time tool registered")
+			c.logger.InfoTag("MCP", "时间工具已注册")
 		} else if localFunc.Name == "change_voice" && localFunc.Enabled {
 			c.AddToolChangeVoice()
-			c.logger.Info("RegisterTools: change_voice tool registered")
+			c.logger.InfoTag("MCP", "语音切换工具已注册")
 		} else if localFunc.Name == "change_role" && localFunc.Enabled {
 			c.AddToolChangeRole()
-			c.logger.Info("RegisterTools: change_role tool registered")
+			c.logger.InfoTag("MCP", "角色切换工具已注册")
 		} else if localFunc.Name == "play_music" && localFunc.Enabled {
 			c.AddToolPlayMusic()
-			c.logger.Info("RegisterTools: play_music tool registered")
+			c.logger.InfoTag("MCP", "音乐播放工具已注册")
 		} else if localFunc.Name == "switch_agent" && localFunc.Enabled {
 			c.AddToolSwitchAgent()
-			c.logger.Info("RegisterTools: switch_agent tool registered")
+			c.logger.InfoTag("MCP", "智能体切换工具已注册")
 		} else {
 			if localFunc.Enabled {
-				c.logger.Warn("RegisterTools: unknown function name %s", localFunc.Name)
+				c.logger.WarnTag("MCP", "未知功能名称: %s", localFunc.Name)
 			}
 		}
 	}

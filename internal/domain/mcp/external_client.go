@@ -80,7 +80,7 @@ func (c *ExternalClient) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to initialize stdio MCP client: %w", err)
 		}
 		c.name = initResult.ServerInfo.Name
-		c.logger.Info("Initialized server: %s %s with command: %s",
+		c.logger.InfoTag("MCP", "已初始化服务器: %s %s (命令: %s)",
 			initResult.ServerInfo.Name,
 			initResult.ServerInfo.Version,
 			c.config.Command)
@@ -133,7 +133,7 @@ func (c *ExternalClient) fetchTools(ctx context.Context) error {
 			})
 			toolNames += fmt.Sprintf("%s, ", tool.Name)
 		}
-		c.logger.Info("Fetching %s available tools %s", c.name, toolNames)
+		c.logger.InfoTag("MCP", "获取 %s 可用工具: %s", c.name, toolNames)
 		return nil
 	} else {
 		// Original implementation remains unchanged

@@ -114,7 +114,7 @@ func (s *Service) initVLLMProviders() error {
 	}
 
 	s.vlllmMap[selectedVLLLM] = provider
-	s.logger.InfoTag("VLLLM", "初始化完成: %s", selectedVLLLM)
+	// s.logger.InfoTag("VLLLM", "初始化完成: %s", selectedVLLLM)
 
 	if len(s.vlllmMap) == 0 {
 		s.logger.ErrorTag("VLLLM", "没有可用的 provider，请检查配置")

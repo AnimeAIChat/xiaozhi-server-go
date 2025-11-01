@@ -101,7 +101,7 @@ func TestLogBootstrapGraphOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new logger: %v", err)
 	}
-	logBootstrapGraph(logger, InitGraph())
+	logBootstrapGraph(InitGraph(), logger)
 	logger.Close()
 
 	data, err := os.ReadFile(filepath.Join(tmp, logCfg.LogFile))

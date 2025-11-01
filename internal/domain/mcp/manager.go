@@ -520,29 +520,29 @@ func (m *Manager) preInitializeServers() error {
 func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("Panic during external server initialization: %v", r)
+			m.logger.Error("外部服务器初始化时发生panic: %v", r)
 		}
 	}()
 
-	m.logger.Info("Starting asynchronous initialization of external MCP servers")
+	m.logger.InfoTag("MCP", "开始异步初始化外部MCP服务器")
 
 	for name, config := range configs {
 		// Only initialize external MCP servers
 		go func(name string, config *Config) {
 			defer func() {
 				if r := recover(); r != nil {
-					m.logger.Error("Panic initializing MCP client %s: %v", name, r)
+					m.logger.Error("初始化MCP客户端 %s 时发生panic: %v", name, r)
 				}
 			}()
 
 			client, err := NewExternalClient(config, m.logger)
 			if err != nil {
-				m.logger.Error("Failed to create MCP client for server %s: %v", name, err)
+				m.logger.Error("创建MCP客户端失败 (服务器: %s): %v", name, err)
 				return
 			}
 
 			if !config.Enabled {
-				m.logger.Debug("MCP client %s is disabled", name)
+				m.logger.DebugTag("MCP", "MCP客户端 %s 已禁用", name)
 				return
 			}
 
@@ -558,7 +558,7 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 			select {
 			case err := <-startDone:
 				if err != nil {
-					m.logger.Error("Failed to start MCP client %s: %v", name, err)
+					m.logger.Error("启动MCP客户端失败 %s: %v", name, err)
 					return
 				}
 
@@ -566,9 +566,9 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 				m.clients[name] = client
 				m.clientsMu.Unlock()
 
-				m.logger.Info("External MCP client %s initialized successfully", name)
+				m.logger.InfoTag("MCP", "外部MCP客户端 %s 初始化成功", name)
 			case <-ctx.Done():
-				m.logger.Warn("MCP client %s startup timeout", name)
+				m.logger.WarnTag("MCP", "MCP客户端 %s 启动超时", name)
 			}
 		}(name, config)
 	}
@@ -578,7 +578,7 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 	m.isInitialized = true
 	m.clientsMu.Unlock()
 
-	m.logger.Info("External MCP server asynchronous initialization started (non-blocking)")
+	m.logger.InfoTag("MCP", "外部MCP服务器异步初始化已启动 (非阻塞)")
 }
 
 // NewFromConfig creates a new domain MCP Manager from configuration.

@@ -66,8 +66,20 @@ func (h *CustomTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	// 获取时间戳
 	timeStr := r.Time.Format("2006-01-02 15:04:05.000")
 
-	// 获取日志级别
-	levelStr := r.Level.String()
+	// 获取日志级别中文描述
+	var levelStr string
+	switch r.Level {
+	case slog.LevelDebug:
+		levelStr = "调试"
+	case slog.LevelInfo:
+		levelStr = "信息"
+	case slog.LevelWarn:
+		levelStr = "警告"
+	case slog.LevelError:
+		levelStr = "错误"
+	default:
+		levelStr = "信息"
+	}
 
 	// 应用颜色
 	var levelColor string
@@ -84,32 +96,63 @@ func (h *CustomTextHandler) Handle(ctx context.Context, r slog.Record) error {
 		levelColor = colorReset
 	}
 
-	// 检查是否是特殊阶段日志
-	var stageColor string
-	var isStageLog bool
+	// 检查是否是特殊阶段日志或模块日志
+	var moduleColor string
+	var isModuleLog bool
 	msg := r.Message
 
-	if strings.HasPrefix(msg, "[ASR]") {
-		stageColor = colorASR
-		isStageLog = true
+	// 检测各种模块标签
+	if strings.HasPrefix(msg, "[引导]") {
+		moduleColor = "\x1b[96m" // 引导：亮青色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[传输]") {
+		moduleColor = "\x1b[94m" // 传输：亮蓝色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[HTTP]") {
+		moduleColor = "\x1b[95m" // HTTP：亮品红
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[WebSocket]") {
+		moduleColor = "\x1b[92m" // WebSocket：亮绿色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[ASR]") {
+		moduleColor = colorASR
+		isModuleLog = true
 	} else if strings.HasPrefix(msg, "[LLM]") {
-		stageColor = colorLLM
-		isStageLog = true
+		moduleColor = colorLLM
+		isModuleLog = true
 	} else if strings.HasPrefix(msg, "[TTS]") {
-		stageColor = colorTTS
-		isStageLog = true
+		moduleColor = colorTTS
+		isModuleLog = true
 	} else if strings.HasPrefix(msg, "[TIMING]") {
-		stageColor = colorTiming
-		isStageLog = true
+		moduleColor = colorTiming
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[MCP]") {
+		moduleColor = "\x1b[36m" // MCP：青蓝色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[认证]") {
+		moduleColor = "\x1b[91m" // 认证：亮红色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[视觉]") {
+		moduleColor = "\x1b[95m" // 视觉：亮品红
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[OTA]") {
+		moduleColor = "\x1b[97m" // OTA：亮白色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[WebAPI]") {
+		moduleColor = "\x1b[96m" // WebAPI：亮青色
+		isModuleLog = true
+	} else if strings.HasPrefix(msg, "[OBSERVABILITY]") {
+		moduleColor = "\x1b[90m" // 可观测性：灰色
+		isModuleLog = true
 	}
 
 	// 构建输出
 	var output string
-	if isStageLog {
-		// 阶段日志格式: [时间] [阶段] 消息
+	if isModuleLog {
+		// 模块日志格式: [时间] [模块] 消息
 		output = fmt.Sprintf("%s[%s]%s %s%s%s",
 			colorTime, timeStr, colorReset,
-			stageColor, msg, colorReset)
+			moduleColor, msg, colorReset)
 	} else {
 		// 普通日志格式: [时间] [级别] 消息
 		output = fmt.Sprintf("%s[%s]%s %s[%s]%s %s",

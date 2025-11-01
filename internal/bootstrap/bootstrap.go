@@ -134,7 +134,7 @@ func Run(ctx context.Context) error {
 		)
 	}
 
-	logBootstrapGraph(logger, steps)
+	logBootstrapGraph(steps, logger)
 
 	if shutdown := state.observabilityShutdown; shutdown != nil {
 		defer func() {
@@ -176,19 +176,29 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func logBootstrapGraph(logger *utils.Logger, steps []initStep) {
+func logBootstrapGraph(steps []initStep, logger *utils.Logger) {
 	if logger == nil {
 		return
 	}
 	logger.InfoTag("引导", "初始化依赖关系概览")
-	for _, step := range steps {
-		if len(step.DependsOn) == 0 {
-			logger.InfoTag("引导", "根步骤 %s（%s）", step.ID, step.Title)
-			continue
-		}
-		logger.InfoTag("引导", "%s（%s） 依赖 %s", step.ID, step.Title, strings.Join(step.DependsOn, ", "))
+
+	// 阶段名称映射
+	stepNames := map[string]string{
+		"storage:init-config-store": "初始化配置存储",
+		"storage:init-database":     "初始化数据库",
+		"config:load-default":       "加载默认配置",
+		"logging:init-provider":     "初始化日志提供者",
+		"mcp:init-manager":          "初始化MCP管理器",
+		"observability:setup-hooks": "设置可观测性钩子",
+		"auth:init-manager":         "初始化认证管理器",
 	}
-	logger.InfoTag("引导", "startServices 依赖 transports/http")
+
+	for _, step := range steps {
+		if name, ok := stepNames[step.ID]; ok {
+			logger.InfoTag("引导", name)
+		}
+	}
+	logger.InfoTag("引导", "启动服务")
 }
 
 func executeInitSteps(ctx context.Context, steps []initStep, state *appState) error {

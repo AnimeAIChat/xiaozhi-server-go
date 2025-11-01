@@ -332,7 +332,7 @@ func warmupConcretePool[T any](ctx context.Context, pool *providerPool[T], poolT
 	}
 
 	if logger != nil {
-		logger.Info("Successfully warmed up %s pool with %d instances", poolType, pool.warmed.Load())
+		logger.InfoTag("资源池", "%s 池预热完成，共 %d 个实例", poolType, pool.warmed.Load())
 	}
 }
 
