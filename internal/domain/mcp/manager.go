@@ -578,7 +578,7 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 	m.isInitialized = true
 	m.clientsMu.Unlock()
 
-	m.logger.InfoTag("MCP", "外部MCP服务器异步初始化已启动 (非阻塞)")
+	m.logger.DebugTag("MCP", "外部MCP服务器异步初始化已启动")
 }
 
 // NewFromConfig creates a new domain MCP Manager from configuration.
