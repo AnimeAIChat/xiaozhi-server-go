@@ -2,14 +2,12 @@ package mcp
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/sashabaranov/go-openai"
 
-	domainllm "xiaozhi-server-go/internal/domain/llm"
+	"xiaozhi-server-go/internal/platform/config"
 )
 
 type testLogger struct {
@@ -81,8 +79,10 @@ func (c *fakeClient) ResetConnection() error { return nil }
 
 func TestManagerRegisterAndExecute(t *testing.T) {
 	logger := &testLogger{}
+	cfg := config.DefaultConfig() // Use default config for testing
 	manager, err := NewManager(Options{
 		Logger:    logger,
+		Config:    cfg,
 		AutoStart: true,
 	})
 	if err != nil {
@@ -114,97 +114,5 @@ func TestManagerRegisterAndExecute(t *testing.T) {
 	}
 	if !client.stopCalled {
 		t.Fatalf("expected client stop to be invoked")
-	}
-}
-
-type mockLegacy struct {
-	bindCalls    int
-	cleanupCalls int
-	autoReturn   bool
-	lastMsg      map[string]any
-}
-
-func (m *mockLegacy) ExecuteTool(context.Context, string, map[string]any) (any, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockLegacy) ToolNames() []string { return nil }
-
-func (m *mockLegacy) BindConnection(conn Conn, _ domainllm.FunctionRegistryInterface, _ any) error {
-	if conn == nil {
-		return fmt.Errorf("connection nil")
-	}
-	m.bindCalls++
-	return nil
-}
-
-func (m *mockLegacy) Cleanup() error {
-	m.cleanupCalls++
-	return nil
-}
-
-func (m *mockLegacy) CleanupAll(context.Context) {
-	m.cleanupCalls++
-}
-
-func (m *mockLegacy) Reset() error {
-	return nil
-}
-
-func (m *mockLegacy) AutoReturn() bool {
-	return m.autoReturn
-}
-
-func (m *mockLegacy) IsMCPTool(string) bool { return false }
-
-func (m *mockLegacy) HandleXiaoZhiMCPMessage(msg map[string]any) error {
-	m.lastMsg = msg
-	return nil
-}
-
-type dummyConn struct{ writes int }
-
-func (d *dummyConn) WriteMessage(int, []byte) error {
-	d.writes++
-	return nil
-}
-
-func TestManagerWithLegacyBridge(t *testing.T) {
-	logger := &testLogger{}
-	legacy := &mockLegacy{autoReturn: true}
-	manager, err := NewManager(Options{
-		Logger: logger,
-		Legacy: legacy,
-	})
-	if err != nil {
-		t.Fatalf("NewManager error: %v", err)
-	}
-
-	conn := &dummyConn{}
-	if err := manager.BindConnection(conn, nil, nil); err != nil {
-		t.Fatalf("BindConnection error: %v", err)
-	}
-	if legacy.bindCalls != 1 {
-		t.Fatalf("expected bind to propagate to legacy")
-	}
-
-	if !manager.AutoReturn() {
-		t.Fatalf("expected auto return to reflect legacy flag")
-	}
-
-	if err := manager.Cleanup(); err != nil {
-		t.Fatalf("Cleanup error: %v", err)
-	}
-	manager.CleanupAll(context.Background())
-
-	if legacy.cleanupCalls == 0 {
-		t.Fatalf("expected cleanup to trigger legacy")
-	}
-
-	if err := manager.HandleXiaoZhiMCPMessage(map[string]any{"ok": true}); err != nil {
-		t.Fatalf("HandleXiaoZhiMCPMessage error: %v", err)
-	}
-	if legacy.lastMsg == nil {
-		t.Fatalf("expected legacy handler to capture message")
 	}
 }

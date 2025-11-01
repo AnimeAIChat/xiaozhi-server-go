@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	domainimage "xiaozhi-server-go/internal/domain/image"
@@ -45,6 +46,7 @@ type Connection interface {
 	IsClosed() bool
 	GetLastActiveTime() time.Time
 	IsStale(timeout time.Duration) bool
+	GetWebSocketConn() *websocket.Conn
 }
 
 type ttsConfigGetter interface {

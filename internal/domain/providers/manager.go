@@ -353,29 +353,10 @@ func warmupMCPManager(ctx context.Context, manager *domainmcp.Manager, logger *u
 		}
 	}()
 
-	// Create a mock connection for pre-warming
-	mockConn := &mockMCPConnection{}
-
-	// Try to bind with mock parameters to trigger XiaoZhiMCPClient initialization
-	mockParams := map[string]interface{}{
-		"session_id":  "warmup-session",
-		"vision_url":  "",
-		"device_id":   "warmup-device",
-		"client_id":   "warmup-client",
-		"token":       "warmup-token",
-	}
-
-	// This will attempt to initialize XiaoZhiMCPClient
-	err := manager.BindConnection(mockConn, nil, mockParams)
-	if err != nil {
-		if logger != nil {
-			logger.Debug("MCP manager warmup BindConnection failed (expected): %v", err)
-		}
-		return
-	}
-
+	// Skip BindConnection during warmup to avoid configuration issues
+	// The MCP manager will be properly initialized during actual connection
 	if logger != nil {
-		logger.Debug("Successfully pre-warmed MCP manager XiaoZhiMCPClient")
+		logger.Debug("Skipping MCP manager BindConnection during warmup")
 	}
 }
 

@@ -123,6 +123,12 @@ func (c *Connection) SetMCPManager(manager *mcp.Manager) {
 	c.mcpHolder.Store(manager)
 }
 
+// GetWebSocketConn returns the underlying gorilla websocket connection.
+// This is used by MCP clients that need direct access to the websocket.
+func (c *Connection) GetWebSocketConn() *websocket.Conn {
+	return c.socket
+}
+
 func (c *Connection) touch() {
 	c.lastActive.Store(time.Now().UnixNano())
 }
