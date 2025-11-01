@@ -14,6 +14,7 @@ import (
 
 	domainimage "xiaozhi-server-go/internal/domain/image"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
 	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
@@ -29,7 +30,6 @@ import (
 	httpvision "xiaozhi-server-go/internal/transport/http/vision"
 	httpwebapi "xiaozhi-server-go/internal/transport/http/webapi"
 	httpota "xiaozhi-server-go/internal/transport/http/ota"
-	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/transport"
@@ -92,7 +92,7 @@ type appState struct {
 	slogger               *slog.Logger
 	observabilityShutdown platformobservability.ShutdownFunc
 	authManager           *domainauth.AuthManager
-	mcpManager            *mcp.Manager
+	domainMCPManager      *domainmcp.Manager   // New domain MCP manager
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -125,12 +125,12 @@ func Run(ctx context.Context) error {
 		)
 	}
 
-	mcpManager := state.mcpManager
-	if mcpManager == nil {
+	domainMCPManager := state.domainMCPManager
+	if domainMCPManager == nil {
 		return platformerrors.New(
 			platformerrors.KindBootstrap,
 			"bootstrap state validation",
-			"mcp manager not initialised",
+			"domain MCP manager not initialised",
 		)
 	}
 
@@ -162,7 +162,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(state.config, logger, authManager, mcpManager, state.configRepo, group, groupCtx); err != nil {
+	if err := startServices(state.config, logger, authManager, state.configRepo, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -408,9 +408,13 @@ func initMCPManagerStep(_ context.Context, state *appState) error {
 		)
 	}
 
-	// Use new config format for MCP manager
-	mcpManager := mcp.NewManagerForPool(state.logger, state.config)
-	state.mcpManager = mcpManager
+	// Create domain manager directly from config
+	domainManager, err := domainmcp.NewFromConfig(state.config, state.logger)
+	if err != nil {
+		return platformerrors.Wrap(platformerrors.KindBootstrap, "mcp:init-manager", "failed to create domain MCP manager", err)
+	}
+	state.domainMCPManager = domainManager
+
 	return nil
 }
 
@@ -510,7 +514,6 @@ func startTransportServer(
 	config *platformconfig.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
-	mcpManager *mcp.Manager,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
@@ -521,7 +524,7 @@ func startTransportServer(
 	poolInitDone := make(chan struct{})
 	go func() {
 		defer close(poolInitDone)
-		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, mcpManager)
+		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, nil)
 		if poolErr != nil {
 			logger.ErrorTag("引导", "初始化资源池管理器失败: %v", poolErr)
 			return
@@ -771,12 +774,11 @@ func startServices(
 	config *platformconfig.Config,
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
-	mcpManager *mcp.Manager,
 	configRepo types.Repository,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {
-	if _, err := startTransportServer(config, logger, authManager, mcpManager, g, groupCtx); err != nil {
+	if _, err := startTransportServer(config, logger, authManager, g, groupCtx); err != nil {
 		return fmt.Errorf("启动 Transport 服务失败: %w", err)
 	}
 

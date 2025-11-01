@@ -7,8 +7,6 @@ import (
 
 	"xiaozhi-server-go/internal/domain/llm/inter"
 	"xiaozhi-server-go/src/core/providers/llm"
-
-	"github.com/sashabaranov/go-openai"
 )
 
 // Manager LLM管理器 - 基于 Eino 框架
@@ -91,11 +89,11 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 	}
 
 	// 转换工具格式
-	coreTools := make([]openai.Tool, len(tools))
+	coreTools := make([]inter.Tool, len(tools))
 	for i, tool := range tools {
-		coreTools[i] = openai.Tool{
-			Type: openai.ToolType(tool.Type),
-			Function: &openai.FunctionDefinition{
+		coreTools[i] = inter.Tool{
+			Type: tool.Type,
+			Function: inter.ToolFunction{
 				Name:        tool.Function.Name,
 				Description: tool.Function.Description,
 				Parameters:  tool.Function.Parameters,
@@ -104,7 +102,7 @@ func (m *Manager) Response(ctx context.Context, sessionID string, messages []int
 	}
 
 	// 调用提供商的ResponseWithFunctions方法
-	responseChan, err := provider.ResponseWithFunctions(ctx, sessionID, coreMessages, tools)
+	responseChan, err := provider.ResponseWithFunctions(ctx, sessionID, coreMessages, coreTools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get LLM response: %w", err)
 	}

@@ -126,7 +126,7 @@ ESP32设备可以在联网界面修改OTA地址，从而在不重新刷固件的
 
 ## 💬 MCP 协议配置
 
-参考：`src/core/mcp/README.md`
+参考：`internal/domain/mcp/README.md`
 
 ---
 

@@ -10,7 +10,6 @@ import (
 
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/mcp"
 	coreproviders "xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/providers/llm"
@@ -83,7 +82,7 @@ func NewManager(cfg *config.Config, logger *utils.Logger) (*Manager, error) {
 }
 
 // NewManagerWithMCP initialises the provider pools with an optional pre-initialised MCP manager.
-func NewManagerWithMCP(cfg *config.Config, logger *utils.Logger, preInitMCPManager *mcp.Manager) (*Manager, error) {
+func NewManagerWithMCP(cfg *config.Config, logger *utils.Logger, preInitMCPManager interface{}) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("providers manager requires config")
 	}
@@ -807,11 +806,17 @@ func newVLLLMPool(
 func newMCPPool(
 	cfg *config.Config,
 	logger *utils.Logger,
-	preInitMCPManager *mcp.Manager,
+	preInitMCPManager interface{},
 ) (*providerPool[*domainmcp.Manager], error) {
 	create := func(ctx context.Context) (*domainmcp.Manager, error) {
 		if preInitMCPManager != nil {
-			return domainmcp.NewFromManager(preInitMCPManager, logger)
+			// Try to convert to domain manager if it's already one
+			if domainManager, ok := preInitMCPManager.(*domainmcp.Manager); ok {
+				return domainManager, nil
+			}
+			// For legacy compatibility, try to create from legacy manager
+			// This path should be removed once migration is complete
+			logger.Warn("Pre-initialized MCP manager provided but not domain type, creating new manager")
 		}
 		return domainmcp.NewFromConfig(cfg, logger)
 	}

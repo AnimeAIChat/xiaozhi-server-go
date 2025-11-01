@@ -289,20 +289,23 @@ func (s *ConversationService) getConversationHistory() []domainllminter.Message 
 
 // getAvailableTools 获取可用的工具列表
 func (s *ConversationService) getAvailableTools() []domainllminter.Tool {
-	// 从MCP管理器获取工具名称
-	toolNames := s.mcpManager.ToolNames()
-	if len(toolNames) == 0 {
+	// 从MCP管理器获取完整的工具定义
+	openaiTools := s.mcpManager.GetAvailableTools()
+	s.logger.Legacy().Info("[MCP] 获取到 %d 个工具", len(openaiTools))
+	if len(openaiTools) == 0 {
 		return []domainllminter.Tool{}
 	}
 
 	// 转换为domain工具格式
-	tools := make([]domainllminter.Tool, 0, len(toolNames))
-	for _, name := range toolNames {
+	tools := make([]domainllminter.Tool, 0, len(openaiTools))
+	for _, tool := range openaiTools {
+		s.logger.Legacy().Info("[MCP] 工具: %s - %s", tool.Function.Name, tool.Function.Description)
 		tools = append(tools, domainllminter.Tool{
-			Type: "function",
+			Type: string(tool.Type),
 			Function: domainllminter.ToolFunction{
-				Name: name,
-				// TODO: 添加描述和参数信息
+				Name:        tool.Function.Name,
+				Description: tool.Function.Description,
+				Parameters:  tool.Function.Parameters,
 			},
 		})
 	}
@@ -356,6 +359,7 @@ func (s *ConversationService) streamResponseWithProvider(
 		}
 	}
 
+	s.logger.Legacy().Info("[LLM] 调用ResponseWithFunctions，传递 %d 个工具", len(coreTools))
 	respChan, err := s.llmProvider.ResponseWithFunctions(ctx, s.sessionID, coreMessages, coreTools)
 	if err != nil {
 		return nil, err

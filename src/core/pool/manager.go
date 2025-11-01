@@ -7,7 +7,6 @@ import (
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	domainproviders "xiaozhi-server-go/internal/domain/providers"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/mcp"
 	"xiaozhi-server-go/src/core/utils"
 )
 
@@ -27,7 +26,7 @@ func NewPoolManager(cfg *config.Config, logger *utils.Logger) (*PoolManager, err
 }
 
 // NewPoolManagerWithMCP builds a shim over the new provider manager with an optional pre-initialised MCP manager.
-func NewPoolManagerWithMCP(cfg *config.Config, logger *utils.Logger, mcpManager *mcp.Manager) (*PoolManager, error) {
+func NewPoolManagerWithMCP(cfg *config.Config, logger *utils.Logger, mcpManager interface{}) (*PoolManager, error) {
 	manager, err := domainproviders.NewManagerWithMCP(cfg, logger, mcpManager)
 	if err != nil {
 		return nil, err

@@ -14,7 +14,6 @@ import (
 
 	"xiaozhi-server-go/internal/domain/llm"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/mcp"
 )
 
 // Options configures the manager instance.
@@ -49,11 +48,8 @@ type Manager struct {
 	// Local client
 	localClient *LocalClient
 
-	autoReturn bool
+	autoReturn    bool
 	isInitialized bool
-
-	// Legacy manager for backward compatibility
-	legacyManager *mcp.Manager
 }
 
 // NewManager constructs a new manager instance.
@@ -184,12 +180,6 @@ func (m *Manager) RegisterTools(tools []Tool) error {
 
 // ExecuteTool executes a tool by name across known clients.
 func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]any) (any, error) {
-	// If we have a legacy manager, delegate to it
-	if m.legacyManager != nil {
-		m.logger.Debug("Delegating ExecuteTool to legacy MCP manager: %s (legacyManager: %v, type: %T)", name, m.legacyManager, m.legacyManager)
-		return m.legacyManager.ExecuteTool(ctx, name, args)
-	}
-
 	if name == "" {
 		return nil, errors.New("tool name cannot be empty")
 	}
@@ -223,6 +213,19 @@ func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]
 func (m *Manager) ToolNames() []string {
 	if m.registry != nil {
 		return m.registry.list()
+	}
+	return nil
+}
+
+// GetAvailableTools returns all registered tools with complete definitions.
+func (m *Manager) GetAvailableTools() []openai.Tool {
+	if m.registry != nil {
+		tools := m.registry.clone()
+		result := make([]openai.Tool, 0, len(tools))
+		for _, tool := range tools {
+			result = append(result, tool)
+		}
+		return result
 	}
 	return nil
 }
@@ -266,19 +269,14 @@ func (m *Manager) BindConnection(
 	fh llm.FunctionRegistryInterface,
 	params any,
 ) error {
-	// If we have a legacy manager, delegate to it
-	if m.legacyManager != nil {
-		m.logger.Info("Delegating BindConnection to legacy MCP manager (legacyManager: %v, type: %T, pointer: %p)", m.legacyManager, m.legacyManager, m.legacyManager)
-		return m.legacyManager.BindConnection(conn, fh, params)
-	}
-
-	m.logger.Info("No legacy manager, using domain manager logic")
-
 	paramsMap := params.(map[string]interface{})
 	sessionID := paramsMap["session_id"].(string)
 	visionURL := paramsMap["vision_url"].(string)
 
 	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
+
+	// Ensure local MCP tools are registered before handling requests.
+	m.registerLocalTools(fh)
 
 	// 异步处理MCP初始化和绑定，不阻塞连接建立
 	go func() {
@@ -317,7 +315,7 @@ func (m *Manager) BindConnection(
 			m.logger.Info("BindConnection: XiaoZhi client exists, attempting to bind")
 			// Get the underlying WebSocket connection
 			wsConn := conn.GetWebSocketConn()
-			m.logger.Info("BindConnection: GetWebSocketConn returned: %v (type: %T)", wsConn, wsConn)
+			m.logger.Debug("BindConnection: GetWebSocketConn returned: %v (type: %T)", wsConn, wsConn)
 			if wsConn == nil {
 				m.logger.Warn("BindConnection: connection does not provide WebSocket access, skipping XiaoZhi client binding")
 			} else {
@@ -361,6 +359,47 @@ func (m *Manager) BindConnection(
 	return nil
 }
 
+// registerLocalTools ensures local MCP tools are registered with the current function registry.
+func (m *Manager) registerLocalTools(fh llm.FunctionRegistryInterface) {
+	if fh == nil {
+		return
+	}
+	if m.localClient == nil {
+		m.logger.Warn("registerLocalTools: local MCP client is not initialized")
+		return
+	}
+
+	tools := m.localClient.GetAvailableTools()
+	if len(tools) == 0 {
+		m.logger.Debug("registerLocalTools: no local MCP tools to register")
+		return
+	}
+
+	registered := make([]openai.Tool, 0, len(tools))
+	for _, tool := range tools {
+		toolName := tool.Function.Name
+		if toolName == "" {
+			continue
+		}
+		if err := fh.RegisterFunction(toolName, tool); err != nil {
+			m.logger.Error("注册本地MCP工具失败: %s, 错误: %v", toolName, err)
+			continue
+		}
+		registered = append(registered, tool)
+	}
+
+	if len(registered) == 0 {
+		m.logger.Warn("registerLocalTools: no local MCP tools registered")
+		return
+	}
+
+	if err := m.registry.register(registered); err != nil {
+		m.logger.Error("注册本地MCP工具到内部注册表失败: %v", err)
+	}
+
+	m.logger.Info("Registered local MCP tools: %d", len(registered))
+}
+
 // registerExternalTools registers external MCP client tools
 func (m *Manager) registerExternalTools(fh llm.FunctionRegistryInterface) {
 	m.clientsMu.RLock()
@@ -401,12 +440,6 @@ func (m *Manager) CleanupAll(ctx context.Context) {
 
 // Reset clears internal state for reuse.
 func (m *Manager) Reset() error {
-	// If we have a legacy manager, delegate to it
-	if m.legacyManager != nil {
-		m.logger.Debug("Delegating Reset to legacy MCP manager (legacyManager: %v, type: %T)", m.legacyManager, m.legacyManager)
-		return m.legacyManager.Reset()
-	}
-
 	m.clientsMu.Lock()
 	defer m.clientsMu.Unlock()
 
@@ -434,12 +467,6 @@ func (m *Manager) Reset() error {
 
 // IsMCPTool reports whether the tool comes from any MCP client.
 func (m *Manager) IsMCPTool(name string) bool {
-	// If we have a legacy manager, delegate to it
-	if m.legacyManager != nil {
-		m.logger.Debug("Delegating IsMCPTool to legacy MCP manager (legacyManager: %v, type: %T)", m.legacyManager, m.legacyManager)
-		return m.legacyManager.IsMCPTool(name)
-	}
-
 	if name == "" {
 		return false
 	}
@@ -457,12 +484,6 @@ func (m *Manager) refreshToolRegistry() {
 
 // HandleXiaoZhiMCPMessage delegates message handling to the XiaoZhi client.
 func (m *Manager) HandleXiaoZhiMCPMessage(msg map[string]interface{}) error {
-	// If we have a legacy manager, delegate to it
-	if m.legacyManager != nil {
-		m.logger.Debug("Delegating HandleXiaoZhiMCPMessage to legacy MCP manager (legacyManager: %v, type: %T)", m.legacyManager, m.legacyManager)
-		return m.legacyManager.HandleXiaoZhiMCPMessage(msg)
-	}
-
 	if m.xiaozhiClient == nil {
 		return errors.New("XiaoZhi MCP client not configured")
 	}
@@ -560,38 +581,7 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 	m.logger.Info("External MCP server asynchronous initialization started (non-blocking)")
 }
 
-// NewFromManager creates a new domain MCP Manager from an existing legacy MCP Manager.
-// This function provides backward compatibility during the migration process.
-func NewFromManager(legacyManager interface{}, logger Logger) (*Manager, error) {
-	logger.Debug("NewFromManager called with legacyManager: %v, type: %T, pointer: %p", legacyManager, legacyManager, legacyManager)
-
-	// For migration compatibility, check if it's a legacy manager
-	if legacy, ok := legacyManager.(*mcp.Manager); ok && legacy != nil {
-		logger.Debug("Successfully cast to legacy MCP manager, wrapping it - legacy: %v, type: %T", legacy, legacy)
-		// Create a wrapper that delegates to the legacy manager
-		return &Manager{
-			logger:       logger,
-			registry:     newToolRegistry(),
-			clients:      make(map[string]Client),
-			configLoader: NewConfigLoader(logger),
-			autoReturn:   false, // Legacy managers don't auto-return
-			isInitialized: true, // Assume legacy manager is initialized
-			// Store the legacy manager for delegation
-			legacyManager: legacy,
-		}, nil
-	}
-
-	logger.Info("Failed to cast legacyManager, using default config - legacyManager: %v, type: %T", legacyManager, legacyManager)
-	// Fallback to default config if not a legacy manager
-	cfg := config.DefaultConfig()
-	return NewManager(Options{
-		Logger: logger,
-		Config: cfg,
-	})
-}
-
 // NewFromConfig creates a new domain MCP Manager from configuration.
-// This function provides backward compatibility during the migration process.
 func NewFromConfig(cfg *config.Config, logger Logger) (*Manager, error) {
 	// Create a new manager using the standard constructor
 	return NewManager(Options{

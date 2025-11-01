@@ -801,6 +801,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 使用LLM生成回复
 	tools := h.functionRegister.GetAllFunctions()
+	h.LogDebug(fmt.Sprintf("[调试] 从注册器获取到 %d 个工具", len(tools)))
 
 	// 转换消息格式
 	interMessages := make([]domainllminter.Message, len(messages))
@@ -830,14 +831,15 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 	}
 
 	// 转换工具格式
-	interTools := make([]domainllminter.Tool, len(tools))
+	interTools := make([]domainllminter.Tool, 0, len(tools))
+	h.LogInfo(fmt.Sprintf("[调试] 开始转换 %d 个工具", len(tools)))
 	for i, toolInterface := range tools {
 		tool, ok := toolInterface.(openai.Tool)
 		if !ok {
-			h.LogError(fmt.Sprintf("工具类型转换失败: %T", toolInterface))
+			h.LogError(fmt.Sprintf("工具类型转换失败 [%d]: %T", i, toolInterface))
 			continue
 		}
-		interTools[i] = domainllminter.Tool{
+		interTool := domainllminter.Tool{
 			Type: string(tool.Type),
 			Function: domainllminter.ToolFunction{
 				Name:        tool.Function.Name,
@@ -845,7 +847,10 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				Parameters:  tool.Function.Parameters,
 			},
 		}
+		interTools = append(interTools, interTool)
+		h.LogInfo(fmt.Sprintf("[调试] 转换工具 [%d]: %s - %s", i, tool.Function.Name, tool.Function.Description))
 	}
+	h.LogInfo(fmt.Sprintf("[调试] 转换完成，共 %d 个工具", len(interTools)))
 
 	responses, err := h.llmManager.Response(ctx, h.sessionID, interMessages, interTools)
 	if err != nil {
