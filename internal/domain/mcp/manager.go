@@ -308,18 +308,18 @@ func (m *Manager) BindConnection(
 		}
 
 	continueBinding:
-		m.logger.Info("BindConnection: Proceeding with client binding")
+		m.logger.Debug("BindConnection: Proceeding with client binding")
 
 		// 绑定 XiaoZhi 客户端
 		if m.xiaozhiClient != nil {
-			m.logger.Info("BindConnection: XiaoZhi client exists, attempting to bind")
+			m.logger.Debug("BindConnection: XiaoZhi client exists, attempting to bind")
 			// Get the underlying WebSocket connection
 			wsConn := conn.GetWebSocketConn()
 			m.logger.Debug("BindConnection: GetWebSocketConn returned: %v (type: %T)", wsConn, wsConn)
 			if wsConn == nil {
 				m.logger.Warn("BindConnection: connection does not provide WebSocket access, skipping XiaoZhi client binding")
 			} else {
-				m.logger.Info("BindConnection: successfully obtained WebSocket connection, proceeding with XiaoZhi client binding")
+				m.logger.Debug("BindConnection: successfully obtained WebSocket connection, proceeding with XiaoZhi client binding")
 				if err := m.xiaozhiClient.BindConnection(wsConn); err != nil {
 					m.logger.Error("绑定XiaoZhi MCP客户端失败: %v", err)
 					return
@@ -397,7 +397,7 @@ func (m *Manager) registerLocalTools(fh llm.FunctionRegistryInterface) {
 		m.logger.Error("注册本地MCP工具到内部注册表失败: %v", err)
 	}
 
-	m.logger.Info("Registered local MCP tools: %d", len(registered))
+	m.logger.Info("[MCP] 已注册的本地 MCP 工具数量: %d", len(registered))
 }
 
 // registerExternalTools registers external MCP client tools

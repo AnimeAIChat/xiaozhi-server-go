@@ -261,7 +261,7 @@ func NewConnectionHandler(
 func (h *ConnectionHandler) InitWithAgent() string {
 	// Database functionality removed - return default prompt
 	prompt := h.config.System.DefaultPrompt
-	h.LogInfo("Database functionality removed - using default agent configuration")
+	h.LogDebug("Database functionality removed - using default agent configuration")
 	return prompt
 }
 
@@ -274,14 +274,14 @@ func (h *ConnectionHandler) checkTTSProvider(config *config.Config) {
 
 	if getter, ok := h.providers.tts.(ttsConfigGetter); ok {
 		// 使用用户选择的TTS提供者
-		h.LogInfo(fmt.Sprintf("使用用户选择的TTS提供者: %s", ttsName))
+		h.LogDebug(fmt.Sprintf("使用用户选择的TTS提供者: %s", ttsName))
 
 		h.ttsProviderName = getter.Config().Type
 		// 使用TTS提供者的默认语音
 		h.voiceName = getter.Config().Voice
 		h.initialVoice = h.voiceName // 保存初始语音名称
 	}
-	h.logger.InfoTag("TTS", "使用 TTS 提供者 %s，语音 %s", h.ttsProviderName, h.voiceName)
+	h.logger.DebugTag("TTS", "使用 TTS 提供者 %s，语音 %s", h.ttsProviderName, h.voiceName)
 
 }
 
@@ -317,7 +317,7 @@ func (h *ConnectionHandler) checkLLMProvider(config *config.Config) {
 				}
 			}
 		} else {
-			h.LogInfo(fmt.Sprintf("使用用户选择的LLM类型: %s", llmName))
+			h.LogDebug(fmt.Sprintf("使用用户选择的LLM类型: %s", llmName))
 		}
 	}
 }
@@ -364,7 +364,7 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 		}
 	}
 
-	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d, UserID=%s", h.agentID, h.userID))
+	h.LogDebug(fmt.Sprintf("设备绑定状态: AgentID=%d, UserID=%s", h.agentID, h.userID))
 }
 
 // getUserModelSelection 获取用户的模型选择，如果没有则返回默认配置
@@ -504,7 +504,7 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 			return
 		}
 		// Skip redundant re-initialisation because the pool performed it during acquire.
-		h.LogInfo("[MCP] connection attached; reuse existing session bootstrap")
+		h.LogDebug("[MCP] connection attached; reuse existing session bootstrap")
 		h.LogInfo("[连接] 开始监听客户端消息...")
 		for {
 			h.LogDebug("[连接] 等待客户端消息...")
@@ -832,7 +832,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 
 	// 转换工具格式
 	interTools := make([]domainllminter.Tool, 0, len(tools))
-	h.LogInfo(fmt.Sprintf("[调试] 开始转换 %d 个工具", len(tools)))
+	h.LogDebug(fmt.Sprintf("[调试] 开始转换 %d 个工具", len(tools)))
 	for i, toolInterface := range tools {
 		tool, ok := toolInterface.(openai.Tool)
 		if !ok {
@@ -848,9 +848,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			},
 		}
 		interTools = append(interTools, interTool)
-		h.LogInfo(fmt.Sprintf("[调试] 转换工具 [%d]: %s - %s", i, tool.Function.Name, tool.Function.Description))
+		h.LogDebug(fmt.Sprintf("[调试] 转换工具 [%d]: %s - %s", i, tool.Function.Name, tool.Function.Description))
 	}
-	h.LogInfo(fmt.Sprintf("[调试] 转换完成，共 %d 个工具", len(interTools)))
+	h.LogDebug(fmt.Sprintf("[调试] 转换完成，共 %d 个工具", len(interTools)))
 
 	responses, err := h.llmManager.Response(ctx, h.sessionID, interMessages, interTools)
 	if err != nil {
@@ -1606,9 +1606,9 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 			}
 			h.llmManager = domainllm.NewManager(llmConfig)
 			if h.userID != "" {
-				h.LogInfo(fmt.Sprintf("使用用户 %s 的LLM提供者: %s (%s)", h.userID, llmName, llmCfg.Type))
+				h.LogDebug(fmt.Sprintf("使用用户 %s 的LLM提供者: %s (%s)", h.userID, llmName, llmCfg.Type))
 			} else {
-				h.LogInfo(fmt.Sprintf("使用默认LLM提供者: %s (%s)", llmName, llmCfg.Type))
+				h.LogDebug(fmt.Sprintf("使用默认LLM提供者: %s (%s)", llmName, llmCfg.Type))
 			}
 		} else {
 			h.LogError(fmt.Sprintf("LLM 配置不存在: %s", llmName))
@@ -1630,9 +1630,9 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 			}
 			h.ttsManager = domaintts.NewManager(ttsConfig, config)
 			if h.userID != "" {
-				h.LogInfo(fmt.Sprintf("使用用户 %s 的TTS提供者: %s (%s)", h.userID, ttsName, ttsCfg.Type))
+				h.LogDebug(fmt.Sprintf("使用用户 %s 的TTS提供者: %s (%s)", h.userID, ttsName, ttsCfg.Type))
 			} else {
-				h.LogInfo(fmt.Sprintf("使用默认TTS提供者: %s (%s)", ttsName, ttsCfg.Type))
+				h.LogDebug(fmt.Sprintf("使用默认TTS提供者: %s (%s)", ttsName, ttsCfg.Type))
 			}
 		} else {
 			h.LogError(fmt.Sprintf("TTS 配置不存在: %s", ttsName))
@@ -1642,9 +1642,9 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 	// 记录用户的ASR选择（ASR目前不支持动态切换）
 	if asrName != "" {
 		if h.userID != "" {
-			h.LogInfo(fmt.Sprintf("用户 %s 选择的ASR提供者: %s (当前不支持动态切换)", h.userID, asrName))
+			h.LogDebug(fmt.Sprintf("用户 %s 选择的ASR提供者: %s (当前不支持动态切换)", h.userID, asrName))
 		} else {
-			h.LogInfo(fmt.Sprintf("默认ASR提供者: %s (当前不支持动态切换)", asrName))
+			h.LogDebug(fmt.Sprintf("默认ASR提供者: %s (当前不支持动态切换)", asrName))
 		}
 	}
 }
