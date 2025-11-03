@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/chat"
+	"xiaozhi-server-go/src/core/face"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/mcp"
@@ -150,6 +152,12 @@ type ConnectionHandler struct {
 
 	mcpResultHandlers map[string]MCPResultHandler // MCP处理器映射
 	ctx               context.Context
+
+	// 人脸识别相关
+	faceDatabase            *face.FaceDatabase
+	faceRegisterChunks      map[string]map[int]string // 人脸注册分块数据
+	faceRegisterTotalChunks map[string]int            // 人脸注册总分块数
+	faceRegisterUserName    map[string]string         // 人脸注册用户名映射
 }
 
 // NewConnectionHandler 创建新的连接处理器
@@ -191,6 +199,14 @@ func NewConnectionHandler(
 		ctx: ctx,
 
 		headers: make(map[string]string),
+
+		// 初始化人脸数据库
+		faceDatabase: face.NewFaceDatabase(),
+
+		// 初始化人脸注册分块数据
+		faceRegisterChunks:      make(map[string]map[int]string),
+		faceRegisterTotalChunks: make(map[string]int),
+		faceRegisterUserName:    make(map[string]string),
 	}
 
 	for key, values := range req.Header {
@@ -1332,4 +1348,41 @@ func (h *ConnectionHandler) genResponseByVLLM(ctx context.Context, messages []pr
 	}))
 
 	return nil
+}
+
+// generateNextUserID 生成下一个用户ID（从1开始递增，格式：user_001, user_002等）
+func (h *ConnectionHandler) generateNextUserID() string {
+	// 获取所有人脸数据
+	faces := h.faceDatabase.GetAllFaces()
+
+	// 找到最大的数字ID
+	maxID := 0
+	for _, face := range faces {
+		// 解析user_id，期望格式为 "user_001", "user_002" 等
+		if len(face.UserID) > 5 && face.UserID[:5] == "user_" {
+			if id, err := strconv.Atoi(face.UserID[5:]); err == nil && id > maxID {
+				maxID = id
+			}
+		}
+	}
+
+	// 返回下一个ID（3位数字格式）
+	nextID := maxID + 1
+	return fmt.Sprintf("user_%03d", nextID)
+}
+
+// getRealUserNameByClientID 根据客户端ID查找真实用户名
+func (h *ConnectionHandler) getRealUserNameByClientID(clientID string) string {
+	// 获取所有人脸数据
+	faces := h.faceDatabase.GetAllFaces()
+
+	// 查找匹配的用户
+	for _, face := range faces {
+		// 如果user_id匹配客户端ID，返回对应的user_name
+		if face.UserID == clientID {
+			return face.UserName
+		}
+	}
+
+	return ""
 }

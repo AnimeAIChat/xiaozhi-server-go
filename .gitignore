@@ -11,3 +11,4 @@ wake_replay
 .env
 config.db
 /ota_bin
+/data
