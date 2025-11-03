@@ -16,6 +16,7 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/chat"
+	"xiaozhi-server-go/src/core/face"
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/mcp"
@@ -136,6 +137,12 @@ type ConnectionHandler struct {
 
 	mcpResultHandlers map[string]func(interface{}) // MCP处理器映射
 	ctx               context.Context
+
+	// 人脸识别相关
+	faceDatabase            *face.FaceDatabase
+	faceRegisterChunks      map[string]map[int]string // 人脸注册分块数据
+	faceRegisterTotalChunks map[string]int            // 人脸注册总分块数
+	faceRegisterUserName    map[string]string         // 人脸注册用户名映射
 }
 
 // NewConnectionHandler 创建新的连接处理器

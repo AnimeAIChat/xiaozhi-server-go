@@ -2,13 +2,17 @@ package core
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/utils"
+
+	"github.com/alibabacloud-go/tea/tea"
 )
 
 // handleMessage 处理接收到的消息
@@ -414,7 +418,7 @@ func (h *ConnectionHandler) handleFaceRegisterMessage(msgMap map[string]interfac
 	userID := userName
 
 	// 将人脸特征保存到数据库
-	err := h.faceDatabase.AddFace(userID, userName, feature)
+	err := h.faceDatabase.AddFaceWithImage(userID, userName, feature, "")
 	if err != nil {
 		h.LogError(fmt.Sprintf("保存人脸特征失败: %v", err))
 		response := map[string]interface{}{
@@ -673,7 +677,7 @@ func (h *ConnectionHandler) handleFaceRegisterCompleteMessage(msgMap map[string]
 	userID := userName
 
 	// 将人脸特征保存到数据库
-	err := h.faceDatabase.AddFace(userID, userName, feature)
+	err := h.faceDatabase.AddFaceWithImage(userID, userName, feature, "")
 	if err != nil {
 		h.LogError(fmt.Sprintf("保存人脸特征失败: %v", err))
 		response := map[string]interface{}{
