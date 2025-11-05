@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"xiaozhi-server-go/src/configs"
@@ -382,12 +383,25 @@ func (s *DefaultOTAService) HandleFirmwareDownload() gin.HandlerFunc {
 
 // 按语义比较两个版本号 a < b
 func versionLess(a, b string) bool {
-	aV := strings.Split(strings.TrimSuffix(filepath.Base(a), ".bin"), ".")
-	bV := strings.Split(strings.TrimSuffix(filepath.Base(b), ".bin"), ".")
-	for i := 0; i < len(aV) && i < len(bV); i++ {
-		if aV[i] != bV[i] {
-			return aV[i] < bV[i]
+	av := strings.Split(strings.TrimSuffix(filepath.Base(a), ".bin"), ".")
+	bv := strings.Split(strings.TrimSuffix(filepath.Base(b), ".bin"), ".")
+
+	maxLen := len(av)
+	if len(bv) > maxLen {
+		maxLen = len(bv)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var ai, bi int
+		if i < len(av) {
+			ai, _ = strconv.Atoi(av[i])
+		}
+		if i < len(bv) {
+			bi, _ = strconv.Atoi(bv[i])
+		}
+		if ai != bi {
+			return ai < bi
 		}
 	}
-	return len(aV) < len(bV)
+	return false
 }
