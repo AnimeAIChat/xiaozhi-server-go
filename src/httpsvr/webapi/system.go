@@ -58,7 +58,7 @@ func (s *DefaultAdminService) Start(
 		adminGroup.DELETE("/admin/system/providers/:type/:name", s.handleSystemProvidersDelete)
 	}
 
-	s.logger.Info("Admin HTTP服务路由注册完成")
+	s.logger.Info("[HTTP] [Admin] 服务路由注册完成")
 	return nil
 }
 

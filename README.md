@@ -190,11 +190,12 @@ go build -o xiaozhi-server.exe src/main.go
 * 可使用其他兼容小智协议的客户端进行测试
 ---
 
-## 📚 Swagger 文档
+## 📚 API 文档（Scalar）
 
-* 打开浏览器访问：`http://localhost:8080/swagger/index.html`
+* 打开浏览器访问：`http://localhost:8080/docs`，体验由 Scalar 驱动的现代化接口文档界面
+* 需要原始 OpenAPI 规范时，可直接访问：`http://localhost:8080/openapi.json`
 
-### 更新 Swagger 文档（每次修改 API 后都要运行）
+### 更新 OpenAPI 文档（每次修改 API 后都要运行）
 
 ```bash
 cd src
