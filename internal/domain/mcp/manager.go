@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -478,6 +479,36 @@ func (m *Manager) IsMCPTool(name string) bool {
 	return false
 }
 
+// printAllAvailableMCPFunctions prints all currently available MCP functions
+func (m *Manager) printAllAvailableMCPFunctions() {
+	m.clientsMu.RLock()
+	defer m.clientsMu.RUnlock()
+	clients := maps.Clone(m.clients)
+
+	// Group tools by client
+	toolsByClient := make(map[string][]string)
+	for clientName, client := range clients {
+		if client == nil {
+			continue
+		}
+		tools := client.GetAvailableTools()
+		for _, tool := range tools {
+			toolsByClient[clientName] = append(toolsByClient[clientName], tool.Function.Name)
+		}
+	}
+
+	if len(toolsByClient) == 0 {
+		m.logger.InfoTag("MCP", "当前没有可用的MCP函数")
+		return
+	}
+
+	m.logger.InfoTag("MCP", "当前所有可用的MCP函数:")
+	for clientName, toolNames := range toolsByClient {
+		toolsStr := strings.Join(toolNames, "、")
+		m.logger.InfoTag("MCP", "[%s] %s", clientName, toolsStr)
+	}
+}
+
 func (m *Manager) refreshToolRegistry() {
 	// Tool registry is maintained automatically when clients are registered
 }
@@ -579,6 +610,12 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 	m.clientsMu.Unlock()
 
 	m.logger.DebugTag("MCP", "外部MCP服务器异步初始化已启动")
+
+	// 等待一段时间让所有外部客户端初始化完成，然后打印所有可用MCP函数
+	go func() {
+		time.Sleep(10 * time.Second)
+		m.printAllAvailableMCPFunctions()
+	}()
 }
 
 // NewFromConfig creates a new domain MCP Manager from configuration.

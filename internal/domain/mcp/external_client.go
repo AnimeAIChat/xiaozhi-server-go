@@ -71,7 +71,7 @@ func (c *ExternalClient) Start(ctx context.Context) error {
 		}
 
 		// Set timeout context
-		initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		initCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 
 		// Initialize client
