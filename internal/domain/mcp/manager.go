@@ -279,6 +279,14 @@ func (m *Manager) BindConnection(
 	// Ensure local MCP tools are registered before handling requests.
 	m.registerLocalTools(fh)
 
+	// 如果MCP管理器已经初始化完成，同步注册外部工具
+	if m.isInitialized {
+		m.logger.Info("BindConnection: MCP管理器已初始化，同步注册外部工具")
+		m.registerExternalTools(fh)
+	} else {
+		m.logger.Info("BindConnection: MCP管理器未初始化，跳过同步注册外部工具")
+	}
+
 	// 异步处理MCP初始化和绑定，不阻塞连接建立
 	go func() {
 		defer func() {
@@ -310,6 +318,11 @@ func (m *Manager) BindConnection(
 
 	continueBinding:
 		m.logger.Debug("BindConnection: Proceeding with client binding")
+
+		// 如果之前没有同步注册外部工具，现在注册
+		if !m.isInitialized {
+			m.registerExternalTools(fh)
+		}
 
 		// 绑定 XiaoZhi 客户端
 		if m.xiaozhiClient != nil {
@@ -352,9 +365,6 @@ func (m *Manager) BindConnection(
 		} else {
 			m.logger.Warn("BindConnection: XiaoZhi client is nil, skipping binding")
 		}
-
-		// 注册其他外部MCP客户端工具
-		m.registerExternalTools(fh)
 	}()
 
 	return nil
@@ -407,12 +417,18 @@ func (m *Manager) registerExternalTools(fh llm.FunctionRegistryInterface) {
 	clients := maps.Clone(m.clients)
 	m.clientsMu.RUnlock()
 
+	m.logger.Info("registerExternalTools: 开始注册外部MCP工具，客户端数量: %d", len(clients))
+
+	registeredCount := 0
 	for name, client := range clients {
 		if name == "xiaozhi" || name == "local" || !client.IsReady() {
+			m.logger.Debug("registerExternalTools: 跳过客户端 %s (xiaozhi/local/not ready)", name)
 			continue
 		}
 
 		tools := client.GetAvailableTools()
+		m.logger.Info("registerExternalTools: 客户端 %s 有 %d 个工具", name, len(tools))
+
 		for _, tool := range tools {
 			toolName := tool.Function.Name
 			if err := fh.RegisterFunction(toolName, tool); err != nil {
@@ -420,6 +436,7 @@ func (m *Manager) registerExternalTools(fh llm.FunctionRegistryInterface) {
 				continue
 			}
 			m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
+			registeredCount++
 		}
 
 		// Also register tools in the internal registry for IsMCPTool to work
@@ -427,6 +444,8 @@ func (m *Manager) registerExternalTools(fh llm.FunctionRegistryInterface) {
 			m.logger.Error("注册外部MCP工具到内部注册表失败: %v", err)
 		}
 	}
+
+	m.logger.Info("registerExternalTools: 共注册了 %d 个外部MCP工具", registeredCount)
 }
 
 // Cleanup calls the underlying cleanup routine.
