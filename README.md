@@ -228,7 +228,7 @@ swag init -g main.go
 
 欢迎提交 Issue、PR 或新功能建议！
 
-<img src="https://github.com/user-attachments/assets/eecf1adb-0ba8-4c31-933d-43b8d948f9f0" width="450" alt="微信群二维码"> 
+<img src="https://github.com/Eric0308/assert/blob/main/xiaozhi/qr.jpg" width="450" alt="微信群二维码"> 
 <img src="https://github.com/user-attachments/assets/074c6aec-cfb5-4a68-8fc2-2d08679e366b" width="450" alt="QQ群二维码">
 ---
 
