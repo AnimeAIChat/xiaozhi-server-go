@@ -16,25 +16,25 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	domainauth "xiaozhi-server-go/internal/domain/auth"
-	domainimage "xiaozhi-server-go/internal/domain/image"
-	domainllm "xiaozhi-server-go/internal/domain/llm"
-	domainllminter "xiaozhi-server-go/internal/domain/llm/inter"
-	domainmcp "xiaozhi-server-go/internal/domain/mcp"
-	domaintts "xiaozhi-server-go/internal/domain/tts"
-	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
 	"xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/service"
+	domainimage "xiaozhi-server-go/internal/domain/image"
+	domainllm "xiaozhi-server-go/internal/domain/llm"
+	domainllminfra "xiaozhi-server-go/internal/domain/llm/infrastructure"
+	domainllminter "xiaozhi-server-go/internal/domain/llm/inter"
+	domainmcp "xiaozhi-server-go/internal/domain/mcp"
+	"xiaozhi-server-go/internal/domain/task"
+	domaintts "xiaozhi-server-go/internal/domain/tts"
+	domainttsinter "xiaozhi-server-go/internal/domain/tts/inter"
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/storage"
 	"xiaozhi-server-go/src/core/chat"
-	domainllminfra "xiaozhi-server-go/internal/domain/llm/infrastructure"
 	"xiaozhi-server-go/src/core/pool"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/providers/tts"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/internal/domain/task"
 )
 
 type Connection interface {
@@ -76,8 +76,8 @@ type ConnectionHandler struct {
 	}
 
 	// 新架构管理器
-	llmManager *domainllm.Manager
-	ttsManager *domaintts.Manager
+	llmManager    *domainllm.Manager
+	ttsManager    *domaintts.Manager
 	configService *service.ConfigService // 配置服务
 
 	initialVoice    string // 初始语音名称
@@ -113,7 +113,8 @@ type ConnectionHandler struct {
 	tools        []openai.Tool // 缓存的工具列表
 	// 语音处理相关
 	serverVoiceStop int32 // 1表示true服务端语音停止, 不再下发语音数据
-	asrPause         int32 // 1 表示暂停将来自客户端的音频发送到 ASR（例如 TTS 播放期间）
+	asrPause        int32 // 1 表示暂停将来自客户端的音频发送到 ASR（例如 TTS 播放期间）
+	ttsPending      int32 // 当前待播放的TTS段数量
 
 	opusDecoder *utils.OpusDecoder // Opus解码器
 
@@ -592,8 +593,18 @@ func (h *ConnectionHandler) processClientAudioMessagesCoroutine() {
 				continue
 			}
 			if h.closeAfterChat {
-				continue
+				h.LogInfo(fmt.Sprintf("[协程] [音频队列] 检测到新音频输入，重新开启对话模式，样本大小=%d", len(audioData)))
+				h.closeAfterChat = false
+				atomic.StoreInt32(&h.asrPause, 0)
+				if h.providers.asr != nil {
+					h.providers.asr.ResetSilenceCount()
+					if err := h.providers.asr.Reset(); err != nil {
+						h.LogError(fmt.Sprintf("重置ASR状态失败: %v", err))
+						continue
+					}
+				}
 			}
+			h.LogDebug(fmt.Sprintf("[协程] [音频队列] 转发音频到ASR，样本大小=%d", len(audioData)))
 			if err := h.providers.asr.AddAudio(audioData); err != nil {
 				h.LogError(fmt.Sprintf("处理音频数据失败: %v", err))
 			}
@@ -676,6 +687,7 @@ func (h *ConnectionHandler) clientAbortChat() error {
 	h.stopServerSpeak()
 	h.sendTTSMessage("stop", "", 0)
 	h.clearSpeakStatus()
+	h.closeAfterChat = false
 	return nil
 }
 
@@ -710,6 +722,9 @@ func (h *ConnectionHandler) handleChatMessage(ctx context.Context, text string) 
 	if h.QuitIntent(text) {
 		return nil
 	}
+
+	// 新的一轮对话开始，确保允许继续流式识别
+	h.closeAfterChat = false
 
 	// 检测是否是唤醒词，实现快速响应
 	if utils.IsWakeUpWord(text) {
@@ -811,7 +826,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			Content:    msg.Content,
 			ToolCallID: msg.ToolCallID,
 		}
-		
+
 		// 转换ToolCalls
 		if len(msg.ToolCalls) > 0 {
 			interMsg.ToolCalls = make([]domainllminter.ToolCall, len(msg.ToolCalls))
@@ -826,7 +841,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				}
 			}
 		}
-		
+
 		interMessages[i] = interMsg
 	}
 
@@ -1004,7 +1019,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 					h.LogInfo(fmt.Sprintf("MCP函数调用结果: %v", result))
 					actionResult := domainllm.ActionResponse{
 						Action: domainllm.ActionTypeReqLLM, // 动作类型
-						Result: result,                 // 动作产生的结果
+						Result: result,                     // 动作产生的结果
 					}
 					h.handleFunctionResult(actionResult, functionCallData, textIndex)
 				}
@@ -1059,6 +1074,7 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 
 	// 停止任何正在进行的音频播放
 	h.stopServerSpeak()
+	h.closeAfterChat = false
 
 	// 重置语音停止标志，允许新的唤醒响应播放
 	atomic.StoreInt32(&h.serverVoiceStop, 0)
@@ -1138,7 +1154,7 @@ func (h *ConnectionHandler) handleWakeUpMessage(ctx context.Context, text string
 		timeout := time.After(10 * time.Second) // 最多等待10秒
 		ticker := time.NewTicker(1600 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-timeout:
@@ -1313,6 +1329,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	defer func() {
 		if hasAudio {
 			h.tts_last_audio_index = textIndex
+			atomic.AddInt32(&h.ttsPending, 1)
 			h.audioMessagesQueue <- struct {
 				filepath  string
 				text      string
@@ -1432,6 +1449,7 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 	h.LogInfo("[服务端] [讲话状态] 已清除")
 	h.tts_last_text_index = -1
 	h.tts_last_audio_index = -1
+	atomic.StoreInt32(&h.ttsPending, 0)
 
 	// 先清理音频队列，防止在恢复ASR接收时立即重新启动ASR
 	h.cleanTTSAndAudioQueue(false)
@@ -1443,6 +1461,7 @@ func (h *ConnectionHandler) clearSpeakStatus() {
 
 	// 恢复ASR接收，避免打断后无法重新启动ASR
 	atomic.StoreInt32(&h.asrPause, 0)
+	h.closeAfterChat = false
 }
 
 func (h *ConnectionHandler) closeOpusDecoder() {
@@ -1482,6 +1501,7 @@ clearAudioQueue:
 		default:
 			// 队列已清空，退出循环
 			h.LogInfo(fmt.Sprintf("[%s音频队列] 已清空，队列清理完成", msgPrefix))
+			atomic.StoreInt32(&h.ttsPending, 0)
 			return nil
 		}
 	}
@@ -1619,14 +1639,14 @@ func (h *ConnectionHandler) initManagers(config *config.Config) {
 	if ttsName != "" {
 		if ttsCfg, ok := config.TTS[ttsName]; ok {
 			ttsConfig := domainttsinter.TTSConfig{
-				Provider:        ttsCfg.Type,
-				Voice:           ttsCfg.Voice,
-				Speed:           1.0, // 默认语速
-				Pitch:           1.0, // 默认音调
-				Volume:          1.0, // 默认音量
-				SampleRate:      24000, // 默认采样率
-				Format:          ttsCfg.Format,
-				Language:        "zh-CN", // 默认语言
+				Provider:   ttsCfg.Type,
+				Voice:      ttsCfg.Voice,
+				Speed:      1.0,   // 默认语速
+				Pitch:      1.0,   // 默认音调
+				Volume:     1.0,   // 默认音量
+				SampleRate: 24000, // 默认采样率
+				Format:     ttsCfg.Format,
+				Language:   "zh-CN", // 默认语言
 			}
 			h.ttsManager = domaintts.NewManager(ttsConfig, config)
 			if h.userID != "" {

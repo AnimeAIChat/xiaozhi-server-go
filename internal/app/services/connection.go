@@ -365,6 +365,7 @@ func (s *ConnectionService) handleAbortMessage() error {
 	s.speechService.StopServerVoice()
 	s.sendTTSMessage("stop", "", 0)
 	s.clearSpeakStatus()
+	s.closeAfterChat = false
 	return nil
 }
 
@@ -381,7 +382,8 @@ func (s *ConnectionService) handleListenMessage(msgMap map[string]interface{}) e
 
 	switch state {
 	case "start":
-		// TODO: 处理开始监听
+		// 新一轮监听开始，允许继续对话
+		s.closeAfterChat = false
 	case "stop":
 		// TODO: 处理停止监听
 	case "detect":
@@ -624,6 +626,7 @@ func (s *ConnectionService) clearSpeakStatus() {
 	s.messageQueueService.ClearQueues()
 	time.Sleep(50 * time.Millisecond)
 	s.speechService.ResumeASR()
+	s.closeAfterChat = false
 }
 
 // Handle 实现SessionHandler接口
@@ -785,6 +788,7 @@ func (s *ConnectionService) HandleChatMessage(ctx context.Context, text string) 
 
 	round := 1
 	if s.speechService != nil {
+		s.closeAfterChat = false
 		round = s.speechService.IncrementTalkRound()
 		s.speechService.SetRoundStartTime(time.Now())
 		s.speechService.SetTTSLastTextIndex(-1)
