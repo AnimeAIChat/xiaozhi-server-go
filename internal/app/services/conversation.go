@@ -73,10 +73,42 @@ func (s *ConversationService) HandleChatMessage(ctx context.Context, text string
 		return fmt.Errorf("聊天消息为空")
 	}
 
-	// TODO: 检查退出意图
-	// if s.QuitIntent(text) {
-	//     return nil
-	// }
+	// 检查退出意图
+	if s.QuitIntent(text) {
+		return nil
+	}
+}
+
+// QuitIntent 检查用户意图是否是退出
+func (s *ConversationService) QuitIntent(text string) bool {
+	// 读取配置中的退出命令
+	exitCommands := s.config.System.CMDExit
+	if exitCommands == nil {
+		return false
+	}
+
+	// 移除标点符号，确保匹配准确
+	cleanText := utils.RemoveAllPunctuation(text)
+
+	// 检查是否包含退出命令（支持部分匹配）
+	for _, cmd := range exitCommands {
+		s.logger.Debug("检查退出命令: %s,%s", cmd, cleanText)
+		// 判断包含关系
+		if strings.Contains(cleanText, cmd) {
+			s.logger.Legacy().Info("[客户端] [退出意图] 收到，准备结束对话")
+			return true
+		}
+	}
+
+	// 额外检查一些常见的退出表达方式
+	exitPhrases := []string{"退下", "再见", "拜拜", "不聊了", "结束了", "结束吧"}
+	for _, phrase := range exitPhrases {
+		if strings.Contains(cleanText, phrase) {
+			s.logger.Legacy().Info("[客户端] [退出意图] 收到，准备结束对话")
+			return true
+		}
+	}
+	return false
 
 	// TODO: 检测是否是唤醒词，实现快速响应
 	// if utils.IsWakeUpWord(text) {

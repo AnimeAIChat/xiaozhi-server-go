@@ -20,7 +20,6 @@ import (
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/domain/eventbus"
-	"xiaozhi-server-go/internal/domain/task"
 	platformerrors "xiaozhi-server-go/internal/platform/errors"
 	platformlogging "xiaozhi-server-go/internal/platform/logging"
 	platformobservability "xiaozhi-server-go/internal/platform/observability"
@@ -30,30 +29,15 @@ import (
 	httpvision "xiaozhi-server-go/internal/transport/http/vision"
 	httpwebapi "xiaozhi-server-go/internal/transport/http/webapi"
 	httpota "xiaozhi-server-go/internal/transport/http/ota"
+	"xiaozhi-server-go/internal/contracts/adapters"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/core/pool"
-	"xiaozhi-server-go/src/core/transport"
-	"xiaozhi-server-go/src/core/transport/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swaggo/swag"
 	"golang.org/x/sync/errgroup"
 
-	// 导入所有providers以确保init函数被调用
-	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
-	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
-	_ "xiaozhi-server-go/src/core/providers/asr/gosherpa"
-	_ "xiaozhi-server-go/src/core/providers/asr/stepfun"
-	_ "xiaozhi-server-go/src/core/providers/llm/coze"
-	_ "xiaozhi-server-go/src/core/providers/llm/doubao"
-	_ "xiaozhi-server-go/src/core/providers/llm/ollama"
-	_ "xiaozhi-server-go/src/core/providers/llm/openai"
-	_ "xiaozhi-server-go/src/core/providers/tts/deepgram"
-	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
-	_ "xiaozhi-server-go/src/core/providers/tts/edge"
-	_ "xiaozhi-server-go/src/core/providers/tts/gosherpa"
-	_ "xiaozhi-server-go/src/core/providers/vlllm/ollama"
-	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
+	// 注意：移除了对src/core的直接依赖，将通过适配器层来访问
+	// 提供者注册将延迟到第二阶段进行
 )
 
 const scalarHTML = `<!DOCTYPE html>
@@ -93,6 +77,8 @@ type appState struct {
 	observabilityShutdown platformobservability.ShutdownFunc
 	authManager           *domainauth.AuthManager
 	domainMCPManager      *domainmcp.Manager   // New domain MCP manager
+	bootstrapManager      *adapters.BootstrapManager // 新增：引导管理器
+	componentContainer    *adapters.ComponentContainer // 新增：组件容器
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -162,7 +148,7 @@ func Run(ctx context.Context) error {
 
 	group, groupCtx := errgroup.WithContext(rootCtx)
 
-	if err := startServices(state.config, logger, authManager, state.configRepo, state.domainMCPManager, group, groupCtx); err != nil {
+	if err := startServices(state.config, logger, authManager, state.configRepo, state.domainMCPManager, state.componentContainer, group, groupCtx); err != nil {
 		cancel()
 		return err
 	}
@@ -288,9 +274,16 @@ func InitGraph() []initStep {
 			Execute:   setupObservabilityStep,
 		},
 		{
+			ID:        "components:init-container",
+			Title:     "Initialise component container",
+			DependsOn: []string{"logging:init-provider"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initComponentsStep,
+		},
+		{
 			ID:        "auth:init-manager",
 			Title:     "Initialise auth manager",
-			DependsOn: []string{"observability:setup-hooks", "storage:init-database"},
+			DependsOn: []string{"observability:setup-hooks", "storage:init-database", "components:init-container"},
 			Kind:      platformerrors.KindBootstrap,
 			Execute:   initAuthStep,
 		},
@@ -388,6 +381,38 @@ func setupObservabilityStep(ctx context.Context, state *appState) error {
 		return platformerrors.Wrap(platformerrors.KindBootstrap, "observability:setup-hooks", "failed to setup observability hooks", err)
 	}
 	state.observabilityShutdown = shutdown
+
+	return nil
+}
+
+func initComponentsStep(_ context.Context, state *appState) error {
+	if state == nil || state.config == nil || state.logger == nil {
+		return platformerrors.New(
+			platformerrors.KindBootstrap,
+			"components:init-container",
+			"missing config/logger",
+		)
+	}
+
+	// 创建引导管理器
+	state.bootstrapManager = adapters.NewBootstrapManager(state.config, state.logger)
+
+	// 初始化组件容器
+	container, err := state.bootstrapManager.InitializeComponents()
+	if err != nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"components:init-container",
+			"failed to initialize component container",
+			err,
+		)
+	}
+
+	state.componentContainer = container
+
+	if state.logger != nil {
+		state.logger.InfoTag("引导", "组件容器初始化完成")
+	}
 
 	return nil
 }
@@ -531,90 +556,58 @@ func startTransportServer(
 	logger *utils.Logger,
 	authManager *domainauth.AuthManager,
 	domainMCPManager *domainmcp.Manager,
+	componentContainer *adapters.ComponentContainer,
 	g *errgroup.Group,
 	groupCtx context.Context,
-) (*transport.TransportManager, error) {
-	var poolManager *pool.PoolManager
-	var poolErr error
-
-	// 异步初始化资源池管理器
-	poolInitDone := make(chan struct{})
-	go func() {
-		defer close(poolInitDone)
-		poolManager, poolErr = pool.NewPoolManagerWithMCP(config, logger, domainMCPManager)
-		if poolErr != nil {
-			logger.ErrorTag("引导", "初始化资源池管理器失败: %v", poolErr)
-			return
-		}
-
-		// 预热资源池以减少首次请求延迟
-		if err := poolManager.Warmup(context.Background()); err != nil {
-			logger.WarnTag("引导", "资源池预热失败: %v", err)
-		}
-	}()
-
-	taskMgr := task.NewTaskManager(task.ResourceConfig{
-		MaxWorkers:        8,
-		MaxTasksPerClient: 20,
-	})
-	taskMgr.Start()
-
-	transportManager := transport.NewTransportManager(config, logger)
-
-	handlerFactory := transport.NewDefaultConnectionHandlerFactory(
-		config,
-		nil, // poolManager will be set later
-		taskMgr,
-		logger,
-	)
-
-	enabledTransports := make([]string, 0)
-
-	if config.Transport.WebSocket.Enabled {
-		wsTransport := websocket.NewWebSocketTransport(config, logger)
-		wsTransport.SetConnectionHandler(handlerFactory)
-		transportManager.RegisterTransport("websocket", wsTransport)
-		enabledTransports = append(enabledTransports, "WebSocket")
-		logger.DebugTag("传输", "WebSocket 驱动已注册")
+) (*adapters.MockTransportManager, error) {
+	// 使用适配器来避免循环依赖
+	if componentContainer == nil {
+		return nil, fmt.Errorf("component container is required")
 	}
 
-	if len(enabledTransports) == 0 {
-		return nil, fmt.Errorf("未启用任何传输驱动")
+	// 获取旧版适配器
+	legacyAdapter := componentContainer.GetLegacyAdapter()
+
+	// 创建传输适配器
+	transportAdapter := adapters.NewTransportAdapter(config, logger, legacyAdapter)
+
+	// 创建模拟传输管理器（临时实现）
+	transportManager := adapters.NewMockTransportManager(logger)
+
+	// 启动传输服务器
+	if err := transportAdapter.StartTransportServer(groupCtx, authManager, domainMCPManager); err != nil {
+		return nil, platformerrors.Wrap(
+			platformerrors.KindTransport,
+			"transport:start-server",
+			"failed to start transport server",
+			err,
+		)
 	}
 
-	logger.InfoTag("传输", "已启用的传输驱动: %v", enabledTransports)
-
+	// 启动传输管理器
 	g.Go(func() error {
 		go func() {
 			<-groupCtx.Done()
-			logger.InfoTag("传输", "收到关闭信号，正在依次关闭传输驱动")
-			if err := transportManager.StopAll(); err != nil {
-				logger.ErrorTag("传输", "关闭传输驱动失败: %v", err)
+			logger.InfoTag("传输", "收到关闭信号，正在关闭传输服务器")
+			if err := transportAdapter.StopTransportServer(); err != nil {
+				logger.ErrorTag("传输", "关闭传输服务器失败: %v", err)
 			} else {
-				logger.InfoTag("传输", "所有传输驱动已优雅关闭")
+				logger.InfoTag("传输", "传输服务器已优雅关闭")
 			}
 		}()
 
-		// 等待池管理器初始化完成
-		<-poolInitDone
-		if poolErr != nil {
-			return poolErr
-		}
-
-		// 更新处理器工厂的池管理器
-		handlerFactory.SetPoolManager(poolManager)
-
-		if err := transportManager.StartAll(groupCtx); err != nil {
+		// 启动传输管理器
+		if err := transportManager.Start(groupCtx); err != nil {
 			if groupCtx.Err() != nil {
 				return nil
 			}
-			logger.ErrorTag("传输", "传输驱动运行失败: %v", err)
+			logger.ErrorTag("传输", "传输管理器运行失败: %v", err)
 			return err
 		}
 		return nil
 	})
 
-	logger.DebugTag("传输", "传输服务已成功启动")
+	logger.InfoTag("传输", "传输服务已成功启动（适配器模式）")
 	return transportManager, nil
 }
 
@@ -793,10 +786,11 @@ func startServices(
 	authManager *domainauth.AuthManager,
 	configRepo types.Repository,
 	domainMCPManager *domainmcp.Manager,
+	componentContainer *adapters.ComponentContainer,
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) error {
-	if _, err := startTransportServer(config, logger, authManager, domainMCPManager, g, groupCtx); err != nil {
+	if _, err := startTransportServer(config, logger, authManager, domainMCPManager, componentContainer, g, groupCtx); err != nil {
 		return fmt.Errorf("启动 Transport 服务失败: %w", err)
 	}
 
