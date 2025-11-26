@@ -1016,7 +1016,11 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				if actionResult, ok := result.(domainllm.ActionResponse); ok {
 					h.handleFunctionResult(actionResult, functionCallData, textIndex)
 				} else {
-					h.LogInfo(fmt.Sprintf("MCP函数调用结果: %v", result))
+					resultStr := fmt.Sprintf("%v", result)
+					if len(resultStr) > 20 {
+						resultStr = resultStr[:20] + "..."
+					}
+					h.LogInfo(fmt.Sprintf("MCP函数调用结果: %s", resultStr))
 					actionResult := domainllm.ActionResponse{
 						Action: domainllm.ActionTypeReqLLM, // 动作类型
 						Result: result,                     // 动作产生的结果
@@ -1190,6 +1194,9 @@ func (h *ConnectionHandler) addToolCallMessage(toolResultText string, functionCa
 	functionID := functionCallData["id"].(string)
 	functionName := functionCallData["name"].(string)
 	functionArguments := functionCallData["arguments"].(string)
+	if len(toolResultText) > 20 {
+		toolResultText = toolResultText[:20] + "..."
+	}
 	h.LogInfo(fmt.Sprintf("函数调用结果: %s", toolResultText))
 	h.LogInfo(fmt.Sprintf("函数调用参数: %s", functionArguments))
 	h.LogInfo(fmt.Sprintf("函数调用名称: %s", functionName))
@@ -1235,7 +1242,11 @@ func (h *ConnectionHandler) handleFunctionResult(result domainllm.ActionResponse
 		resultStr := h.handleMCPResultCall(result)
 		h.addToolCallMessage(resultStr, functionCallData)
 	case domainllm.ActionTypeReqLLM:
-		h.LogInfo(fmt.Sprintf("函数调用后请求LLM: %v", result.Result))
+		resultStr := fmt.Sprintf("%v", result.Result)
+		if len(resultStr) > 10 {
+			resultStr = resultStr[:10] + "..."
+		}
+		h.LogInfo(fmt.Sprintf("函数调用后请求LLM: %s", resultStr))
 		text, ok := result.Result.(string)
 		if ok && len(text) > 0 {
 			h.addToolCallMessage(text, functionCallData)

@@ -632,7 +632,7 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 
 	// 等待一段时间让所有外部客户端初始化完成，然后打印所有可用MCP函数
 	go func() {
-		time.Sleep(10 * time.Second)
+		time.Sleep(2 * time.Second)
 		m.printAllAvailableMCPFunctions()
 	}()
 }
