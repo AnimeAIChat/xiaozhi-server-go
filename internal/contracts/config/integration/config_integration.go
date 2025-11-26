@@ -10,7 +10,7 @@ import (
 	"xiaozhi-server-go/internal/contracts/config/notifier"
 	"xiaozhi-server-go/internal/contracts/config/sources"
 	platformConfig "xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ConfigIntegrator 配置系统集成器

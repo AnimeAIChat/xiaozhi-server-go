@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/sashabaranov/go-openai"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ToolInputSchema describes the JSON schema for tool arguments.

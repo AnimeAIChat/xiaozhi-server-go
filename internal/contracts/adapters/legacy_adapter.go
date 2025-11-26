@@ -6,7 +6,7 @@ import (
 
 	contractProviders "xiaozhi-server-go/internal/contracts/providers"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // LegacyPoolManagerAdapter 旧版资源池管理器适配器

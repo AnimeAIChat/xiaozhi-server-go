@@ -12,7 +12,7 @@ import (
 
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/observability"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // Options configures the HTTP router builder.

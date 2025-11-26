@@ -7,7 +7,7 @@ import (
 	contractProviders "xiaozhi-server-go/internal/contracts/providers"
 	"xiaozhi-server-go/internal/contracts/manager"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ProviderFactory 提供者工厂接口

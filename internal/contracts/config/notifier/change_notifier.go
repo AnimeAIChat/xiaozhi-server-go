@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/internal/contracts/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ChangeNotifier 配置变更通知器实现

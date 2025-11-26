@@ -1,7 +1,8 @@
 package eventbus
 
 import (
-	"xiaozhi-server-go/src/core/utils"
+	internalutils "xiaozhi-server-go/internal/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // EventHandler 事件处理器接口
@@ -43,14 +44,14 @@ func (h *DefaultEventHandler) handleASRResult(data ASREventData) {
 // handleLLMResponse 处理LLM响应事件
 func (h *DefaultEventHandler) handleLLMResponse(data LLMEventData) {
 	if data.IsFinal {
-		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s (最终)", data.Round, utils.SanitizeForLog(data.Content))
+		utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s (最终)", data.Round, internalutils.SanitizeForLog(data.Content))
 	} else {
 		if data.TextIndex == 1 && data.SpentTime != "" {
-			utils.DefaultLogger.InfoLLM("[事件处理器] [回复 %s/%d] 第一句话: %s", data.SpentTime, data.Round, utils.SanitizeForLog(data.Content))
+			utils.DefaultLogger.InfoLLM("[事件处理器] [回复 %s/%d] 第一句话: %s", data.SpentTime, data.Round, internalutils.SanitizeForLog(data.Content))
 		} else if data.TextIndex > 1 {
-			utils.DefaultLogger.InfoLLM("[事件处理器] [分段 %d/%d] %s", data.TextIndex, data.Round, utils.SanitizeForLog(data.Content))
+			utils.DefaultLogger.InfoLLM("[事件处理器] [分段 %d/%d] %s", data.TextIndex, data.Round, internalutils.SanitizeForLog(data.Content))
 		} else {
-			utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s", data.Round, utils.SanitizeForLog(data.Content))
+			utils.DefaultLogger.InfoLLM("[事件处理器] [轮次 %d] %s", data.Round, internalutils.SanitizeForLog(data.Content))
 		}
 	}
 }

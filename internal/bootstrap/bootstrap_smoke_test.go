@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"xiaozhi-server-go/internal/platform/storage"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 func TestSmokeLoadConfigAndLogger(t *testing.T) {

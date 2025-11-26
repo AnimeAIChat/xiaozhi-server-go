@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // UnifiedConfigManagerImpl 统一配置管理器实现

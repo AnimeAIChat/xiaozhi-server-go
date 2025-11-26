@@ -15,7 +15,7 @@ import (
 	"time"
 
 	contractProviders "xiaozhi-server-go/internal/contracts/providers"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 	"xiaozhi-server-go/internal/transport/ws"
 
 	"github.com/gorilla/websocket"

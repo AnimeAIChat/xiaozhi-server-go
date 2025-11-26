@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 const defaultCloseTimeout = 3 * time.Second

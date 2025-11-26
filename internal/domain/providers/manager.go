@@ -10,12 +10,12 @@ import (
 
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	"xiaozhi-server-go/internal/platform/config"
-	coreproviders "xiaozhi-server-go/src/core/providers"
-	"xiaozhi-server-go/src/core/providers/asr"
-	"xiaozhi-server-go/src/core/providers/llm"
-	"xiaozhi-server-go/src/core/providers/tts"
-	"xiaozhi-server-go/src/core/providers/vlllm"
-	"xiaozhi-server-go/src/core/utils"
+	coreproviders "xiaozhi-server-go/internal/core/providers"
+	"xiaozhi-server-go/internal/core/providers/asr"
+	"xiaozhi-server-go/internal/core/providers/llm"
+	"xiaozhi-server-go/internal/core/providers/tts"
+	"xiaozhi-server-go/internal/core/providers/vlllm"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // Set groups together the provider instances required to serve a single

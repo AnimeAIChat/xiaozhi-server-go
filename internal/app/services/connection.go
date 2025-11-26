@@ -20,8 +20,8 @@ import (
 	"xiaozhi-server-go/internal/platform/errors"
 	"xiaozhi-server-go/internal/platform/logging"
 	"xiaozhi-server-go/internal/transport/ws"
-	"xiaozhi-server-go/src/core/pool"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/core/pool"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ConnectionService 处理WebSocket连接相关的业务逻辑

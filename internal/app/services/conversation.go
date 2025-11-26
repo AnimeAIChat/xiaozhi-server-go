@@ -12,8 +12,8 @@ import (
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	domaintts "xiaozhi-server-go/internal/domain/tts"
 	"xiaozhi-server-go/internal/platform/logging"
-	coreproviders "xiaozhi-server-go/src/core/providers"
-	"xiaozhi-server-go/src/core/utils"
+	coreproviders "xiaozhi-server-go/internal/core/providers"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ConversationService 处理对话相关的业务逻辑

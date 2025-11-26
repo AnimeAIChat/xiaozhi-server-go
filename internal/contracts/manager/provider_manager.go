@@ -11,7 +11,7 @@ import (
 	"xiaozhi-server-go/internal/domain/llm/infrastructure/adapters/openai"
 	"xiaozhi-server-go/internal/domain/tts/infrastructure/adapters/edge"
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // UnifiedProviderManager 统一提供者管理器

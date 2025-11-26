@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"xiaozhi-server-go/internal/domain/llm/inter"
-	"xiaozhi-server-go/src/core/providers/llm"
+	"xiaozhi-server-go/internal/core/providers/llm"
 )
 
 // Manager LLM管理器 - 基于 Eino 框架

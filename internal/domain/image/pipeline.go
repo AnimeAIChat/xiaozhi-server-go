@@ -8,7 +8,7 @@ import (
 	"io"
 
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // Pipeline orchestrates streaming ingestion, validation, and encoding of image payloads.

@@ -31,7 +31,7 @@ import (
 	httpota "xiaozhi-server-go/internal/transport/http/ota"
 	"xiaozhi-server-go/internal/contracts/adapters"
 	"xiaozhi-server-go/internal/contracts/config/integration"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swaggo/swag"

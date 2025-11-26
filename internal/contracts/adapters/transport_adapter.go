@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"xiaozhi-server-go/internal/platform/config"
-	websockettransport "xiaozhi-server-go/src/core/transport/websocket"
-	"xiaozhi-server-go/src/core/transport"
-	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/core/pool"
+	websockettransport "xiaozhi-server-go/internal/core/transport/websocket"
+	"xiaozhi-server-go/internal/core/transport"
+	"xiaozhi-server-go/internal/utils"
+	"xiaozhi-server-go/internal/core/pool"
 	"xiaozhi-server-go/internal/domain/task"
 )
 

@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"xiaozhi-server-go/internal/platform/observability"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // HandlerBuilder creates a session handler for an upgraded websocket connection.

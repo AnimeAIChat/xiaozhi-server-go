@@ -16,7 +16,7 @@ import (
 	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/internal/platform/errors"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )

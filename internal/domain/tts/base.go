@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"xiaozhi-server-go/internal/domain/tts/inter"
-	"xiaozhi-server-go/src/core/providers/tts"
+	"xiaozhi-server-go/internal/core/providers/tts"
 	"xiaozhi-server-go/internal/platform/config"
 )
 

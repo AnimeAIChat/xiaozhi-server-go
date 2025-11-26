@@ -7,7 +7,7 @@ import (
 
 	domaintts "xiaozhi-server-go/internal/domain/tts"
 	"xiaozhi-server-go/internal/platform/logging"
-	coreproviders "xiaozhi-server-go/src/core/providers"
+	coreproviders "xiaozhi-server-go/internal/core/providers"
 )// SpeechService 处理语音相关的业务逻辑
 type SpeechService struct {
 ttsManager  *domaintts.Manager

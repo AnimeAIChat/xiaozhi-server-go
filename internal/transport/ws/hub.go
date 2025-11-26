@@ -3,7 +3,7 @@ package ws
 import (
 	"sync"
 
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // Hub tracks the active websocket sessions for a transport instance.

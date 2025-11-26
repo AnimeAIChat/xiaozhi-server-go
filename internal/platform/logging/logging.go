@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // Config captures logging configuration options.

@@ -14,7 +14,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"xiaozhi-server-go/internal/platform/config"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // SecurityValidator performs layered security checks against incoming image payloads.

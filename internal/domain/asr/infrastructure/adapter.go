@@ -8,8 +8,8 @@ import (
 
 	"xiaozhi-server-go/internal/domain/asr/inter"
 	"xiaozhi-server-go/internal/domain/asr/repository"
-	"xiaozhi-server-go/src/core/providers"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/core/providers"
+	"xiaozhi-server-go/internal/utils"
 	"xiaozhi-server-go/internal/platform/errors"
 )
 

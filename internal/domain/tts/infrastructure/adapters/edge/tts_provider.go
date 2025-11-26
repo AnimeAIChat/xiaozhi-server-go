@@ -9,7 +9,7 @@ import (
 	"time"
 
 	contractProviders "xiaozhi-server-go/internal/contracts/providers"
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 
 	"github.com/wujunwei928/edge-tts-go/edge_tts"
 )

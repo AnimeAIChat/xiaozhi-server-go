@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"xiaozhi-server-go/src/core/utils"
+	"xiaozhi-server-go/internal/utils"
 )
 
 // ServerConfig stores the settings required to expose the websocket transport.

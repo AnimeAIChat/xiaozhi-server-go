@@ -6,7 +6,7 @@ import (
 "time"
 
 "xiaozhi-server-go/internal/platform/logging"
-coreproviders "xiaozhi-server-go/src/core/providers"
+coreproviders "xiaozhi-server-go/internal/core/providers"
 "xiaozhi-server-go/internal/util"
 )
 
