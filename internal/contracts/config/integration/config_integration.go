@@ -3,14 +3,12 @@ package integration
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	contractConfig "xiaozhi-server-go/internal/contracts/config"
 	"xiaozhi-server-go/internal/contracts/config/cache"
 	"xiaozhi-server-go/internal/contracts/config/notifier"
 	"xiaozhi-server-go/internal/contracts/config/sources"
-	"xiaozhi-server-go/internal/contracts/config/validator"
 	platformConfig "xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 )
@@ -76,7 +74,8 @@ func (ci *ConfigIntegrator) Initialize(ctx context.Context) error {
 	ci.logger.InfoTag("ConfigIntegrator", "初始化配置系统集成")
 
 	// 创建配置组件
-	configValidator := validator.NewSchemaValidator()
+	// 暂时跳过严格验证，因为配置主要来自数据库
+	// configValidator := validator.NewSchemaValidator()
 	configCache := cache.NewMemoryCache()
 	configNotifier := notifier.NewChangeNotifier(ci.logger, 3)
 
@@ -85,7 +84,7 @@ func (ci *ConfigIntegrator) Initialize(ctx context.Context) error {
 	configCache.StartGC(2 * time.Minute)
 
 	// 设置组件到统一管理器
-	ci.unifiedManager.SetValidator(configValidator)
+	// ci.unifiedManager.SetValidator(configValidator) // 暂时跳过验证
 	ci.unifiedManager.SetCache(configCache)
 	ci.unifiedManager.SetNotifier(configNotifier)
 
@@ -220,7 +219,10 @@ func (ci *ConfigIntegrator) addConfigSources(ctx context.Context) error {
 		return fmt.Errorf("failed to add env source: %w", err)
 	}
 
-	// 添加文件配置源（高优先级）
+	// 暂时跳过文件配置源，只使用环境变量和数据库配置
+	// 文件配置由外部RAG系统管理，不应该包含服务器必需配置
+	ci.logger.InfoTag("ConfigIntegrator", "跳过文件配置源，使用数据库和环境变量配置")
+	/*
 	configPath := filepath.Join("data", "config.json")
 	fileSource, err := sources.NewFileSource(
 		configPath,
@@ -236,6 +238,7 @@ func (ci *ConfigIntegrator) addConfigSources(ctx context.Context) error {
 			return fmt.Errorf("failed to add file source: %w", err)
 		}
 	}
+	*/
 
 	// 添加数据库配置源（中等优先级）
 	// TODO: 实现数据库配置源

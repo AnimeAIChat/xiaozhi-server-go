@@ -11,6 +11,24 @@ import (
 	"xiaozhi-server-go/src/core/providers/tts"
 	"xiaozhi-server-go/src/core/providers/vlllm"
 	"xiaozhi-server-go/src/core/utils"
+
+	// 导入ASR提供者实现以触发注册
+	_ "xiaozhi-server-go/src/core/providers/asr/doubao"
+	_ "xiaozhi-server-go/src/core/providers/asr/deepgram"
+	_ "xiaozhi-server-go/src/core/providers/asr/gosherpa"
+	_ "xiaozhi-server-go/src/core/providers/asr/stepfun"
+
+	// 导入LLM提供者实现以触发注册
+	_ "xiaozhi-server-go/src/core/providers/llm/coze"
+	_ "xiaozhi-server-go/src/core/providers/llm/doubao"
+	_ "xiaozhi-server-go/src/core/providers/llm/ollama"
+	_ "xiaozhi-server-go/src/core/providers/llm/openai"
+
+	// 导入TTS提供者实现以触发注册
+	_ "xiaozhi-server-go/src/core/providers/tts/deepgram"
+	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
+	_ "xiaozhi-server-go/src/core/providers/tts/edge"
+	_ "xiaozhi-server-go/src/core/providers/tts/gosherpa"
 )
 
 /*

@@ -148,30 +148,33 @@ func NewSafeProviderFactory(cfg *config.Config, logger *utils.Logger) *SafeProvi
 
 // CreateASRProvider 创建ASR提供者
 func (f *SafeProviderFactory) CreateASRProvider(providerType string, cfg *config.Config, logger *utils.Logger) (contractProviders.ASRProvider, error) {
-	// TODO: 在第二阶段实现具体的ASR提供者创建逻辑
-	// 现在先返回占位符实现
 	if logger != nil {
 		logger.InfoTag("安全工厂", "创建ASR提供者: %s", providerType)
 	}
-	return nil, fmt.Errorf("ASR provider '%s' will be implemented in phase 2", providerType)
+
+	// 临时简化实现：直接返回nil，后续完善
+	return nil, fmt.Errorf("ASR provider '%s' adapter not yet implemented", providerType)
 }
 
 // CreateLLMProvider 创建LLM提供者
 func (f *SafeProviderFactory) CreateLLMProvider(providerType string, cfg *config.Config, logger *utils.Logger) (contractProviders.LLMProvider, error) {
-	// TODO: 在第二阶段实现具体的LLM提供者创建逻辑
-	// 现在先返回占位符实现
 	if logger != nil {
 		logger.InfoTag("安全工厂", "创建LLM提供者: %s", providerType)
 	}
-	return nil, fmt.Errorf("LLM provider '%s' will be implemented in phase 2", providerType)
+
+	// 临时简化实现：直接返回nil，后续完善
+	return nil, fmt.Errorf("LLM provider '%s' adapter not yet implemented", providerType)
 }
 
 // CreateTTSProvider 创建TTS提供者
 func (f *SafeProviderFactory) CreateTTSProvider(providerType string, cfg *config.Config, logger *utils.Logger) (contractProviders.TTSProvider, error) {
-	// TODO: 在第二阶段实现具体的TTS提供者创建逻辑
-	// 现在先返回占位符实现
 	if logger != nil {
 		logger.InfoTag("安全工厂", "创建TTS提供者: %s", providerType)
 	}
-	return nil, fmt.Errorf("TTS provider '%s' will be implemented in phase 2", providerType)
+
+	// 临时简化实现：直接返回nil，后续完善
+	return nil, fmt.Errorf("TTS provider '%s' adapter not yet implemented", providerType)
 }
+
+// Provider适配器将在后续版本中实现
+// 目前使用简化实现避免接口复杂性
