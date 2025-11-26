@@ -29,6 +29,10 @@ import (
 	_ "xiaozhi-server-go/src/core/providers/tts/doubao"
 	_ "xiaozhi-server-go/src/core/providers/tts/edge"
 	_ "xiaozhi-server-go/src/core/providers/tts/gosherpa"
+
+	// 导入VLLM提供者实现以触发注册
+	_ "xiaozhi-server-go/src/core/providers/vlllm/openai"
+	_ "xiaozhi-server-go/src/core/providers/vlllm/ollama"
 )
 
 /*
