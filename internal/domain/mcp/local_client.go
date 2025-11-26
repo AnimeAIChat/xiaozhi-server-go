@@ -207,7 +207,7 @@ func (c *LocalClient) AddToolExit() error {
 	}
 
 	c.AddTool("exit",
-		"当用户想结束对话或需要退出系统时调用",
+		"仅在用户明确表示要退出、再见或结束时调用，如'再见'、'退出'、'结束对话'等",
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			c.logger.Info("用户请求退出对话，告别语：%s", args["say_goodbye"])
