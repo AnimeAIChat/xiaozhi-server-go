@@ -9,4 +9,5 @@ type ConfigDBInterface interface {
 	InitServerConfig(cfgStr string) error
 	UpdateServerConfig(cfgStr string) error
 	LoadServerConfig() (string, error)
+	LoadProviderData(providerType string, userID uint) map[string]string
 }

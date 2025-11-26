@@ -103,3 +103,11 @@ func (d *ServerConfigDB) LoadServerConfig() (string, error) {
 
 	return config.CfgStr, nil
 }
+
+func (d *ServerConfigDB) LoadProviderData(providerType string, userID uint) map[string]string {
+	data, err := GetProviderByTypeInternal(providerType, userID, false)
+	if err != nil {
+		return nil
+	}
+	return data
+}

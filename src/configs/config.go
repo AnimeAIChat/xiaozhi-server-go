@@ -20,6 +20,7 @@ type Config struct {
 				Expiry int    `yaml:"expiry" json:"expiry"` // 过期时间(小时)
 			} `yaml:"store" json:"store"`
 		} `yaml:"auth" json:"auth"`
+		ServerVersion string `yaml:"server_version" json:"server_version"`
 	} `yaml:"server" json:"server"`
 
 	// 传输层配置
@@ -203,6 +204,8 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 	path := "database:serverConfig"
 	if cfgStr != "" {
 		config.FromString(cfgStr)
+		LoadProvidersFromDB(dbi, config)
+		config = CheckAndModifyConfig(config)
 		Cfg = config
 		if bUseDatabaseCfg {
 			return Cfg, path, nil
@@ -218,7 +221,7 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// 读取配置文件失败，使用默认配置
-		config.setDefaults()
+		config = NewDefaultInitConfig()
 		data, _ = yaml.Marshal(config)
 	} else {
 		if err := yaml.Unmarshal(data, config); err != nil {
@@ -230,8 +233,61 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 	if err != nil {
 		fmt.Println("初始化服务器配置到数据库失败:", err)
 	}
+	config = CheckAndModifyConfig(config)
 	Cfg = config
 	return config, path, nil
+}
+
+func LoadProvidersFromDB(dbi ConfigDBInterface, cfg *Config) {
+	// 加载ASR提供者配置
+	asrData := dbi.LoadProviderData("ASR", 0)
+	if asrData != nil {
+		//fmt.Println("ASR Providers:", asrData)
+		cfg.ASR = make(map[string]ASRConfig)
+		for name, dataStr := range asrData {
+			var asrConfig ASRConfig
+			if err := yaml.Unmarshal([]byte(dataStr), &asrConfig); err == nil {
+				cfg.ASR[name] = asrConfig
+			}
+		}
+	}
+	// 加载TTS提供者配置
+	ttsData := dbi.LoadProviderData("TTS", 0)
+	if ttsData != nil {
+		//fmt.Println("TTS Providers:", ttsData)
+		cfg.TTS = make(map[string]TTSConfig)
+		for name, dataStr := range ttsData {
+			var ttsConfig TTSConfig
+			if err := yaml.Unmarshal([]byte(dataStr), &ttsConfig); err == nil {
+				cfg.TTS[name] = ttsConfig
+			}
+		}
+	}
+	// 加载LLM提供者配置
+	llmData := dbi.LoadProviderData("LLM", 0)
+	if llmData != nil {
+		//fmt.Println("LLM Providers:", llmData)
+		cfg.LLM = make(map[string]LLMConfig)
+		for name, dataStr := range llmData {
+			var llmConfig LLMConfig
+			if err := yaml.Unmarshal([]byte(dataStr), &llmConfig); err == nil {
+				cfg.LLM[name] = llmConfig
+			}
+		}
+	}
+	// 加载VLLLM提供者配置
+	vllmData := dbi.LoadProviderData("VLLLM", 0)
+	if vllmData != nil {
+		//fmt.Println("VLLLM Providers:", vllmData)
+		cfg.VLLLM = make(map[string]VLLMConfig)
+		for name, dataStr := range vllmData {
+			var vllmConfig VLLMConfig
+			if err := yaml.Unmarshal([]byte(dataStr), &vllmConfig); err == nil {
+				cfg.VLLLM[name] = vllmConfig
+			}
+		}
+	}
+	dbi.UpdateServerConfig(cfg.ToString())
 }
 
 func CheckAndModifyConfig(cfg *Config) *Config {
@@ -275,6 +331,16 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 			break
 		}
 	}
+	defaulCfg := NewDefaultInitConfig()
+	if len(cfg.LLM) == 0 {
+		fmt.Println("警告: 当前没有可用的LLM提供者，使用默认配置！")
+		cfg.LLM = defaulCfg.LLM
+		for name := range cfg.LLM {
+			cfg.SelectedModule["LLM"] = name
+			fmt.Println("已设置默认LLM为", name)
+			break
+		}
+	}
 
 	vlllmName, ok := cfg.SelectedModule["VLLLM"]
 	_, exists = cfg.VLLLM[vlllmName]
@@ -283,6 +349,15 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 		for name := range cfg.VLLLM {
 			cfg.SelectedModule["VLLLM"] = name
 			fmt.Println("未设置默认VLLLM或设置的VLLLM不存在，已设置为", name)
+			break
+		}
+	}
+	if len(cfg.VLLLM) == 0 {
+		fmt.Println("警告: 当前没有可用的VLLLM提供者，使用默认配置！")
+		cfg.VLLLM = defaulCfg.VLLLM
+		for name := range cfg.VLLLM {
+			cfg.SelectedModule["VLLLM"] = name
+			fmt.Println("已设置默认VLLLM为", name)
 			break
 		}
 	}
@@ -299,6 +374,16 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 		}
 	}
 
+	if len(cfg.ASR) == 0 {
+		fmt.Println("警告: 当前没有可用的ASR提供者，使用默认配置！")
+		cfg.ASR = defaulCfg.ASR
+		for name := range cfg.ASR {
+			cfg.SelectedModule["ASR"] = name
+			fmt.Println("已设置默认ASR为", name)
+			break
+		}
+	}
+
 	ttsName, ok := cfg.SelectedModule["TTS"]
 	_, exists = cfg.TTS[ttsName]
 	if !ok || ttsName == "" || !exists {
@@ -306,6 +391,16 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 		for name := range cfg.TTS {
 			cfg.SelectedModule["TTS"] = name
 			fmt.Println("未设置默认TTS或设置的TTS不存在，已设置为", name)
+			break
+		}
+	}
+
+	if len(cfg.TTS) == 0 {
+		fmt.Println("警告: 当前没有可用的TTS提供者，使用默认配置！")
+		cfg.TTS = defaulCfg.TTS
+		for name := range cfg.TTS {
+			cfg.SelectedModule["TTS"] = name
+			fmt.Println("已设置默认TTS为", name)
 			break
 		}
 	}
