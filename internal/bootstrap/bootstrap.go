@@ -16,7 +16,7 @@ import (
 	domainauth "xiaozhi-server-go/internal/domain/auth"
 	domainmcp "xiaozhi-server-go/internal/domain/mcp"
 	authstore "xiaozhi-server-go/internal/domain/auth/store"
-	"xiaozhi-server-go/internal/domain/config/manager"
+	configmanager "xiaozhi-server-go/internal/domain/config/manager"
 	"xiaozhi-server-go/internal/domain/config/types"
 	"xiaozhi-server-go/internal/domain/device/service"
 	"xiaozhi-server-go/internal/domain/eventbus"
@@ -30,6 +30,7 @@ import (
 	httpwebapi "xiaozhi-server-go/internal/transport/http/webapi"
 	httpota "xiaozhi-server-go/internal/transport/http/ota"
 	"xiaozhi-server-go/internal/contracts/adapters"
+	"xiaozhi-server-go/internal/contracts/config/integration"
 	"xiaozhi-server-go/src/core/utils"
 
 	"github.com/gin-gonic/gin"
@@ -79,6 +80,7 @@ type appState struct {
 	domainMCPManager      *domainmcp.Manager   // New domain MCP manager
 	bootstrapManager      *adapters.BootstrapManager // 新增：引导管理器
 	componentContainer    *adapters.ComponentContainer // 新增：组件容器
+	configIntegrator      *integration.ConfigIntegrator   // 新增：配置集成器
 }
 
 // Run 启动整个服务生命周期，负责加载配置、初始化依赖和优雅关停。
@@ -281,6 +283,13 @@ func InitGraph() []initStep {
 			Execute:   initComponentsStep,
 		},
 		{
+			ID:        "config:init-integrator",
+			Title:     "Initialise config integrator",
+			DependsOn: []string{"logging:init-provider", "components:init-container"},
+			Kind:      platformerrors.KindBootstrap,
+			Execute:   initConfigIntegratorStep,
+		},
+		{
 			ID:        "auth:init-manager",
 			Title:     "Initialise auth manager",
 			DependsOn: []string{"observability:setup-hooks", "storage:init-database", "components:init-container"},
@@ -306,7 +315,7 @@ func initDatabaseStep(_ context.Context, _ *appState) error {
 
 func loadDefaultConfigStep(_ context.Context, state *appState) error {
 	// Create database-backed config repository
-	configRepo := manager.NewDatabaseRepository(platformstorage.GetDB())
+	configRepo := configmanager.NewDatabaseRepository(platformstorage.GetDB())
 	state.configRepo = configRepo
 
 	// Load configuration from database, fallback to defaults if not found
@@ -412,6 +421,45 @@ func initComponentsStep(_ context.Context, state *appState) error {
 
 	if state.logger != nil {
 		state.logger.InfoTag("引导", "组件容器初始化完成")
+	}
+
+	return nil
+}
+
+func initConfigIntegratorStep(_ context.Context, state *appState) error {
+	if state == nil || state.config == nil || state.logger == nil {
+		return platformerrors.New(
+			platformerrors.KindBootstrap,
+			"config:init-integrator",
+			"missing config/logger",
+		)
+	}
+
+	// 创建配置集成器
+	configIntegrator, err := integration.NewConfigIntegrator(state.config, state.logger)
+	if err != nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"config:init-integrator",
+			"failed to create config integrator",
+			err,
+		)
+	}
+
+	// 初始化配置集成器
+	if err := configIntegrator.Initialize(context.Background()); err != nil {
+		return platformerrors.Wrap(
+			platformerrors.KindBootstrap,
+			"config:init-integrator",
+			"failed to initialize config integrator",
+			err,
+		)
+	}
+
+	state.configIntegrator = configIntegrator
+
+	if state.logger != nil {
+		state.logger.InfoTag("引导", "配置集成器初始化完成")
 	}
 
 	return nil
