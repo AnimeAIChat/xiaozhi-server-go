@@ -640,24 +640,40 @@ func (s *ConnectionService) Handle() {
 
 // Close 清理资源
 func (s *ConnectionService) Close() {
+	// 快速清理资源，避免阻塞
 	s.closeOpusDecoder()
+
 	if s.messageQueueService != nil {
 		s.messageQueueService.Stop()
 	}
+
 	if s.speechService != nil {
 		s.speechService.PauseASR()
 	}
-	s.releaseProviderSet()
-}
 
-func (s *ConnectionService) releaseProviderSet() {
-	if s.providerSet == nil {
-		return
+	// 异步释放资源池，避免阻塞session关闭
+	if s.providerSet != nil {
+		go func() {
+			// 使用简短的超时来避免长时间阻塞
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- s.providerSet.Release()
+			}()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					s.logger.Legacy().Debug(fmt.Sprintf("[连接] 异步归还资源池失败: %v", err))
+				}
+			case <-ctx.Done():
+				s.logger.Legacy().Debug("[连接] 异步归还资源池超时，已放弃")
+			}
+		}()
+		s.providerSet = nil
 	}
-	if err := s.providerSet.Release(); err != nil {
-		s.logger.Legacy().Error(fmt.Sprintf("[连接] 归还资源池失败: %v", err))
-	}
-	s.providerSet = nil
 }
 
 func (s *ConnectionService) sendAudioFrames(audioData [][]byte, text string, round int) error {

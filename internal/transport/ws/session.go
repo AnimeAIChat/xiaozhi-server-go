@@ -8,7 +8,7 @@ import (
 	"xiaozhi-server-go/src/core/utils"
 )
 
-const defaultCloseTimeout = 5 * time.Second
+const defaultCloseTimeout = 3 * time.Second
 
 // SessionHandler adapts legacy connection handlers to the refactored session lifecycle.
 type SessionHandler interface {
@@ -99,23 +99,11 @@ func (s *Session) Close(reason error) {
 		s.cancel(reason)
 	}
 
-	shutdownCtx, cancel := context.WithTimeoutCause(context.Background(), defaultCloseTimeout, reason)
-	defer cancel()
-
 	if s.handler != nil {
-		done := make(chan struct{})
+		// 异步关闭handler，不等待完成以避免超时
 		go func() {
 			s.handler.Close()
-			close(done)
 		}()
-
-		select {
-		case <-done:
-		case <-shutdownCtx.Done():
-			if s.logger != nil {
-				s.logger.Warn("session %s handler close timed out: %v", s.id, context.Cause(shutdownCtx))
-			}
-		}
 	}
 
 	if s.conn != nil {

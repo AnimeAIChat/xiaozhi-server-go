@@ -418,6 +418,12 @@ func initMCPManagerStep(_ context.Context, state *appState) error {
 		)
 	}
 
+	// Initialize global MCP tools first
+	if err := domainmcp.InitializeGlobalMCPTools(state.config, state.logger); err != nil {
+		state.logger.WarnTag("引导", "全局MCP工具初始化失败: %v", err)
+		// Continue anyway, local tools will still work
+	}
+
 	// Create domain manager directly from config
 	domainManager, err := domainmcp.NewFromConfig(state.config, state.logger)
 	if err != nil {

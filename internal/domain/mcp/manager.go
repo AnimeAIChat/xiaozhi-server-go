@@ -17,6 +17,13 @@ import (
 	"xiaozhi-server-go/internal/platform/config"
 )
 
+// 全局 MCP 工具注册表
+var (
+	globalMCPRegistry *toolRegistry
+	globalMCPOnce     sync.Once
+	globalMCPTools    []openai.Tool
+)
+
 // Options configures the manager instance.
 type Options struct {
 	Logger     Logger
@@ -279,15 +286,22 @@ func (m *Manager) BindConnection(
 	// Ensure local MCP tools are registered before handling requests.
 	m.registerLocalTools(fh)
 
-	// 如果MCP管理器已经初始化完成，同步注册外部工具
-	if m.isInitialized {
-		m.logger.Info("BindConnection: MCP管理器已初始化，同步注册外部工具")
-		m.registerExternalTools(fh)
-	} else {
-		m.logger.Info("BindConnection: MCP管理器未初始化，跳过同步注册外部工具")
+	// 注册全局 MCP 工具到当前连接的函数注册表
+	globalTools := GetGlobalMCPTools()
+	if len(globalTools) > 0 {
+		m.logger.Info("BindConnection: 注册全局 MCP 工具，工具数量: %d", len(globalTools))
+		for _, tool := range globalTools {
+			toolName := tool.Function.Name
+			if err := fh.RegisterFunction(toolName, tool); err != nil {
+				m.logger.Error("注册全局MCP工具失败: %s, 错误: %v", toolName, err)
+				continue
+			}
+			m.logger.Debug("Registered global MCP tool: [%s] %s", toolName, tool.Function.Description)
+		}
+		m.logger.Info("BindConnection: 成功注册 %d 个全局 MCP 工具", len(globalTools))
 	}
 
-	// 异步处理MCP初始化和绑定，不阻塞连接建立
+	// 完全异步处理MCP初始化和绑定，不阻塞连接建立
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -297,32 +311,12 @@ func (m *Manager) BindConnection(
 
 		m.logger.Info("BindConnection: Starting async binding process")
 
-		// 如果MCP管理器还未初始化完成，等待一下但不阻塞
-		if !m.isInitialized {
-			m.logger.Info("BindConnection, MCP Manager未初始化，等待异步初始化完成")
-			// 最多等待10秒，避免阻塞连接建立
-			timeout := time.After(10 * time.Second)
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-
-			for !m.isInitialized {
-				select {
-				case <-timeout:
-					m.logger.Warn("等待MCP异步初始化超时，继续处理连接（MCP功能可能受限）")
-					goto continueBinding
-				case <-ticker.C:
-					// 继续等待
-				}
-			}
+		// 等待MCP管理器初始化完成（如果还未完成）
+		for !m.isInitialized {
+			time.Sleep(10 * time.Millisecond)
 		}
 
-	continueBinding:
-		m.logger.Debug("BindConnection: Proceeding with client binding")
-
-		// 如果之前没有同步注册外部工具，现在注册
-		if !m.isInitialized {
-			m.registerExternalTools(fh)
-		}
+		m.logger.Debug("BindConnection: MCP Manager initialized, proceeding with client binding")
 
 		// 绑定 XiaoZhi 客户端
 		if m.xiaozhiClient != nil {
@@ -332,16 +326,24 @@ func (m *Manager) BindConnection(
 			m.logger.Debug("BindConnection: GetWebSocketConn returned: %v (type: %T)", wsConn, wsConn)
 			if wsConn == nil {
 				m.logger.Warn("BindConnection: connection does not provide WebSocket access, skipping XiaoZhi client binding")
-			} else {
-				m.logger.Debug("BindConnection: successfully obtained WebSocket connection, proceeding with XiaoZhi client binding")
-				if err := m.xiaozhiClient.BindConnection(wsConn); err != nil {
-					m.logger.Error("绑定XiaoZhi MCP客户端失败: %v", err)
-					return
-				}
+				return
+			}
 
-				// 等待客户端准备就绪
-				if err := m.xiaozhiClient.WaitForReady(context.Background()); err != nil {
-					m.logger.Error("等待XiaoZhi MCP客户端准备就绪失败: %v", err)
+			m.logger.Debug("BindConnection: successfully obtained WebSocket connection, proceeding with XiaoZhi client binding")
+			if err := m.xiaozhiClient.BindConnection(wsConn); err != nil {
+				m.logger.Error("绑定XiaoZhi MCP客户端失败: %v", err)
+				return
+			}
+
+			// 异步等待客户端准备就绪，避免阻塞
+			go func() {
+				m.logger.Debug("BindConnection: waiting for XiaoZhi client to be ready")
+				// 使用较短的超时时间，避免长时间阻塞
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+
+				if err := m.xiaozhiClient.WaitForReady(ctx); err != nil {
+					m.logger.Warn("等待XiaoZhi MCP客户端准备就绪失败或超时: %v", err)
 					return
 				}
 
@@ -361,7 +363,9 @@ func (m *Manager) BindConnection(
 				if err := m.registry.register(tools); err != nil {
 					m.logger.Error("注册XiaoZhi MCP工具到内部注册表失败: %v", err)
 				}
-			}
+
+				m.logger.Info("XiaoZhi MCP client binding completed successfully")
+			}()
 		} else {
 			m.logger.Warn("BindConnection: XiaoZhi client is nil, skipping binding")
 		}
@@ -576,6 +580,14 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 
 	m.logger.InfoTag("MCP", "开始异步初始化外部MCP服务器")
 
+	// 立即标记为已初始化，允许新连接继续处理
+	m.clientsMu.Lock()
+	m.isInitialized = true
+	m.clientsMu.Unlock()
+
+	m.logger.InfoTag("MCP", "MCP管理器已标记为初始化完成")
+
+	// 异步初始化所有外部客户端
 	for name, config := range configs {
 		// Only initialize external MCP servers
 		go func(name string, config *Config) {
@@ -623,11 +635,6 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 		}(name, config)
 	}
 
-	// Mark as initialized (don't wait for all clients to complete)
-	m.clientsMu.Lock()
-	m.isInitialized = true
-	m.clientsMu.Unlock()
-
 	m.logger.DebugTag("MCP", "外部MCP服务器异步初始化已启动")
 
 	// 等待一段时间让所有外部客户端初始化完成，然后打印所有可用MCP函数
@@ -635,6 +642,90 @@ func (m *Manager) initializeExternalServers(configs map[string]*Config) {
 		time.Sleep(2 * time.Second)
 		m.printAllAvailableMCPFunctions()
 	}()
+}
+
+// InitializeGlobalMCPTools 初始化全局 MCP 工具（只执行一次）
+func InitializeGlobalMCPTools(cfg *config.Config, logger Logger) error {
+	var initErr error
+	globalMCPOnce.Do(func() {
+		globalMCPRegistry = newToolRegistry()
+		logger.Info("开始初始化全局 MCP 工具")
+
+		// 加载外部 MCP 服务器配置并初始化
+		configLoader := NewConfigLoader(logger)
+		configs, err := configLoader.LoadConfig()
+		if err != nil {
+			initErr = fmt.Errorf("加载 MCP 配置失败: %w", err)
+			return
+		}
+
+		if configs == nil {
+			logger.Info("没有找到 MCP 服务器配置，跳过外部工具初始化")
+			return
+		}
+
+		// 异步初始化所有外部 MCP 服务器
+		for name, config := range configs {
+			go func(name string, config *Config) {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Error("初始化全局MCP客户端 %s 时发生panic: %v", name, r)
+					}
+				}()
+
+				client, err := NewExternalClient(config, logger)
+				if err != nil {
+					logger.Error("创建全局MCP客户端失败 (服务器: %s): %v", name, err)
+					return
+				}
+
+				if !config.Enabled {
+					logger.Debug("全局MCP客户端 %s 已禁用", name)
+					return
+				}
+
+				// 启动客户端
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+
+				if err := client.Start(ctx); err != nil {
+					logger.Error("启动全局MCP客户端失败 %s: %v", name, err)
+					return
+				}
+
+				// 获取工具并注册到全局注册表
+				tools := client.GetAvailableTools()
+				if len(tools) > 0 {
+					if err := globalMCPRegistry.register(tools); err != nil {
+						logger.Error("注册全局MCP工具失败: %v", err)
+						return
+					}
+					logger.Info("全局MCP客户端 %s 初始化成功，工具数量: %d", name, len(tools))
+
+					// 更新全局工具列表
+					globalMCPTools = append(globalMCPTools, tools...)
+				}
+			}(name, config)
+		}
+
+		logger.Info("全局 MCP 工具初始化完成")
+	})
+
+	return initErr
+}
+
+// GetGlobalMCPTools 获取所有全局注册的 MCP 工具
+func GetGlobalMCPTools() []openai.Tool {
+	return globalMCPTools
+}
+
+// IsGlobalMCPTool 检查工具是否为全局 MCP 工具
+func IsGlobalMCPTool(toolName string) bool {
+	if globalMCPRegistry == nil {
+		return false
+	}
+	_, exists := globalMCPRegistry.get(toolName)
+	return exists
 }
 
 // NewFromConfig creates a new domain MCP Manager from configuration.
