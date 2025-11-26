@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	contractProviders "xiaozhi-server-go/internal/contracts/providers"
+	"xiaozhi-server-go/internal/contracts/manager"
 	"xiaozhi-server-go/internal/platform/config"
 	"xiaozhi-server-go/src/core/utils"
 )
@@ -65,10 +66,15 @@ func (f *DefaultProviderFactory) CreateASRProvider(providerType string, cfg *con
 		return nil, fmt.Errorf("provider factory not initialized")
 	}
 
-	// TODO: 实现ASR提供者创建逻辑
-	// 这里需要根据providerType创建对应的提供者实例
-	// 暂时返回错误，等待后续实现
-	return nil, fmt.Errorf("ASR provider '%s' not yet implemented", providerType)
+	// 使用统一提供者管理器
+	providerManager := manager.NewUnifiedProviderManager(cfg, logger)
+	if err := providerManager.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize provider manager: %w", err)
+	}
+
+	return providerManager.CreateASRProvider(providerType, cfg, map[string]interface{}{
+		"logger": logger,
+	})
 }
 
 // CreateLLMProvider 创建LLM提供者
@@ -77,10 +83,15 @@ func (f *DefaultProviderFactory) CreateLLMProvider(providerType string, cfg *con
 		return nil, fmt.Errorf("provider factory not initialized")
 	}
 
-	// TODO: 实现LLM提供者创建逻辑
-	// 这里需要根据providerType创建对应的提供者实例
-	// 暂时返回错误，等待后续实现
-	return nil, fmt.Errorf("LLM provider '%s' not yet implemented", providerType)
+	// 使用统一提供者管理器
+	providerManager := manager.NewUnifiedProviderManager(cfg, logger)
+	if err := providerManager.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize provider manager: %w", err)
+	}
+
+	return providerManager.CreateLLMProvider(providerType, cfg, map[string]interface{}{
+		"logger": logger,
+	})
 }
 
 // CreateTTSProvider 创建TTS提供者
@@ -89,19 +100,30 @@ func (f *DefaultProviderFactory) CreateTTSProvider(providerType string, cfg *con
 		return nil, fmt.Errorf("provider factory not initialized")
 	}
 
-	// TODO: 实现TTS提供者创建逻辑
-	// 这里需要根据providerType创建对应的提供者实例
-	// 暂时返回错误，等待后续实现
-	return nil, fmt.Errorf("TTS provider '%s' not yet implemented", providerType)
+	// 使用统一提供者管理器
+	providerManager := manager.NewUnifiedProviderManager(cfg, logger)
+	if err := providerManager.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize provider manager: %w", err)
+	}
+
+	return providerManager.CreateTTSProvider(providerType, cfg, map[string]interface{}{
+		"logger": logger,
+	})
 }
 
 // GetSupportedProviders 获取支持的提供者类型
 func (f *DefaultProviderFactory) GetSupportedProviders() map[string][]string {
-	return map[string][]string{
-		"asr": {}, // 将在后续填充
-		"llm": {}, // 将在后续填充
-		"tts": {}, // 将在后续填充
+	// 创建临时管理器来获取支持的提供者
+	if f.config == nil || f.logger == nil {
+		return map[string][]string{
+			"asr": {"doubao"}, // 基本支持
+			"llm": {"openai"},
+			"tts": {"edge"},
+		}
 	}
+
+	tempManager := manager.NewUnifiedProviderManager(f.config, f.logger)
+	return tempManager.GetAvailableProviders()
 }
 
 // ValidateProviderConfig 验证提供者配置
