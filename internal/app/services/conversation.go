@@ -154,8 +154,6 @@ func (s *ConversationService) genResponseByLLM(ctx context.Context, round int) e
 			s.logger.Legacy().Error("genResponseByLLM发生panic: %v", r)
 			_ = "抱歉，处理您的请求时发生了错误" // TODO: 播放错误消息
 		}
-		// 对话处理完成，记录日志
-		s.logger.Legacy().Info("[对话] [轮次 %d] 处理完成", round)
 	}()
 
 	_ = time.Now() // TODO: 记录LLM开始时间

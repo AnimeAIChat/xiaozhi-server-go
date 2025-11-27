@@ -798,8 +798,6 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 			h.tts_last_text_index = 1 // 重置文本索引
 			h.SpeakAndPlay(errorMsg, 1, round)
 		}
-		// 对话处理完成，记录日志
-		h.LogInfo(fmt.Sprintf("[对话] [轮次 %d] 处理完成", round))
 	}()
 
 	llmStartTime := time.Now()

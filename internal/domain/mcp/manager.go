@@ -57,6 +57,9 @@ type Manager struct {
 	callCache    map[string]interface{}
 	cacheMu      sync.RWMutex
 	cacheExpiry  time.Time
+
+	// 智能缓存，用于rag工具的相似查询匹配
+	smartCache   map[string]interface{} // key: 核心查询词, value: 结果
 }
 
 // NewManager constructs a new manager instance.
@@ -75,6 +78,7 @@ func NewManager(opts Options) (*Manager, error) {
 		configLoader: NewConfigLoader(opts.Logger),
 		autoReturn:   opts.AutoReturn,
 		callCache:    make(map[string]interface{}),
+		smartCache:   make(map[string]interface{}),
 	}
 
 	// Initialize local client
@@ -200,14 +204,22 @@ func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]
 	cacheKey := m.generateCacheKey(name, args)
 	m.logger.DebugTag("MCP", "生成缓存键: %s", cacheKey)
 
-	// 检查缓存，避免重复调用
+	// 对于rag工具，尝试智能缓存匹配
+	if name == "mcp_rag_ask" {
+		if result := m.trySmartCache(args); result != nil {
+			m.logger.InfoTag("MCP", "使用智能缓存结果: %s", name)
+			return result, nil
+		}
+	}
+
+	// 检查精确缓存
 	m.cacheMu.RLock()
 	cachedResult, exists := m.callCache[cacheKey]
 	cacheValid := exists && time.Now().Before(m.cacheExpiry)
 	m.cacheMu.RUnlock()
 
 	if cacheValid {
-		m.logger.InfoTag("MCP", "使用缓存结果: %s (10秒内)", name)
+		m.logger.InfoTag("MCP", "使用精确缓存结果: %s (10秒内)", name)
 		return cachedResult, nil
 	}
 
@@ -243,6 +255,11 @@ func (m *Manager) ExecuteTool(ctx context.Context, name string, args map[string]
 		m.cacheExpiry = time.Now().Add(10 * time.Second) // 缓存10秒，适合对话场景
 		m.cacheMu.Unlock()
 		m.logger.DebugTag("MCP", "缓存结果: %s", cacheKey)
+
+		// 对于rag工具，同时存储到智能缓存
+		if name == "mcp_rag_ask" {
+			m.storeSmartCache(args, result)
+		}
 
 		return result, nil
 	}
@@ -559,6 +576,7 @@ func (m *Manager) Reset() error {
 	// 清理缓存
 	m.cacheMu.Lock()
 	m.callCache = make(map[string]interface{})
+	m.smartCache = make(map[string]interface{})
 	m.cacheExpiry = time.Time{}
 	m.cacheMu.Unlock()
 
@@ -627,6 +645,91 @@ func (m *Manager) generateCacheKey(name string, args map[string]any) string {
 		key += fmt.Sprintf(":%s=%v", k, v)
 	}
 	return key
+}
+
+// trySmartCache 尝试从智能缓存中获取相似查询的结果
+func (m *Manager) trySmartCache(args map[string]any) interface{} {
+	query, ok := args["query"].(string)
+	if !ok {
+		return nil
+	}
+
+	// 提取核心查询词（去除常见的修饰词）
+	coreQuery := m.extractCoreQuery(query)
+	if coreQuery == "" {
+		return nil
+	}
+
+	m.cacheMu.RLock()
+	defer m.cacheMu.RUnlock()
+
+	if result, exists := m.smartCache[coreQuery]; exists {
+		m.logger.DebugTag("MCP", "智能缓存命中: %s -> %s", query, coreQuery)
+		return result
+	}
+
+	return nil
+}
+
+// storeSmartCache 存储结果到智能缓存
+func (m *Manager) storeSmartCache(args map[string]any, result interface{}) {
+	query, ok := args["query"].(string)
+	if !ok {
+		return
+	}
+
+	coreQuery := m.extractCoreQuery(query)
+	if coreQuery == "" {
+		return
+	}
+
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+
+	m.smartCache[coreQuery] = result
+	m.logger.DebugTag("MCP", "存储智能缓存: %s -> %s", query, coreQuery)
+
+	// 限制智能缓存大小，避免内存泄漏
+	if len(m.smartCache) > 50 {
+		// 简单的LRU：删除第一个元素
+		for k := range m.smartCache {
+			delete(m.smartCache, k)
+			break
+		}
+	}
+}
+
+// extractCoreQuery 提取核心查询词
+func (m *Manager) extractCoreQuery(query string) string {
+	// 移除常见的后缀词
+	suffixes := []string{"全文", "内容", "详细", "具体", "解释", "说明", "是什么"}
+
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(query, suffix) {
+			query = query[:len(query)-len(suffix)]
+			break
+		}
+	}
+
+	// 移除常见的前缀词
+	prefixes := []string{"查询", "搜索", "找", "查"}
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(query, prefix) {
+			query = query[len(prefix):]
+			break
+		}
+	}
+
+	// 去除空格
+	query = strings.TrimSpace(query)
+
+	// 如果太短，不缓存
+	if len(query) < 2 {
+		return ""
+	}
+
+	return query
 }
 
 // HandleXiaoZhiMCPMessage delegates message handling to the XiaoZhi client.

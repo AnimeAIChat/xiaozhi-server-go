@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -238,10 +239,29 @@ func (c *ExternalClient) CallTool(
 
 		if err != nil {
 			c.logger.ErrorTag("MCP", "调用外部工具失败: %s, 错误: %v", name, err)
+
+			// 对于rag工具，如果超时，返回一个友好的错误信息而不是直接失败
+			if name == "rag_ask" && strings.Contains(err.Error(), "deadline exceeded") {
+				c.logger.InfoTag("MCP", "RAG查询超时，返回建议信息")
+				return "抱歉，查询信息超时了，建议您可以：1) 换个更简单的查询方式 2) 稍后再试 3) 或者我可以根据一般知识为您解答", nil
+			}
+
 			return nil, fmt.Errorf("failed to call tool %s: %w", name, err)
 		}
 
 		c.logger.InfoTag("MCP", "外部工具调用成功: %s, 内容数量: %d", name, len(result.Content))
+
+		// 对于RAG工具，检查结果质量
+		if name == "rag_ask" {
+			content := c.processToolResult(result)
+			if contentStr, ok := content.(string); ok {
+				if len(contentStr) < 50 || strings.Contains(contentStr, "未找到") || strings.Contains(contentStr, "没有相关") {
+					c.logger.InfoTag("MCP", "RAG结果质量较低，返回友好提示")
+					return contentStr + "\n\n(如果这个结果不够详细，我可以根据一般知识为您补充解答)", nil
+				}
+			}
+		}
+
 		return c.processToolResult(result), nil
 	}
 
