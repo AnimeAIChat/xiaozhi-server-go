@@ -334,10 +334,16 @@ func RemoveParentheses(text string) string {
 	text = reRemoveParenthesesCN.ReplaceAllString(text, "")
 	// 移除英文括号及其内容
 	text = reRemoveParenthesesEN.ReplaceAllString(text, "")
-	
+
 	// 移除剩余的不匹配括号
 	text = regexp.MustCompile(`[（）()]`).ReplaceAllString(text, "")
-	
+
+	// 移除其他可能的括号变体和特殊组合
+	text = regexp.MustCompile(`【[^】]*】`).ReplaceAllString(text, "") // 中文方括号
+	text = regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(text, "") // 英文方括号
+	text = regexp.MustCompile(`「[^」]*」`).ReplaceAllString(text, "") // 中文引号
+	text = regexp.MustCompile(`'[^']*'`).ReplaceAllString(text, "")   // 英文单引号
+
 	return text
 }
 

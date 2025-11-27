@@ -344,7 +344,7 @@ func (c *LocalClient) AddToolPlayMusic() error {
 	}
 
 	c.AddTool("play_music",
-		"当用户想要播放音乐/听歌/唱歌时调用",
+		"**仅在用户明确要求播放音乐、听歌或指定歌曲名时才调用**。如果用户只是想聊天、听故事或讲笑话，请直接回复不要调用此工具",
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			song_name := args["song_name"].(string)

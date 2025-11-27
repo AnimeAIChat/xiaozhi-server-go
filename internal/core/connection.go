@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1362,6 +1363,11 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	cleanText := internalutils.RemoveAllEmoji(text)
 	// 移除括号及括号内的内容（如：（语速起飞）、（突然用气声）等）
 	cleanText = internalutils.RemoveParentheses(cleanText)
+	// 移除其他TTS不支持的字符：波浪号、特殊符号等
+	cleanText = regexp.MustCompile(`[~]`).ReplaceAllString(cleanText, "")
+	// 移除多余的空格和标点
+	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
+	cleanText = strings.TrimSpace(cleanText)
 
 	if cleanText == "" {
 		h.logger.DebugTag("TTS", "收到空文本，索引=%d", textIndex)
