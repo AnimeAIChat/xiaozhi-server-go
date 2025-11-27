@@ -219,51 +219,118 @@ func (c *ExternalClient) CallTool(
 	}
 
 	if c.useStdioClient {
+		c.logger.InfoTag("MCP", "开始调用外部工具: %s, 参数: %+v", name, args)
+
+		// 确保参数类型正确，Python mcp-rag 期望特定格式的参数
+		processedArgs := c.processArguments(args)
+		c.logger.DebugTag("MCP", "处理后的参数: %+v", processedArgs)
+
 		callRequest := mcp.CallToolRequest{}
 		callRequest.Params.Name = name
-		callRequest.Params.Arguments = args
+		callRequest.Params.Arguments = processedArgs
 
-		result, err := c.stdioClient.CallTool(ctx, callRequest)
+		// 设置较短的超时时间，确保低延迟
+		timeoutCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+
+		c.logger.DebugTag("MCP", "发送 MCP 调用请求 (超时: 8s)...")
+		result, err := c.stdioClient.CallTool(timeoutCtx, callRequest)
+
 		if err != nil {
+			c.logger.ErrorTag("MCP", "调用外部工具失败: %s, 错误: %v", name, err)
 			return nil, fmt.Errorf("failed to call tool %s: %w", name, err)
 		}
 
-		// Process return result
-		if result == nil || len(result.Content) == 0 {
-			return nil, nil
-		}
-
-		// Return first content item, or entire content list
-		if len(result.Content) == 1 {
-			// If text content, return text directly
-			if textContent, ok := result.Content[0].(mcp.TextContent); ok {
-				return textContent.Text, nil
-			}
-			ret := llm.ActionResponse{
-				Action: llm.ActionTypeReqLLM,
-				Result: result.Content[0],
-			}
-			return ret, nil
-		}
-
-		// Handle multiple content items
-		processedContent := make([]interface{}, 0, len(result.Content))
-		for _, content := range result.Content {
-			if textContent, ok := content.(mcp.TextContent); ok {
-				processedContent = append(processedContent, textContent.Text)
-			} else {
-				processedContent = append(processedContent, content)
-			}
-		}
-		ret := llm.ActionResponse{
-			Action: llm.ActionTypeReqLLM,
-			Result: processedContent,
-		}
-		return ret, nil
+		c.logger.InfoTag("MCP", "外部工具调用成功: %s, 内容数量: %d", name, len(result.Content))
+		return c.processToolResult(result), nil
 	}
 
 	// Original network client does not support direct tool calling
 	return nil, fmt.Errorf("tool calling not implemented for network client")
+}
+
+// processArguments 确保参数格式与 Python mcp-rag 兼容
+func (c *ExternalClient) processArguments(args map[string]any) map[string]any {
+	processed := make(map[string]any)
+
+	for key, value := range args {
+		switch v := value.(type) {
+		case string:
+			// 字符串类型保持不变
+			processed[key] = v
+		case float64:
+			// 数字类型需要根据 Python mcp-rag 的期望进行转换
+			if key == "limit" || key == "threshold" {
+				processed[key] = v
+			} else {
+				// 其他数字可能需要转换为整数（如果它们是整数）
+				if v == float64(int(v)) {
+					processed[key] = int(v)
+				} else {
+					processed[key] = v
+				}
+			}
+		case int:
+			processed[key] = v
+		case bool:
+			processed[key] = v
+		default:
+			// 其他类型转换为字符串表示
+			processed[key] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	// 确保 mcp-rag 期望的参数都有默认值
+	if _, exists := processed["mode"]; !exists {
+		processed["mode"] = "raw"
+	}
+	if _, exists := processed["collection"]; !exists {
+		processed["collection"] = "default"
+	}
+	if _, exists := processed["limit"]; !exists {
+		processed["limit"] = 5
+	}
+	if _, exists := processed["threshold"]; !exists {
+		processed["threshold"] = 0.7
+	}
+
+	return processed
+}
+
+// processToolResult 处理工具调用结果
+func (c *ExternalClient) processToolResult(result *mcp.CallToolResult) interface{} {
+	// Process return result
+	if result == nil || len(result.Content) == 0 {
+		return nil
+	}
+
+	// Return first content item, or entire content list
+	if len(result.Content) == 1 {
+		// If text content, return text directly
+		if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+			return textContent.Text
+		}
+		ret := llm.ActionResponse{
+			Action: llm.ActionTypeReqLLM,
+			Result: result.Content[0],
+		}
+		return ret
+	}
+
+	// Handle multiple content items
+	processedContent := make([]interface{}, 0, len(result.Content))
+	for _, content := range result.Content {
+		if textContent, ok := content.(mcp.TextContent); ok {
+			processedContent = append(processedContent, textContent.Text)
+		} else {
+			processedContent = append(processedContent, content)
+		}
+	}
+	ret := llm.ActionResponse{
+		Action: llm.ActionTypeReqLLM,
+		Result: processedContent,
+	}
+	return ret
 }
 
 // IsReady checks if the client is initialized and ready

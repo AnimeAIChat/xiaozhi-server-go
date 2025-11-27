@@ -219,27 +219,6 @@ func (ci *ConfigIntegrator) addConfigSources(ctx context.Context) error {
 		return fmt.Errorf("failed to add env source: %w", err)
 	}
 
-	// 暂时跳过文件配置源，只使用环境变量和数据库配置
-	// 文件配置由外部RAG系统管理，不应该包含服务器必需配置
-	ci.logger.InfoTag("ConfigIntegrator", "跳过文件配置源，使用数据库和环境变量配置")
-	/*
-	configPath := filepath.Join("data", "config.json")
-	fileSource, err := sources.NewFileSource(
-		configPath,
-		sources.WithFilePriority(80),
-		sources.WithFileWatchMode(true),
-		sources.WithFileTTL(5*time.Minute),
-	)
-	if err != nil {
-		// 配置文件不存在是正常的，使用默认配置
-		ci.logger.WarnTag("ConfigIntegrator", "配置文件不存在，跳过: %v", err)
-	} else {
-		if err := ci.unifiedManager.AddSource(fileSource); err != nil {
-			return fmt.Errorf("failed to add file source: %w", err)
-		}
-	}
-	*/
-
 	// 添加数据库配置源（中等优先级）
 	// TODO: 实现数据库配置源
 	// databaseSource, err := sources.NewDatabaseSource(...)

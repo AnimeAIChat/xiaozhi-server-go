@@ -812,12 +812,15 @@ func newMCPPool(
 		if preInitMCPManager != nil {
 			// Try to convert to domain manager if it's already one
 			if domainManager, ok := preInitMCPManager.(*domainmcp.Manager); ok {
+				logger.Debug("使用预初始化的 MCP 管理器实例")
 				return domainManager, nil
 			}
 			// For legacy compatibility, try to create from legacy manager
 			// This path should be removed once migration is complete
 			logger.Warn("Pre-initialized MCP manager provided but not domain type, creating new manager")
 		}
+
+		// 创建新的 MCP 管理器实例（会自动检测并复用全局外部客户端）
 		return domainmcp.NewFromConfig(cfg, logger)
 	}
 
