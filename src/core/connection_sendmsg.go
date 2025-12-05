@@ -98,7 +98,7 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		h.deleteAudioFileIfNeeded(filepath, "音频发送完成")
 
 		spentTime := time.Since(startTime).Milliseconds()
-		h.LogDebug(fmt.Sprintf("[TTS] [发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, text))
+		h.logger.DebugTag("TTS", fmt.Sprintf("[发送任务 %d/%dms/%dms] %s", textIndex, h.tts_last_text_index, spentTime, text))
 		h.providers.asr.ResetStartListenTime()
 		if textIndex == h.tts_last_text_index {
 			if round != h.talkRound {
@@ -260,6 +260,6 @@ func (h *ConnectionHandler) sendAudioFrames(audioData [][]byte, text string, rou
 	}
 	time.Sleep(preBufferTime) // 确保预缓冲时间已过
 	spentTime := time.Since(startTime).Milliseconds()
-	h.LogInfo(fmt.Sprintf("[TTS] [音频帧 %d/%dms/%dms] %s", len(audioData), playPosition, spentTime, text))
+	h.InfoTTS(fmt.Sprintf("[音频帧 %d/%dms/%dms] %s", len(audioData), playPosition, spentTime, text))
 	return nil
 }

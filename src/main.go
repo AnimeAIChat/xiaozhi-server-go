@@ -82,9 +82,14 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger.Info("[日志] [初始化 %s] 成功", configPath)
+	logger.InfoTag("引导", "日志模块就绪 %s", configPath)
 	utils.DefaultLogger = logger
-	logger.Info("日志系统初始化成功,level:%s 配置文件路径: %s", config.Log.LogLevel, configPath)
+	logger.InfoTag("LOG", "日志系统初始化成功 level:%s 路径: %s", config.Log.LogLevel, configPath)
+
+	// 显示配置检查信息
+	logger.InfoTag("配置", "LocalMCPFun 已配置 %d 项", len(config.LocalMCPFun))
+	logger.InfoTag("配置", "模块配置 LLM:%d VLLLM:%d ASR:%d TTS:%d", len(config.LLM), len(config.VLLLM), len(config.ASR), len(config.TTS))
+	logger.InfoTag("配置", "已选择模块 %v", config.SelectedModule)
 
 	database.SetLogger(logger)
 	database.InsertDefaultConfigIfNeeded(database.GetDB())
@@ -159,7 +164,7 @@ func StartTransportServer(
 		return nil, fmt.Errorf("没有启用任何传输层")
 	}
 
-	logger.Info("[传输层] [启用 %v]", enabledTransports)
+	logger.InfoTag("传输层", "已启用 %v", enabledTransports)
 
 	// 启动传输层服务
 	g.Go(func() error {
@@ -297,7 +302,9 @@ func StartHttpServer(
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	g.Go(func() error {
-		logger.Info("Gin 服务已启动，访问地址: http://localhost:%d", config.Web.Port)
+		logger.InfoTag("HTTP", "Gin 服务已启动，访问地址 http://localhost:%d", config.Web.Port)
+		logger.InfoTag("HTTP", "OTA 服务入口: http://localhost:%d/api/ota/", config.Web.Port)
+		logger.InfoTag("HTTP", "在线文档入口: http://localhost:%d/docs", config.Web.Port)
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {

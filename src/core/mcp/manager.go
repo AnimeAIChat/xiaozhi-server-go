@@ -15,6 +15,11 @@ import (
 	go_openai "github.com/sashabaranov/go-openai"
 )
 
+var (
+	mcpConfigChecked bool // 全局标记，跟踪配置文件检查信息是否已显示
+	mcpConfigMutex   sync.Mutex
+)
+
 // Conn 是与连接相关的接口，用于发送消息
 type Conn interface {
 	WriteMessage(messageType int, data []byte) error
@@ -40,7 +45,7 @@ type Manager struct {
 
 // NewManagerForPool 创建用于资源池的MCP管理器
 func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
-	lg.Info("创建MCP Manager用于资源池")
+	lg.Debug("[MCP] 创建管理器用于资源池")
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 
@@ -61,9 +66,9 @@ func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 	// 预先初始化非连接相关的MCP服务器
 	if err := mgr.preInitializeServers(); err != nil {
 		if err.Error() == "no valid MCP server configuration found" {
-			lg.Warn("没有找到有效的MCP服务器配置，跳过预初始化，如需使用外部MCP功能，请提供配置文件")
+			lg.Debug("[MCP] 没有找到MCP服务器配置")
 		} else {
-			lg.Error("预初始化MCP服务器失败: %v", err)
+			lg.Error("[MCP] 预初始化MCP服务器失败: %v", err)
 		}
 	}
 
@@ -79,7 +84,12 @@ func (m *Manager) preInitializeServers() error {
 	config := m.LoadConfig()
 	if config == nil {
 		// 没有MCP配置文件，跳过外部服务器初始化
-		m.logger.Info("未找到MCP服务器配置文件，跳过外部MCP服务器初始化")
+		mcpConfigMutex.Lock()
+		if !mcpConfigChecked {
+			m.logger.Info("[信息] 没有找到MCP服务器配置")
+			mcpConfigChecked = true
+		}
+		mcpConfigMutex.Unlock()
 		m.isInitialized = true
 		return nil
 	}

@@ -10,6 +10,11 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
+var (
+	mcpToolsRegistered bool // 全局标记，跟踪工具是否已注册
+	mcpRegisterMutex   sync.Mutex
+)
+
 type HandlerFunc func(ctx context.Context, args map[string]interface{}) (interface{}, error)
 
 type LocalClient struct {
@@ -34,45 +39,58 @@ func NewLocalClient(logger *utils.Logger, cfg *configs.Config) (*LocalClient, er
 
 func (c *LocalClient) RegisterTools() {
 	if c.cfg == nil {
-		c.logger.Error("RegisterTools: config is nil")
+		c.logger.Error("[MCP] 配置为空")
 		return
 	}
 
 	if c.cfg.LocalMCPFun == nil {
-		c.logger.Warn("RegisterTools: LocalMCPFun is nil")
+		c.logger.Warn("[MCP] 本地MCP功能为空")
 		return
 	}
 
 	funcs := c.cfg.LocalMCPFun
 	if len(funcs) == 0 {
-		c.logger.Info("RegisterTools: LocalMCPFun is empty")
+		c.logger.Debug("[MCP] 没有本地工具需要注册")
 		return
 	}
 
+	var registeredTools []string
 	for _, localFunc := range funcs {
 		if localFunc.Name == "exit" && localFunc.Enabled {
 			c.AddToolExit()
-			c.logger.Info("RegisterTools: exit tool registered")
+			registeredTools = append(registeredTools, "退出")
 		} else if localFunc.Name == "time" && localFunc.Enabled {
 			c.AddToolTime()
-			c.logger.Info("RegisterTools: time tool registered")
+			registeredTools = append(registeredTools, "时间")
 		} else if localFunc.Name == "change_voice" && localFunc.Enabled {
 			c.AddToolChangeVoice()
-			c.logger.Info("RegisterTools: change_voice tool registered")
+			registeredTools = append(registeredTools, "语音切换")
 		} else if localFunc.Name == "change_role" && localFunc.Enabled {
 			c.AddToolChangeRole()
-			c.logger.Info("RegisterTools: change_role tool registered")
+			registeredTools = append(registeredTools, "角色切换")
 		} else if localFunc.Name == "play_music" && localFunc.Enabled {
 			c.AddToolPlayMusic()
-			c.logger.Info("RegisterTools: play_music tool registered")
+			registeredTools = append(registeredTools, "音乐播放")
 		} else if localFunc.Name == "switch_agent" && localFunc.Enabled {
 			c.AddToolSwitchAgent()
-			c.logger.Info("RegisterTools: switch_agent tool registered")
+			registeredTools = append(registeredTools, "代理切换")
 		} else {
 			if localFunc.Enabled {
-				c.logger.Warn("RegisterTools: unknown function name %s", localFunc.Name)
+				c.logger.Warn("[MCP] 未知工具名称 %s", localFunc.Name)
 			}
 		}
+	}
+
+	if len(registeredTools) > 0 {
+		// 使用全局锁确保只显示一次注册信息
+		mcpRegisterMutex.Lock()
+		if !mcpToolsRegistered {
+			for _, tool := range registeredTools {
+				c.logger.Info("[MCP] %s工具已注册", tool)
+			}
+			mcpToolsRegistered = true
+		}
+		mcpRegisterMutex.Unlock()
 	}
 }
 
@@ -80,7 +98,7 @@ func (c *LocalClient) RegisterTools() {
 func (c *LocalClient) Start(ctx context.Context) error {
 	c.ctx = ctx
 	c.RegisterTools()
-	c.logger.Info("Local MCP client started")
+	c.logger.Debug("[MCP] 本地客户端已启动")
 	return nil
 }
 

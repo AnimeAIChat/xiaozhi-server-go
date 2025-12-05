@@ -57,7 +57,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.asrPool = asrPool
 		_, cnt := asrPool.GetStats()
-		logger.Info("[资源池] [ASR %s/%d] 初始化成功", asrType, cnt)
+		logger.InfoTag("资源池", "ASR %s/%d 初始化成功", asrType, cnt)
 	}
 
 	// 初始化LLM池
@@ -72,7 +72,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.llmPool = llmPool
 		_, cnt := llmPool.GetStats()
-		logger.Info("[资源池] [LLM %s/%d] 初始化成功", llmType, cnt)
+		logger.InfoTag("资源池", "LLM %s/%d 初始化成功", llmType, cnt)
 	}
 
 	// 初始化TTS池
@@ -87,7 +87,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		pm.ttsPool = ttsPool
 		_, cnt := ttsPool.GetStats()
-		logger.Info("[资源池] [TTS %s/%d] 初始化成功", ttsType, cnt)
+		logger.InfoTag("资源池", "TTS %s/%d 初始化成功", ttsType, cnt)
 	}
 
 	// 初始化VLLLM池（可选）
@@ -105,7 +105,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 		}
 		if pm.vlllmPool != nil {
 			_, cnt := pm.vlllmPool.GetStats()
-			logger.Info("[资源池] [VLLLM %s/%d] 初始化成功", vlllmType, cnt)
+			logger.InfoTag("资源池", "VLLLM %s/%d 初始化成功", vlllmType, cnt)
 		} else {
 			logger.Warn("VLLLM资源池未初始化，将使用普通LLM")
 		}
@@ -119,7 +119,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 	}
 
 	// 初始化MCP池（总是初始化，因为MCP是核心功能）
-	logger.Info("开始初始化MCP资源池，请等待...")
+	logger.InfoTag("引导", "开始初始化全局MCP管理器...")
 	mcpFactory := NewMCPFactory(config, logger)
 	if mcpFactory != nil {
 		mcpPool, err := NewResourcePool("mcpPool", mcpFactory, poolConfig, logger)
@@ -127,8 +127,7 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 			return nil, fmt.Errorf("初始化MCP资源池失败: %v", err)
 		}
 		pm.mcpPool = mcpPool
-		_, cnt := mcpPool.GetStats()
-		logger.Info("[资源池] [MCP %d] 初始化成功", cnt)
+		logger.InfoTag("MCP", "管理器初始化完成")
 	} else {
 		logger.Warn("创建MCP工厂失败，MCP功能将不可用")
 	}

@@ -304,7 +304,6 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 	if cfg.LocalMCPFun == nil {
 		cfg.LocalMCPFun = []LocalMCPFun{}
 	}
-	fmt.Printf("检查配置: LocalMCPFun cnt %d\n", len(cfg.LocalMCPFun))
 	if len(cfg.LocalMCPFun) < 10 {
 		for i := 0; i < len(cfg.LocalMCPFun); i++ {
 			cfg.LocalMCPFun[i].Name = strings.ToLower(strings.TrimSpace(cfg.LocalMCPFun[i].Name))
@@ -327,9 +326,7 @@ func CheckAndModifyConfig(cfg *Config) *Config {
 	if cfg.TTS == nil {
 		cfg.TTS = map[string]TTSConfig{}
 	}
-	fmt.Printf("检查配置: LLM:%d, VLLLM:%d, ASR:%d, TTS:%d\n", len(cfg.LLM), len(cfg.VLLLM), len(cfg.ASR), len(cfg.TTS))
-	fmt.Println("检查配置: SelectedModule", cfg.SelectedModule)
-	// 如果SelectedModule没有选择或者选择的不存在，则选择第一个
+		// 如果SelectedModule没有选择或者选择的不存在，则选择第一个
 	llmName, ok := cfg.SelectedModule["LLM"]
 	_, exists := cfg.LLM[llmName]
 	if !ok || llmName == "" || !exists {

@@ -532,6 +532,33 @@ func (h *ConnectionHandler) LogError(msg string) {
 	}
 }
 
+// InfoASR 记录ASR阶段信息日志
+func (h *ConnectionHandler) InfoASR(msg string) {
+	if h.logger != nil {
+		h.logger.InfoASR(msg, map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
+
+// InfoLLM 记录LLM阶段信息日志
+func (h *ConnectionHandler) InfoLLM(msg string) {
+	if h.logger != nil {
+		h.logger.InfoLLM(msg, map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
+
+// InfoTTS 记录TTS阶段信息日志
+func (h *ConnectionHandler) InfoTTS(msg string) {
+	if h.logger != nil {
+		h.logger.InfoTTS(msg, map[string]interface{}{
+			"device": h.deviceID,
+		})
+	}
+}
+
 // Handle 处理WebSocket连接
 func (h *ConnectionHandler) Handle(conn Connection) {
 	defer conn.Close()
@@ -633,7 +660,7 @@ func (h *ConnectionHandler) sendAudioMessageCoroutine() {
 func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool {
 	//h.LogInfo(fmt.Sprintf("[%s] ASR识别结果: %s", h.clientListenMode, result))
 	if h.providers.asr.GetSilenceCount() >= 2 {
-		h.LogInfo("[ASR] [静音检测] 连续两次，结束对话")
+		h.InfoASR("[静音检测] 连续两次，结束对话")
 		h.closeAfterChat = true // 如果连续两次静音，则结束对话
 		result = "[SILENCE_TIMEOUT] 长时间未检测到用户说话，请礼貌的结束对话"
 	}
@@ -641,7 +668,7 @@ func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool 
 		if result == "" {
 			return false
 		}
-		h.LogInfo(fmt.Sprintf("[ASR] [识别结果 %s/%s]", h.clientListenMode, result))
+		h.InfoASR(fmt.Sprintf("[识别结果 %s/%s]", h.clientListenMode, result))
 		h.handleChatMessage(context.Background(), result)
 		return true
 	} else if h.clientListenMode == "manual" {
@@ -657,7 +684,7 @@ func (h *ConnectionHandler) OnAsrResult(result string, isFinalResult bool) bool 
 		}
 		h.stopServerSpeak()
 		h.providers.asr.Reset() // 重置ASR状态，准备下一次识别
-		h.LogInfo(fmt.Sprintf("[ASR] [识别结果 %s/%s]", h.clientListenMode, result))
+		h.InfoASR(fmt.Sprintf("[识别结果 %s/%s]", h.clientListenMode, result))
 		h.handleChatMessage(context.Background(), result)
 		return true
 	}
@@ -863,9 +890,9 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 				if textIndex == 1 {
 					now := time.Now()
 					llmSpentTime := now.Sub(llmStartTime)
-					h.LogInfo(fmt.Sprintf("[LLM] [回复 %s/%d] 第一句话: %s", llmSpentTime, round, segment))
+					h.InfoLLM(fmt.Sprintf("[回复 %s/%d] 第一句话: %s", llmSpentTime, round, segment))
 				} else {
-					h.LogInfo(fmt.Sprintf("[LLM] [分段 %d/%d] %s", textIndex, round, segment))
+					h.InfoLLM(fmt.Sprintf("[分段 %d/%d] %s", textIndex, round, segment))
 				}
 				h.tts_last_text_index = textIndex
 				err := h.SpeakAndPlay(segment, textIndex, round)
@@ -943,7 +970,7 @@ func (h *ConnectionHandler) genResponseByLLM(ctx context.Context, messages []pro
 		remainingText := fullResponse[processedChars:]
 		if remainingText != "" {
 			textIndex++
-			h.LogInfo(fmt.Sprintf("[LLM] [分段 剩余文本 %d/%d] %s", textIndex, round, remainingText))
+			h.InfoLLM(fmt.Sprintf("[分段 剩余文本 %d/%d] %s", textIndex, round, remainingText))
 			h.tts_last_text_index = textIndex
 			h.SpeakAndPlay(remainingText, textIndex, round)
 		}
@@ -1110,7 +1137,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	if utils.IsQuickReplyHit(text, h.config.QuickReplyWords) {
 		// 尝试从缓存查找音频文件
 		if cachedFile := h.quickReplyCache.FindCachedAudio(text); cachedFile != "" {
-			h.LogInfo(fmt.Sprintf("[TTS] [缓存] 使用快速回复音频 file=%s", cachedFile))
+			h.InfoTTS(fmt.Sprintf("[缓存] 使用快速回复音频 file=%s", cachedFile))
 			filepath = cachedFile
 			return
 		}
@@ -1122,7 +1149,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 	text = utils.RemoveParentheses(text)
 
 	if text == "" {
-		h.logger.Warn(fmt.Sprintf("[TTS] [警告] 收到空文本 index=%d", textIndex))
+		h.logger.WarnTag("TTS", fmt.Sprintf("[警告] 收到空文本 index=%d", textIndex))
 		return
 	}
 
@@ -1138,7 +1165,7 @@ func (h *ConnectionHandler) processTTSTask(text string, textIndex int, round int
 			if err := h.quickReplyCache.SaveCachedAudio(text, filepath); err != nil {
 				h.LogError(fmt.Sprintf("保存快速回复音频失败: %v", err))
 			} else {
-				h.LogInfo(fmt.Sprintf("[TTS] [缓存] 成功缓存快速回复音频 text=%s", text))
+				h.InfoTTS(fmt.Sprintf("[缓存] 成功缓存快速回复音频 text=%s", text))
 			}
 		}
 	}

@@ -414,7 +414,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) StartStreaming(ctx context.Context) error {
-	p.logger.Info("[ASR] [流式识别] 开始")
+	p.logger.InfoASR("[流式识别] 开始")
 	p.ResetStartListenTime()
 	// 加锁保护连接初始化
 	p.connMutex.Lock()
@@ -536,7 +536,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 }
 
 func (p *Provider) ReadMessage() {
-	p.logger.Info("[ASR] [doubao] 流式识别协程已启动")
+	p.logger.InfoASR("[doubao] 流式识别协程已启动")
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Error("流式识别协程发生错误: %v", r)
@@ -547,7 +547,7 @@ func (p *Provider) ReadMessage() {
 			p.closeConnection()
 		}
 		p.connMutex.Unlock()
-		p.logger.Info("[ASR] [doubao] 流式识别协程已结束")
+		p.logger.InfoASR("[doubao] 流式识别协程已结束")
 	}()
 
 	for {
@@ -735,7 +735,7 @@ func (p *Provider) Reset() error {
 	// 重置音频处理
 	p.InitAudioProcessing()
 
-	p.logger.Info("[ASR] [状态] 已重置")
+	p.logger.InfoASR("[状态] 已重置")
 
 	return nil
 }
