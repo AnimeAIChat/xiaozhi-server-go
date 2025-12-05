@@ -9,6 +9,8 @@ import (
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/models"
 
+	"gorm.io/gorm/logger"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -104,7 +106,9 @@ func InitDB() (*gorm.DB, string, error) {
 
 	dbType = "sqlite"
 	path := "./data/config.db"
-	db, err = gorm.Open(sqlite.Open(path))
+	db, err = gorm.Open(sqlite.Open(path), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent), // 禁用调试日志
+	})
 
 	if err != nil {
 		return nil, "", fmt.Errorf("连接数据库失败: %w", err)

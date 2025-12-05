@@ -4,13 +4,13 @@ xiaozhi-server
 xiaozhi-server-go
 .mcp_server_settings copy.json
 .DS_Store
-wake_replay
 /uploads
 .env
 *.db
-/ota_bin
 
+/data/ota
 /data/logs
 /data/tmp
+/data/wake_replay
 !/data
 !/data/music
