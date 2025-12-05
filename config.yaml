@@ -42,7 +42,7 @@ log:
   # 设置日志等级：INFO、DEBUG
   log_level: INFO
   # 设置日志路径
-  log_dir: logs
+  log_dir: data/logs
   # 设置日志文件
   log_file: "server.log"
 
@@ -108,7 +108,7 @@ ASR:
     type: doubao
     appid: "你的appid"
     access_token: 你的access_token
-    output_dir: tmp/
+    output_dir: data/tmp/
     end_window_size: 300  # 结束窗口大小，单位毫秒，默认400ms，最小200ms
 
   GoSherpaASR:
@@ -120,7 +120,7 @@ ASR:
     addr: "wss://api.deepgram.com/v1/listen"
     api_key: 你的api_key
     lang: "zh-CN"
-    output_dir: tmp/
+    output_dir: data/tmp/
 
   StepASR:
     # https://platform.stepfun.com/docs/llm/realtime
@@ -136,7 +136,7 @@ TTS:
   EdgeTTS:
     type: edge
     voice: zh-CN-XiaoxiaoNeural
-    output_dir: "tmp/"
+    output_dir: "data/tmp/"
     supported_voices:
       [
         {
@@ -201,20 +201,20 @@ TTS:
     # 火山语音合成大模型 https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechSynthesis
     type: doubao
     voice: zh_female_wanwanxiaohe_moon_bigtts # 湾湾小何
-    output_dir: "tmp/"
+    output_dir: "data/tmp/"
     appid: "你的appid"
     token: 你的access_token
     cluster: 你的cluster
   GoSherpaTTS:
     type: gosherpa
     cluster: "ws://127.0.0.1:8848/tts"
-    output_dir: "tmp/"
+    output_dir: "data/tmp/"
   DeepgramTTS:
     type: deepgram
     voice: aura-2-zeus-en
     cluster: "wss://api.deepgram.com/v1/speak"
     token: 你的token
-    output_dir: "tmp/"
+    output_dir: "data/tmp/"
     sample_rate: 16000
 
 # LLM配置

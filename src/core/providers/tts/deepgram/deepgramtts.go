@@ -65,7 +65,7 @@ func (p *Provider) ToTTS(text string) (string, error) {
 	// 创建临时文件
 	outputDir := p.Config().OutputDir
 	if outputDir == "" {
-		outputDir = "tmp"
+		outputDir = "data/tmp"
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return "", fmt.Errorf("创建输出目录失败: %v", err)

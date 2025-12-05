@@ -1,6 +1,4 @@
 xiaozhi-server
-/logs
-/tmp
 /.config.yaml
 /.mcp_server_settings.json
 xiaozhi-server-go
@@ -9,5 +7,10 @@ xiaozhi-server-go
 wake_replay
 /uploads
 .env
-config.db
+*.db
 /ota_bin
+
+/data/logs
+/data/tmp
+!/data
+!/data/music

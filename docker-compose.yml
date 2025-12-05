@@ -11,6 +11,6 @@ services:
       - "8080:8080"
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite://./config.db
+      - DATABASE_URL=sqlite://./data/config.db
       - ENV=production
       - PORT=8080

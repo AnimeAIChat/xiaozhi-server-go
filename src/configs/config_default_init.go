@@ -25,9 +25,16 @@ func (cfg *Config) setDefaults() {
 	cfg.Server.Auth.Store.Type = "database"
 	cfg.Server.Auth.Store.Expiry = 24
 
-	cfg.Log.LogDir = "logs"
+	cfg.Log.LogDir = "data/logs"
 	cfg.Log.LogLevel = "INFO"
 	cfg.Log.LogFile = "server.log"
+
+	// 新增路径默认配置
+	cfg.Paths.BaseDir = "data"
+	cfg.Paths.MusicDir = "data/music"
+	cfg.Paths.TempDir = "data/tmp"
+	cfg.Paths.OTADir = "data/ota"
+	cfg.Paths.CacheDir = "data/cache"
 
 	cfg.PoolConfig.PoolMinSize = 0
 	cfg.PoolConfig.PoolMaxSize = 0
@@ -52,8 +59,8 @@ func NewDefaultInitConfig() *Config {
 		"DoubaoASR": {
 			"type":         "doubao",
 			"appid":        "你的appid",
-			"access_token": "你的access_token",
-			"output_dir":   "tmp/",
+			"access_token": "your_access_token",
+			"output_dir":   "data/tmp/",
 		},
 	}
 
@@ -62,7 +69,7 @@ func NewDefaultInitConfig() *Config {
 		"EdgeTTS": {
 			Type:      "edge",
 			Voice:     "zh-CN-XiaoxiaoNeural",
-			OutputDir: "tmp/",
+			OutputDir: "data/tmp/",
 			SupportedVoices: []VoiceInfo{
 				{Name: "zh-CN-XiaoxiaoNeural", DisplayName: "晓晓", Sex: "女", Description: "商务知性风格，音色成熟清晰，适合新闻播报、专业内容朗读"},
 				{Name: "zh-CN-XiaoyiNeural", DisplayName: "晓伊", Sex: "女", Description: "柔和温暖风格，带自然呼吸感，适合故事叙述或客服场景"},

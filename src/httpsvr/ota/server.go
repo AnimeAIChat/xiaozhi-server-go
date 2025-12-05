@@ -20,7 +20,7 @@ func (s *DefaultOTAService) Start(ctx context.Context, engine *gin.Engine, apiGr
 
 	apiGroup.Any("/ota/", s.HandleOTARequest())
 
-	apiGroup.GET("/ota_bin/*filepath", s.HandleFirmwareDownload())
+	apiGroup.GET("/ota/download/*filepath", s.HandleFirmwareDownload())
 
 	return nil
 }

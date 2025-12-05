@@ -103,7 +103,7 @@ func InitDB() (*gorm.DB, string, error) {
 	)
 
 	dbType = "sqlite"
-	path := "./config.db"
+	path := "./data/config.db"
 	db, err = gorm.Open(sqlite.Open(path))
 
 	if err != nil {

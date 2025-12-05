@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/providers/asr"
 	"xiaozhi-server-go/src/core/utils"
 
@@ -58,7 +59,10 @@ func NewProvider(config *asr.Config, deleteFile bool, logger *utils.Logger) (*Pr
 	// Ensure output directory exists
 	outputDir, _ := config.Data["output_dir"].(string)
 	if outputDir == "" {
-		outputDir = "tmp/"
+		outputDir = configs.Cfg.Paths.TempDir
+		if outputDir == "" {
+			outputDir = "data/tmp" // 后备默认值
+		}
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)

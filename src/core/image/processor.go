@@ -30,7 +30,7 @@ type ImageProcessor struct {
 // NewImageProcessor 创建新的图片处理器
 func NewImageProcessor(config *configs.VLLMConfig, logger *utils.Logger) (*ImageProcessor, error) {
 	// 创建临时目录
-	tempDir := filepath.Join("tmp", "images")
+	tempDir := filepath.Join("data/tmp", "images")
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %v", err)
 	}

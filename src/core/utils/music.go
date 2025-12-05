@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"xiaozhi-server-go/src/configs"
 )
 
 var musicNames []string
@@ -93,7 +94,10 @@ func GetFileNameFromPath(filePath string) string {
 
 // 根据音乐文件名获取音乐文件路径（模糊匹配）
 func GetMusicFilePathFuzzy(songName string) (string, string, error) {
-	musicDir := "./music"
+	musicDir := configs.Cfg.Paths.MusicDir
+	if musicDir == "" {
+		musicDir = "data/music" // 后备默认值
+	}
 
 	if songName == "random" || songName == "随机" {
 		// 如果是随机请求，直接返回一个随机音乐文件

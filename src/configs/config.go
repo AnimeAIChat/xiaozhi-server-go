@@ -83,6 +83,15 @@ type Config struct {
 	VLLLM map[string]VLLMConfig `yaml:"VLLLM" json:"VLLLM"`
 
 	CMDExit []string `yaml:"CMD_exit" json:"CMD_exit"`
+
+	// 路径配置
+	Paths struct {
+		BaseDir    string `yaml:"base_dir" json:"base_dir"`           // 基础目录，默认为 "data"
+		MusicDir   string `yaml:"music_dir" json:"music_dir"`         // 音乐文件目录，默认为 "data/music"
+		TempDir    string `yaml:"temp_dir" json:"temp_dir"`           // 临时文件目录，默认为 "data/tmp"
+		OTADir     string `yaml:"ota_dir" json:"ota_dir"`             // OTA固件目录，默认为 "data/ota"
+		CacheDir   string `yaml:"cache_dir" json:"cache_dir"`         // 缓存目录，默认为 "data/cache"
+	} `yaml:"paths" json:"paths"`
 }
 
 type LocalMCPFun struct {
