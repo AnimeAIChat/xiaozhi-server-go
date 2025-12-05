@@ -304,7 +304,7 @@ func StartHttpServer(
 	g.Go(func() error {
 		logger.InfoTag("HTTP", "Gin 服务已启动，访问地址 http://localhost:%d", config.Web.Port)
 		logger.InfoTag("HTTP", "OTA 服务入口: http://localhost:%d/api/ota/", config.Web.Port)
-		logger.InfoTag("HTTP", "在线文档入口: http://localhost:%d/docs", config.Web.Port)
+		logger.InfoTag("HTTP", "在线文档入口: http://localhost:%d/swagger/index.html", config.Web.Port)
 
 		// 在单独的 goroutine 中监听关闭信号
 		go func() {

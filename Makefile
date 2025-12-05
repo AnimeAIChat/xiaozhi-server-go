@@ -6,7 +6,7 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 MAIN_PKG=./src
 BINARY_NAME=xiaozhi-server
-SWAG_MAIN=src/main.go
+SWAG_MAIN=main.go
 SWAG_DIRS=src,src/httpsvr/webapi,src/httpsvr/vision,src/httpsvr/ota,src/models
 SWAG_OUT=src/docs
 SWAG_FLAGS=--parseDependency=false --parseGoList=false
