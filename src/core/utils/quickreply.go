@@ -10,7 +10,7 @@ import (
 
 // QuickReplyCache 快速回复缓存配置
 type QuickReplyCache struct {
-	CacheDir    string // 缓存目录，默认为 "wake_replay"
+	CacheDir    string // 缓存目录，默认为 "data/wake_replay"
 	TTSProvider string // TTS提供商名称
 	VoiceName   string // 音色名称
 	AudioFormat string // 音频格式，默认为 "mp3"
@@ -19,7 +19,7 @@ type QuickReplyCache struct {
 // NewQuickReplyCache 创建快速回复缓存配置
 func NewQuickReplyCache(ttsProvider, voiceName string) *QuickReplyCache {
 	return &QuickReplyCache{
-		CacheDir:    "wake_replay",
+		CacheDir:    "data/wake_replay",
 		TTSProvider: ttsProvider,
 		VoiceName:   voiceName,
 		AudioFormat: "mp3",
