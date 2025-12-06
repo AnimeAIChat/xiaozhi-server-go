@@ -60,3 +60,24 @@ esp32的MCP，添加自定义MCP工具需要在前端修改，默认支持4个�
 ```
 
 服务启动时会自动加载MCP配置，预生成MCP资源池，观察日志可以确认MCP是否加载成功
+
+## 支持多种传输方式
+除了命令行（stdio）方式外，服务端现在也支持Streamable HTTP传输。新增的 `transport` 字段允许配置不同的通道：
+
+```json
+{
+  "mcpServers": {
+    "rag-stdio": {
+      "transport": "stdio",
+      "command": "uv",
+      "args": ["run", "mcp-rag", "serve"]
+    },
+    "rag-http": {
+      "transport": "http",
+      "url": "http://127.0.0.1:3000/mcp/"
+    }
+  }
+}
+```
+
+如果未显式设置 `transport`，则默认会根据已有字段推断：优先使用 `command` （stdio），否则尝试 `url`（http）。

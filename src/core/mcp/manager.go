@@ -47,7 +47,7 @@ type Manager struct {
 func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
 	lg.Debug("[MCP] 创建管理器用于资源池")
 	projectDir := utils.GetProjectDir()
-	configPath := filepath.Join(projectDir,"data",".mcp_server_settings.json")
+	configPath := filepath.Join(projectDir, "data", ".mcp_server_settings.json")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		configPath = ""
@@ -86,7 +86,7 @@ func (m *Manager) preInitializeServers() error {
 		// 没有MCP配置文件，跳过外部服务器初始化
 		mcpConfigMutex.Lock()
 		if !mcpConfigChecked {
-			m.logger.Info("[信息] 没有找到MCP服务器配置")
+			m.logger.Info("[MCP] 没有找到MCP服务器配置")
 			mcpConfigChecked = true
 		}
 		mcpConfigMutex.Unlock()
@@ -129,6 +129,28 @@ func (m *Manager) preInitializeServers() error {
 	}
 
 	m.isInitialized = true
+
+	// 打印初始化统计信息（只在第一个管理器中打印详细信息）
+	clientCount := len(m.clients)
+	if clientCount > 0 {
+		clientNames := make([]string, 0, clientCount)
+		for name := range m.clients {
+			clientNames = append(clientNames, name)
+		}
+		// 使用全局标记控制详细日志的打印
+		mcpConfigMutex.Lock()
+		firstInit := !mcpConfigChecked
+		if firstInit {
+			mcpConfigChecked = true
+		}
+		mcpConfigMutex.Unlock()
+
+		if firstInit {
+			m.logger.Info("[MCP] 管理器初始化完成，共加载 %d 个客户端: %v", clientCount, clientNames)
+		} else {
+			m.logger.Debug("[MCP] 管理器初始化完成，共加载 %d 个客户端: %v", clientCount, clientNames)
+		}
+	}
 	return nil
 }
 
@@ -160,7 +182,7 @@ func (m *Manager) BindConnection(
 	token := paramsMap["token"].(string)
 	m.logger.Debug("绑定连接到MCP Manager, sessionID: %s, visionURL: %s", sessionID, visionURL)
 	if !m.isInitialized {
-		m.logger.Info("BindConnection, MCP Manager未初始化，预初始化MCP服务器")
+		m.logger.Debug("[MCP] 绑定连接，MCP管理器未初始化，预初始化MCP服务器")
 		m.preInitializeServers()
 	}
 
@@ -180,7 +202,7 @@ func (m *Manager) BindConnection(
 		m.XiaoZhiMCPClient.SetID(deviceID, clientID)
 		m.XiaoZhiMCPClient.SetToken(token)
 		if !m.XiaoZhiMCPClient.IsReady() {
-			m.logger.Info("XiaoZhi MCP客户端未就绪，重新启动")
+			m.logger.Info("[MCP] XiaoZhi MCP客户端未就绪，重新启动")
 			if err := m.XiaoZhiMCPClient.Start(context.Background()); err != nil {
 				return fmt.Errorf("重启XiaoZhi MCP客户端失败: %v", err)
 			}
@@ -218,7 +240,7 @@ func (m *Manager) registerAllToolsIfNeeded() {
 				m.funcHandler.RegisterFunction(toolName, tool)
 				if !m.isToolRegistered(toolName) {
 					m.tools = append(m.tools, toolName)
-					m.logger.Info("Registered external MCP tool: [%s] %s", toolName, tool.Function.Description)
+					m.logger.Info("[MCP] 已注册外部MCP工具: [%s] %s", toolName, tool.Function.Description)
 				}
 			}
 		}
@@ -371,7 +393,12 @@ func convertConfig(cfg map[string]interface{}) (*Config, error) {
 		}
 	}
 
-	// SSE连接URL
+	// transport类型
+	if transport, ok := cfg["transport"].(string); ok {
+		config.Transport = transport
+	}
+
+	// SSE连接URL / HTTP端点
 	if url, ok := cfg["url"].(string); ok {
 		config.URL = url
 	}
@@ -423,7 +450,7 @@ func (m *Manager) ExecuteTool(
 	toolName string,
 	arguments map[string]interface{},
 ) (interface{}, error) {
-	m.logger.Info(fmt.Sprintf("Executing tool %s with arguments: %v", toolName, arguments))
+	m.logger.Info("[MCP] 执行工具 %s，参数: %v", toolName, arguments)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -465,7 +492,7 @@ func (m *Manager) CleanupAll(ctx context.Context) {
 
 			select {
 			case <-done:
-				m.logger.Info(fmt.Sprintf("MCP client closed: %s", name))
+				m.logger.Info("[MCP] MCP客户端已关闭: %s", name)
 			case <-ctx.Done():
 				m.logger.Error(fmt.Sprintf("Timeout closing MCP client %s", name))
 			}
