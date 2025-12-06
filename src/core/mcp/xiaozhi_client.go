@@ -244,7 +244,7 @@ func (c *XiaoZhiMCPClient) CallTool(
 		return nil, fmt.Errorf("序列化MCP工具调用请求失败: %v", err)
 	}
 
-	c.logger.Info(fmt.Sprintf("发送客户端mcp工具调用请求: %s，参数: %s", originalName, string(data)))
+	c.logger.Info("[MCP] 发送客户端mcp工具调用请求: %s，参数: %s", originalName, string(data))
 	if c.conn == nil {
 		// 清理资源
 		c.callResultsLock.Lock()
@@ -268,7 +268,7 @@ func (c *XiaoZhiMCPClient) CallTool(
 		if err, ok := result.(error); ok {
 			return nil, err
 		}
-		c.logger.Info(fmt.Sprintf("客户端mcp工具调用 %s 成功，结果: %v", originalName, result))
+		c.logger.Info("[MCP] 客户端mcp工具调用 %s 成功，结果: %v", originalName, result)
 		//  map[content:[map[text:{"audio_speaker":{"volume":10},"screen":{},"network":{"type":"wifi","ssid":"zgcinnotown","signal":"weak"}} type:text]] isError:false]
 		// 将里面的text提取出来
 		if resultMap, ok := result.(map[string]interface{}); ok {
@@ -293,7 +293,7 @@ func (c *XiaoZhiMCPClient) CallTool(
 							}
 							return ret, nil
 						}
-						c.logger.Info(fmt.Sprintf("工具调用返回文本: %s", text))
+						c.logger.Info("[MCP] 工具调用返回文本: %s", text)
 						ret := types.ActionResponse{
 							Action: types.ActionTypeReqLLM,
 							Result: text,
@@ -432,7 +432,7 @@ func (c *XiaoZhiMCPClient) SendMCPToolsListContinueRequest(cursor string) error 
 		return fmt.Errorf("序列化MCP工具列表请求失败: %v", err)
 	}
 
-	c.logger.Info(fmt.Sprintf("发送带cursor的MCP工具列表请求: %s", cursor))
+	c.logger.Info("[MCP] 发送带cursor的MCP工具列表请求: %s", cursor)
 	if c.conn == nil {
 		return fmt.Errorf("MCP客户端尚未连接")
 	}
@@ -557,7 +557,7 @@ func (c *XiaoZhiMCPClient) HandleMCPMessage(msgMap map[string]interface{}) error
 		}
 	} else if method, hasMethod := payload["method"].(string); hasMethod {
 		// 处理客户端发起的请求
-		c.logger.Info(fmt.Sprintf("收到MCP客户端请求: %s", method))
+		c.logger.Info("[MCP] 收到MCP客户端的请求: %s", method)
 		// TODO: 实现处理客户端请求的逻辑
 	} else if errorData, hasError := payload["error"].(map[string]interface{}); hasError {
 		// 处理错误响应
