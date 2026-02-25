@@ -49,7 +49,9 @@ func (h *ConnectionHandler) sendTTSMessage(state string, text string, textIndex 
 		"index":       textIndex,
 		"audio_codec": "opus", // 标识使用Opus编码
 	}
+	//h.LogInfo(fmt.Sprintf("[TTS] 发送消息: %+v", stateMsg))
 	data, err := json.Marshal(stateMsg)
+	h.LogInfo(fmt.Sprintf("[TTS] 发送消息: %s", string(data)))
 	if err != nil {
 		return fmt.Errorf("序列化%s状态失败: %v", state, err)
 	}

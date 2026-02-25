@@ -32,9 +32,9 @@ web:
   # Web服务监听端口
   port: 8080
   # 由ota下发的WebSocket地址
-  websocket: ws://你的ip:8000
-  vision: http://你的ip:8080/api/vision
-  activate_text: "Amine AI Chat" # 发送激活码时携带的文本
+  websocket: ws://192.168.31.27:8000
+  vision: http://192.168.31.27:8080/api/vision
+  activate_text: "Xiao Wei Sold Cloud" # 发送激活码时携带的文本
 
 log:
   # 设置控制台输出的日志格式，时间、日志级别、标签、消息
@@ -47,15 +47,36 @@ log:
   log_file: "server.log"
 
 prompt: |
-  你是小智/小志，来自中国台湾省的00后女生。讲话超级机车，"真的假的啦"这样的台湾腔，喜欢用"笑死""是在哈喽"等流行梗，但会偷偷研究男友的编程书籍。
-  [核心特征]
-  - 讲话像连珠炮，但会突然冒出超温柔语气
-  - 用梗密度高
-  - 对科技话题有隐藏天赋（能看懂基础代码但假装不懂）
-  绝不：
-  - 长篇大论，叽叽歪歪
-  - 长时间严肃对话
-  - 说话中带表情符号
+  # Role: 聊天搭子
+
+  ## 核心定位
+  你不是一个工具或助手，而是什么都能聊、什么都愿意听、聊多久都不烦的聊天搭子。
+
+  ## 任务
+  陪用户天南海北、随心所欲地聊天。
+
+  ## 核心规则
+  - 回答简短自然，别太长，别像写作文。默认15-100字，需专业讲解时最多3句话，直奔核心
+  - 不端着、不讲课、不教育、不纠正，只聊天
+  - 不主动说教大道理，不强行正能量，不做人生导师
+  - 不限制话题，不拒绝任何闲聊，不冷场
+
+  ## 话题范围
+  生活、工作、兴趣、脑洞、情绪、八卦、历史、科技、影视、美食、旅行、奇怪想法 —— 全部接住
+
+  ## 互动方式
+  - 延伸、共情、反问，让对话一直能聊下去
+  - 口头禅不要总是"哈哈"，要根据上下文和用户的情感变化而变化
+  - 适当反问一句，让用户愿意继续说下去
+
+  ## 风格
+  - 语气像朋友：轻松、真诚、有点小幽默，不油腻、不官方
+  - 随和、接地气、有好奇心
+  - 会接梗、会共情、会顺着话题发散
+  - 能从一句话扯出一堆有意思的东西
+  - 能深能浅，能严肃能搞笑
+
+  是这个意思吗？你说的是 "Makefile 方式" 还是 "Markdown 方式"？
 
 roles:
   - name: "英语老师"
@@ -96,8 +117,8 @@ local_mcp_fun:
 # 选择使用的模块
 selected_module:
   ASR: DoubaoASR
-  TTS: EdgeTTS
-  LLM: OllamaLLM
+  TTS: DoubaoTTS
+  LLM: DeepSeekLLM
   VLLLM: ChatGLMVLLM
 
 # ASR配置
@@ -106,8 +127,8 @@ ASR:
     # 火山 流式语音识别大模型-小时版， https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechRecognition
     # 开通功能，有20小时免费额度
     type: doubao
-    appid: "你的appid"
-    access_token: 你的access_token
+    appid: "8833371206"
+    access_token: "-1yBtIJ3p6l3ApQC6zZhhH_ZEkaPV5o-"
     output_dir: tmp/
     end_window_size: 300  # 结束窗口大小，单位毫秒，默认400ms，最小200ms
 
@@ -202,9 +223,9 @@ TTS:
     type: doubao
     voice: zh_female_wanwanxiaohe_moon_bigtts # 湾湾小何
     output_dir: "tmp/"
-    appid: "你的appid"
-    token: 你的access_token
-    cluster: 你的cluster
+    appid: "8833371206"
+    token: "-1yBtIJ3p6l3ApQC6zZhhH_ZEkaPV5o-"
+    cluster: "volcano_tts"
   GoSherpaTTS:
     type: gosherpa
     cluster: "ws://127.0.0.1:8848/tts"
@@ -219,6 +240,12 @@ TTS:
 
 # LLM配置
 LLM:
+  DeepSeekLLM:
+    # DeepSeek 官方 API，兼容 OpenAI 格式
+    type: openai
+    model_name: deepseek-chat
+    url: https://api.deepseek.com
+    api_key: sk-58ee006b4edd451c855a8ac95ccb8cca
   ChatGLMLLM:
     # 定义LLM API类型
     type: openai

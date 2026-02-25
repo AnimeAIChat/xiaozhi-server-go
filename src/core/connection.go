@@ -512,21 +512,22 @@ func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, resul
 
 func (h *ConnectionHandler) LogInfo(msg string) {
 	if h.logger != nil {
-		h.logger.Info(msg, map[string]interface{}{
+		// skipFrames=1 表示跳过 LogInfo 方法，获取真实调用者的行号
+		h.logger.Info(msg, 1, map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
 }
 func (h *ConnectionHandler) LogDebug(msg string) {
 	if h.logger != nil {
-		h.logger.Debug(msg, map[string]interface{}{
+		h.logger.Debug(msg, 1, map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}
 }
 func (h *ConnectionHandler) LogError(msg string) {
 	if h.logger != nil {
-		h.logger.Error(msg, map[string]interface{}{
+		h.logger.Error(msg, 1, map[string]interface{}{
 			"device": h.deviceID,
 		})
 	}

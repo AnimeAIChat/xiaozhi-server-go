@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -89,40 +90,75 @@ func (h *CustomTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	var isStageLog bool
 	msg := r.Message
 
-	if strings.HasPrefix(msg, "[ASR]") {
+	if strings.HasPrefix(msg, "[ASR]") || strings.HasPrefix(msg, "[ASR] ") {
 		stageColor = colorASR
 		isStageLog = true
-	} else if strings.HasPrefix(msg, "[LLM]") {
+	} else if strings.HasPrefix(msg, "[LLM]") || strings.HasPrefix(msg, "[LLM] ") {
 		stageColor = colorLLM
 		isStageLog = true
-	} else if strings.HasPrefix(msg, "[TTS]") {
+	} else if strings.HasPrefix(msg, "[TTS]") || strings.HasPrefix(msg, "[TTS] ") {
 		stageColor = colorTTS
 		isStageLog = true
-	} else if strings.HasPrefix(msg, "[TIMING]") {
+	} else if strings.HasPrefix(msg, "[TIMING]") || strings.HasPrefix(msg, "[TIMING] ") {
 		stageColor = colorTiming
 		isStageLog = true
 	}
 
+	// 提取 source 属性（文件名:行号）
+	var source string
+	attrsFunc := func(a slog.Attr) bool {
+		if a.Key == "source" {
+			source = a.Value.String()
+		}
+		return true
+	}
+	r.Attrs(attrsFunc)
+
 	// 构建输出
 	var output string
 	if isStageLog {
-		// 阶段日志格式: [时间] [阶段] 消息
-		output = fmt.Sprintf("%s[%s]%s %s%s%s",
-			colorTime, timeStr, colorReset,
-			stageColor, msg, colorReset)
+		// 阶段日志格式: [时间] [阶段] [行号] 消息内容
+		// msg 已包含阶段前缀如 "[TTS] 消息内容"，需要提取消息内容放在行号后面
+		stagePrefix := ""
+		stageContent := msg
+		if strings.HasPrefix(msg, "[ASR]") || strings.HasPrefix(msg, "[ASR] ") {
+			stagePrefix = "[ASR]"
+			stageContent = strings.TrimPrefix(msg, "[ASR]")
+			stageContent = strings.TrimPrefix(stageContent, " ")
+		} else if strings.HasPrefix(msg, "[LLM]") || strings.HasPrefix(msg, "[LLM] ") {
+			stagePrefix = "[LLM]"
+			stageContent = strings.TrimPrefix(msg, "[LLM]")
+			stageContent = strings.TrimPrefix(stageContent, " ")
+		} else if strings.HasPrefix(msg, "[TTS]") || strings.HasPrefix(msg, "[TTS] ") {
+			stagePrefix = "[TTS]"
+			stageContent = strings.TrimPrefix(msg, "[TTS]")
+			stageContent = strings.TrimPrefix(stageContent, " ")
+		} else if strings.HasPrefix(msg, "[TIMING]") || strings.HasPrefix(msg, "[TIMING] ") {
+			stagePrefix = "[TIMING]"
+			stageContent = strings.TrimPrefix(msg, "[TIMING]")
+			stageContent = strings.TrimPrefix(stageContent, " ")
+		}
+		// 格式: [时间] [阶段] [行号] 消息内容
+		output = colorTime + "[" + timeStr + "]" + colorReset + " " +
+			stageColor + stagePrefix + colorReset + " " +
+			colorTime + "[" + source + "]" + colorReset + " " +
+			stageContent
 	} else {
-		// 普通日志格式: [时间] [级别] 消息
-		output = fmt.Sprintf("%s[%s]%s %s[%s]%s %s",
+		// 普通日志格式: [时间] [级别] [source] 消息
+		output = fmt.Sprintf("%s[%s]%s %s[%s]%s %s[%s]%s %s",
 			colorTime, timeStr, colorReset,
 			levelColor, levelStr, colorReset,
+			colorTime, source, colorReset,
 			msg)
 	}
 
-	// 添加属性（如果有）
+	// 添加其他属性（排除 source）
 	if r.NumAttrs() > 0 {
 		output += " {"
 		r.Attrs(func(a slog.Attr) bool {
-			output += fmt.Sprintf(" %s=%v", a.Key, a.Value)
+			if a.Key != "source" {
+				output += fmt.Sprintf(" %s=%v", a.Key, a.Value)
+			}
 			return true
 		})
 		output += " }"
@@ -357,15 +393,25 @@ func (l *Logger) Close() error {
 }
 
 // log 通用日志记录函数（内部使用）
-func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
+// skipFrames: 额外的跳过帧数，用于获取真实的调用者信息
+func (l *Logger) log(level slog.Level, msg string, skipFrames int, fields ...interface{}) {
 	// 使用读锁保护并发访问
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	// 构建slog属性
-	var attrs []slog.Attr
+	// 获取调用方信息（跳过 runtime.Callers + log + Debug/Info/Warn/Error + 额外的 skipFrames）
+	pcs := make([]uintptr, 3+skipFrames)
+	runtime.Callers(3+skipFrames, pcs)
+	frames := runtime.CallersFrames(pcs)
+	frame, _ := frames.Next()
+
+	// 构建 source 属性
+	source := fmt.Sprintf("%s:%d", filepath.Base(frame.File), frame.Line)
+
+	// 构建 slog 属性
+	attrs := []slog.Attr{slog.String("source", source)}
 	if len(fields) > 0 && fields[0] != nil {
-		// 处理fields参数
+		// 处理 fields 参数
 		if fieldsMap, ok := fields[0].(map[string]interface{}); ok {
 			// 提取并排序键
 			keys := make([]string, 0, len(fieldsMap))
@@ -379,7 +425,7 @@ func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
 				attrs = append(attrs, slog.Any(k, fieldsMap[k]))
 			}
 		} else {
-			// 如果不是map，直接作为fields字段
+			// 如果不是 map，直接作为 fields 字段
 			attrs = append(attrs, slog.Any("fields", fields[0]))
 		}
 	}
@@ -391,13 +437,20 @@ func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
 }
 
 // Debug 记录调试级别日志
+// 参数支持:
+//   - Debug(msg) - 仅消息
+//   - Debug(msg, fieldsMap) - 消息 + 字段映射
+//   - Debug(msg, skipFrames) - 消息 + 跳过帧数
+//   - Debug(msg, skipFrames, fieldsMap) - 消息 + 跳过帧数 + 字段映射
 func (l *Logger) Debug(msg string, args ...interface{}) {
 	if l.config.LogLevel == "DEBUG" {
-		if len(args) > 0 && containsFormatPlaceholders(msg) {
-			formattedMsg := fmt.Sprintf(msg, args...)
-			l.log(slog.LevelDebug, formattedMsg)
+		skipFrames, fields := l.parseArgs(args)
+		if fields != nil {
+			l.log(slog.LevelDebug, msg, skipFrames, fields)
+		} else if containsFormatPlaceholders(msg) && len(args) > 0 {
+			l.log(slog.LevelDebug, fmt.Sprintf(msg, args...), skipFrames)
 		} else {
-			l.log(slog.LevelDebug, msg, args...)
+			l.log(slog.LevelDebug, msg, skipFrames)
 		}
 	}
 }
@@ -406,36 +459,85 @@ func containsFormatPlaceholders(s string) bool {
 	return strings.Contains(s, "%")
 }
 
+// parseArgs 解析可变参数，支持 skipFrames 和 fieldsMap
+// 返回 skipFrames 和 fieldsMap
+func (l *Logger) parseArgs(args []interface{}) (int, interface{}) {
+	var skipFrames int
+	var fields interface{}
+
+	if len(args) == 0 {
+		return 0, nil
+	}
+
+	// 只有 1 个参数
+	if len(args) == 1 {
+		if skip, ok := args[0].(int); ok {
+			// 只有 skipFrames
+			return skip, nil
+		}
+		// 只有 fieldsMap
+		return 0, args[0]
+	}
+
+	// 2 个参数：可能是 (skipFrames, fieldsMap) 或 (fieldsMap, 忽略)
+	if len(args) >= 2 {
+		if skip, ok := args[0].(int); ok {
+			skipFrames = skip
+			fields = args[1]
+		}
+	}
+
+	return skipFrames, fields
+}
+
 // Info 记录信息级别日志
+// 参数支持:
+//   - Info(msg) - 仅消息
+//   - Info(msg, fieldsMap) - 消息 + 字段映射
+//   - Info(msg, skipFrames) - 消息 + 跳过帧数
+//   - Info(msg, skipFrames, fieldsMap) - 消息 + 跳过帧数 + 字段映射
 func (l *Logger) Info(msg string, args ...interface{}) {
-	// 检测是否为格式化模式
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
-		// 格式化模式：类似 Info
-		formattedMsg := fmt.Sprintf(msg, args...)
-		l.log(slog.LevelInfo, formattedMsg)
+	skipFrames, fields := l.parseArgs(args)
+	if fields != nil {
+		l.log(slog.LevelInfo, msg, skipFrames, fields)
+	} else if containsFormatPlaceholders(msg) && len(args) > 0 {
+		l.log(slog.LevelInfo, fmt.Sprintf(msg, args...), skipFrames)
 	} else {
-		// 结构化模式：原有方式
-		l.log(slog.LevelInfo, msg, args...)
+		l.log(slog.LevelInfo, msg, skipFrames)
 	}
 }
 
 // Warn 记录警告级别日志
+// 参数支持:
+//   - Warn(msg) - 仅消息
+//   - Warn(msg, fieldsMap) - 消息 + 字段映射
+//   - Warn(msg, skipFrames) - 消息 + 跳过帧数
+//   - Warn(msg, skipFrames, fieldsMap) - 消息 + 跳过帧数 + 字段映射
 func (l *Logger) Warn(msg string, args ...interface{}) {
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
-		formattedMsg := fmt.Sprintf(msg, args...)
-		l.log(slog.LevelWarn, formattedMsg)
+	skipFrames, fields := l.parseArgs(args)
+	if fields != nil {
+		l.log(slog.LevelWarn, msg, skipFrames, fields)
+	} else if containsFormatPlaceholders(msg) && len(args) > 0 {
+		l.log(slog.LevelWarn, fmt.Sprintf(msg, args...), skipFrames)
 	} else {
-		l.log(slog.LevelWarn, msg, args...)
+		l.log(slog.LevelWarn, msg, skipFrames)
 	}
 }
 
 // Error 记录错误级别日志
+// 参数支持:
+//   - Error(msg) - 仅消息
+//   - Error(msg, fieldsMap) - 消息 + 字段映射
+//   - Error(msg, skipFrames) - 消息 + 跳过帧数
+//   - Error(msg, skipFrames, fieldsMap) - 消息 + 跳过帧数 + 字段映射
 func (l *Logger) Error(msg string, args ...interface{}) {
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
-		formattedMsg := fmt.Sprintf(msg, args...)
-		l.log(slog.LevelError, formattedMsg)
+	skipFrames, fields := l.parseArgs(args)
+	if fields != nil {
+		l.log(slog.LevelError, msg, skipFrames, fields)
+	} else if containsFormatPlaceholders(msg) && len(args) > 0 {
+		l.log(slog.LevelError, fmt.Sprintf(msg, args...), skipFrames)
 	} else {
-		l.log(slog.LevelError, msg, args...)
+		l.log(slog.LevelError, msg, skipFrames)
 	}
 }
 

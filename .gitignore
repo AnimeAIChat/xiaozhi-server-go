@@ -6,8 +6,47 @@ xiaozhi-server
 xiaozhi-server-go
 .mcp_server_settings copy.json
 .DS_Store
-wake_replay
 /uploads
 .env
 config.db
 /ota_bin
+.claude/settings.local.json
+/test/leogo_test
+/demo/websocket_client/recorder_files/
+/wake_replay
+
+# --- JetBrains / GoLand ---
+#JetBrains（GoLand 的开发商）官方建议是**“部分提交”**。这可以帮助团队成员统一代码风格（Code Style）和运行配置（Run Configurations）。
+# 绝对不要提交的文件（必须忽略）：
+#这些文件包含了你个人的本地路径、窗口布局、最近打开的文件等，提交了会导致别人拉取代码后 IDE 报错或冲突。
+#workspace.xml (最重要！ 这是最容易产生冲突的文件)
+#usage.statistics.xml
+#shelf/ 文件夹
+#.xml 文件中包含 Component: Dictionary 的部分（本地字典）
+# 建议提交的文件：
+#codeStyles/：团队统一的代码格式化规则。
+#inspectionProfiles/：代码检查规则。
+#runConfigurations/：共享的运行/调试配置（比如“一键启动所有服务”的配置）。
+#*.iml (在 Go 项目中较少见，Java 项目常见，通常 GoLand 基于 go.mod 管理，这个文件可以忽略)
+
+.idea/*
+# 如果你想保留共享配置，就把上面那行 .idea/* 删掉，换成下面这些：
+
+## 必须忽略的用户特定配置
+#.idea/workspace.xml
+#.idea/tasks.xml
+#.idea/usage.statistics.xml
+#.idea/dictionaries
+#.idea/shelf
+#
+## 忽略临时文件
+#.idea/**/dataSources/
+#.idea/**/dataSources.ids
+#.idea/**/dataSources.xml
+#.idea/**/dataSources.local.xml
+#.idea/**/sqlDataSources.xml
+#.idea/**/dynamic.xml
+#.idea/**/uiDesigner.xml
+#.idea/**/dbnavigator.xml
+
+# --- End JetBrains ---
