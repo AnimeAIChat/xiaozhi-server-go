@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"xiaozhi-server-go/src/configs"
+	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/models"
 
 	"gorm.io/datatypes"
@@ -236,9 +237,10 @@ func GetProviderByTypeInternal(providerType string, userID uint, bRemoveSensitiv
 				continue
 			}
 			if bRemoveSensitive {
-				asrs[config.Name], _ = RemoveSensitiveFields(config.Data)
+				sanitized, _ := RemoveSensitiveFields(config.Data)
+				asrs[config.Name] = normalizeProviderDataType(config.Name, config.Type, datatypes.JSON([]byte(sanitized)))
 			} else {
-				asrs[config.Name] = string(config.Data)
+				asrs[config.Name] = normalizeProviderDataType(config.Name, config.Type, config.Data)
 			}
 		}
 		return asrs, nil
@@ -302,6 +304,34 @@ func GetProviderByTypeInternal(providerType string, userID uint, bRemoveSensitiv
 }
 
 // CreateProvider 创建新的提供者
+func normalizeProviderDataType(name, providerType string, data datatypes.JSON) string {
+	if providerType == "" {
+		return string(data)
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return string(data)
+	}
+
+	dataType, _ := config["type"].(string)
+	if dataType != "" && dataType != providerType && utils.DefaultLogger != nil {
+		utils.DefaultLogger.Warn(
+			"[Provider] 配置类型不一致，已使用数据库type字段: name=%s db_type=%s data_type=%s",
+			name,
+			providerType,
+			dataType,
+		)
+	}
+	config["type"] = providerType
+
+	normalized, err := json.Marshal(config)
+	if err != nil {
+		return string(data)
+	}
+	return string(normalized)
+}
+
 func CreateProvider(providerType, name string, data interface{}, createUserID uint) error {
 	providerJson, err := json.Marshal(data)
 	if err != nil {

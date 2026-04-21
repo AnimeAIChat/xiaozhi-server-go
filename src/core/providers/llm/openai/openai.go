@@ -2,7 +2,10 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/types"
 
@@ -82,7 +85,7 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 			},
 		)
 		if err != nil {
-			responseChan <- fmt.Sprintf("【OpenAI服务响应异常: %v】", err)
+			responseChan <- p.formatProviderError("create stream", err)
 			return
 		}
 		defer stream.Close()
@@ -91,17 +94,23 @@ func (p *Provider) Response(ctx context.Context, sessionID string, messages []ty
 		for {
 			response, err := stream.Recv()
 			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					responseChan <- p.formatProviderError("receive stream", err)
+				}
 				break
 			}
 
-			if len(response.Choices) > 0 {
-				content := response.Choices[0].Delta.Content
-				if content != "" {
-					// 处理思考标签
-					if content, isActive = handleThinkTags(content, isActive); content != "" {
-						responseChan <- content
-					}
-				}
+			if len(response.Choices) == 0 {
+				continue
+			}
+
+			content := response.Choices[0].Delta.Content
+			if content == "" {
+				continue
+			}
+
+			if content, isActive = handleThinkTags(content, isActive); content != "" {
+				responseChan <- content
 			}
 		}
 	}()
@@ -158,9 +167,10 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 			},
 		)
 		if err != nil {
+			formattedErr := p.formatProviderError("create stream", err)
 			responseChan <- types.Response{
-				Content: fmt.Sprintf("【OpenAI服务响应异常: %v】", err),
-				Error:   err.Error(),
+				Content: formattedErr,
+				Error:   formattedErr,
 			}
 			return
 		}
@@ -169,40 +179,69 @@ func (p *Provider) ResponseWithFunctions(ctx context.Context, sessionID string, 
 		for {
 			response, err := stream.Recv()
 			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					formattedErr := p.formatProviderError("receive stream", err)
+					responseChan <- types.Response{
+						Content: formattedErr,
+						Error:   formattedErr,
+					}
+				}
 				break
 			}
 
-			if len(response.Choices) > 0 {
-				delta := response.Choices[0].Delta
-				chunk := types.Response{
-					Content: delta.Content,
-				}
-				//fmt.Println("openai delta:", delta)
-
-				if len(delta.ToolCalls) > 0 {
-					toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
-					for i, tc := range delta.ToolCalls {
-						toolCalls[i] = types.ToolCall{
-							ID:   tc.ID,
-							Type: string(tc.Type),
-							Function: types.FunctionCall{
-								Name:      tc.Function.Name,
-								Arguments: tc.Function.Arguments,
-							},
-						}
-					}
-					chunk.ToolCalls = toolCalls
-				}
-
-				responseChan <- chunk
+			if len(response.Choices) == 0 {
+				continue
 			}
+
+			delta := response.Choices[0].Delta
+			chunk := types.Response{
+				Content: delta.Content,
+			}
+
+			if len(delta.ToolCalls) > 0 {
+				toolCalls := make([]types.ToolCall, len(delta.ToolCalls))
+				for i, tc := range delta.ToolCalls {
+					toolCalls[i] = types.ToolCall{
+						ID:   tc.ID,
+						Type: string(tc.Type),
+						Function: types.FunctionCall{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					}
+				}
+				chunk.ToolCalls = toolCalls
+			}
+
+			responseChan <- chunk
 		}
 	}()
 
 	return responseChan, nil
 }
 
-// handleThinkTags 处理思考标签
+func (p *Provider) formatProviderError(stage string, err error) string {
+	message := fmt.Sprintf("OpenAI-compatible LLM %s error: %v", stage, err)
+
+	config := p.Config()
+	baseURL := ""
+	if config != nil {
+		baseURL = config.BaseURL
+	}
+
+	if strings.Contains(baseURL, "xf-yun.com") || strings.Contains(message, "xf-yun.com") {
+		message += "; xfyun hint: confirm the selected model version and APIPassword belong to the same Spark HTTP service authorization"
+		if strings.Contains(message, "AppIdNoAuthError") || strings.Contains(message, "11200") {
+			message += "; AppIdNoAuthError/11200 usually means this app has not enabled the model, or the APIPassword does not match the model version"
+		}
+		if strings.Contains(message, "HMAC secret key does not match") {
+			message += "; HMAC secret key does not match usually means an ASR/TTS APIKey/APISecret was used instead of the Spark HTTP APIPassword"
+		}
+	}
+
+	return message
+}
+
 func handleThinkTags(content string, isActive bool) (string, bool) {
 	if content == "" {
 		return "", isActive

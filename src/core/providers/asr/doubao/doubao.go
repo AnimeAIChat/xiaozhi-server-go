@@ -410,7 +410,7 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 }
 
 func (p *Provider) StartStreaming(ctx context.Context) error {
-	p.logger.Info("[ASR] [流式识别] 开始")
+	p.logger.Info("[ASR] [doubao] [流式识别] 开始")
 	p.ResetStartListenTime()
 	// 加锁保护连接初始化
 	p.connMutex.Lock()

@@ -131,6 +131,20 @@ ASR:
     prompt: 你是由阶跃星辰提供的AI聊天助手，你擅长中文、英文及多语种对话。
 
 # TTS配置
+  IflytekASR:
+    # iFlytek voice dictation WebSocket, expects 16k PCM audio.
+    type: iflytek
+    appid: "your_appid"
+    api_key: "your_api_key"
+    api_secret: "your_api_secret"
+    asr_url: "wss://iat-api.xfyun.cn/v2/iat"
+    language: "zh_cn"
+    domain: "iat"
+    accent: "mandarin"
+    vad_eos: 2000
+    format: "audio/L16;rate=16000"
+    encoding: "raw"
+
 TTS:
   # EdgeTTS 是微软的语音合成服务，免费使用，容易合成失败，并发未测试
   EdgeTTS:
@@ -218,6 +232,33 @@ TTS:
     sample_rate: 16000
 
 # LLM配置
+  IflytekTTS:
+    # token stores api_key, cluster stores api_secret for compatibility with existing TTS config.
+    type: iflytek
+    voice: xiaoyan
+    format: mp3
+    output_dir: "tmp/"
+    appid: "your_appid"
+    token: "your_api_key"
+    cluster: "your_api_secret"
+    supported_voices:
+      [
+        {
+          name: "xiaoyan",
+          display_name: "xiaoyan",
+          sex: "female",
+          description: "iFlytek Mandarin female voice",
+          audio_url: "",
+        },
+        {
+          name: "aisjiuxu",
+          display_name: "aisjiuxu",
+          sex: "male",
+          description: "iFlytek Mandarin male voice",
+          audio_url: "",
+        },
+      ]
+
 LLM:
   ChatGLMLLM:
     # 定义LLM API类型

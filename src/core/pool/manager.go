@@ -44,6 +44,15 @@ func NewPoolManager(config *configs.Config, logger *utils.Logger) (*PoolManager,
 
 	// 检查配置是否包含所需的模块
 	selectedModule := config.SelectedModule
+	selectedASR := ""
+	if selectedModule != nil {
+		selectedASR = selectedModule["ASR"]
+	}
+	if selectedASR == "" {
+		logger.Warn("[ASR] 当前选择的ASR模型为空")
+	} else {
+		logger.Info("[ASR] 当前选择的ASR模型: %s", selectedASR)
+	}
 
 	// 初始化ASR池
 	if asrType, ok := selectedModule["ASR"]; ok && asrType != "" {
