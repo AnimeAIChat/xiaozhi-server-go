@@ -1,6 +1,8 @@
 module xiaozhi-server-go
 
-go 1.24
+go 1.24.0
+
+toolchain go1.24.2
 
 require (
 	github.com/coze-dev/coze-go v0.0.0-20250626063826-a17604b061c0
@@ -14,10 +16,10 @@ require (
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/joho/godotenv v1.5.1
 	github.com/mark3labs/mcp-go v0.29.0
-	github.com/qrtc/opus-go v0.0.1
+	github.com/AnimeAIChat/opus v0.0.0
 	github.com/sashabaranov/go-openai v1.40.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.4

@@ -392,15 +392,24 @@ func (l *Logger) log(level slog.Level, msg string, fields ...interface{}) {
 }
 
 // Debug 记录调试级别日志
-func (l *Logger) Debug(msg string, args ...interface{}) {
+func (l *Logger) Debug(msg any, args ...interface{}) {
 	if l.config.LogLevel == "DEBUG" {
-		if len(args) > 0 && containsFormatPlaceholders(msg) {
-			formattedMsg := fmt.Sprintf(msg, args...)
+		msgText := logMessageText(msg)
+		if len(args) > 0 && containsFormatPlaceholders(msgText) {
+			formattedMsg := fmt.Sprintf(msgText, args...)
 			l.log(slog.LevelDebug, formattedMsg)
 		} else {
-			l.log(slog.LevelDebug, msg, args...)
+			l.log(slog.LevelDebug, msgText, args...)
 		}
 	}
+}
+
+func logMessageText(msg any) string {
+	if s, ok := msg.(string); ok {
+		return s
+	}
+
+	return fmt.Sprint(msg)
 }
 
 func containsFormatPlaceholders(s string) bool {
@@ -408,35 +417,38 @@ func containsFormatPlaceholders(s string) bool {
 }
 
 // Info 记录信息级别日志
-func (l *Logger) Info(msg string, args ...interface{}) {
+func (l *Logger) Info(msg any, args ...interface{}) {
+	msgText := logMessageText(msg)
 	// 检测是否为格式化模式
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
+	if len(args) > 0 && containsFormatPlaceholders(msgText) {
 		// 格式化模式：类似 Info
-		formattedMsg := fmt.Sprintf(msg, args...)
+		formattedMsg := fmt.Sprintf(msgText, args...)
 		l.log(slog.LevelInfo, formattedMsg)
 	} else {
 		// 结构化模式：原有方式
-		l.log(slog.LevelInfo, msg, args...)
+		l.log(slog.LevelInfo, msgText, args...)
 	}
 }
 
 // Warn 记录警告级别日志
-func (l *Logger) Warn(msg string, args ...interface{}) {
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
-		formattedMsg := fmt.Sprintf(msg, args...)
+func (l *Logger) Warn(msg any, args ...interface{}) {
+	msgText := logMessageText(msg)
+	if len(args) > 0 && containsFormatPlaceholders(msgText) {
+		formattedMsg := fmt.Sprintf(msgText, args...)
 		l.log(slog.LevelWarn, formattedMsg)
 	} else {
-		l.log(slog.LevelWarn, msg, args...)
+		l.log(slog.LevelWarn, msgText, args...)
 	}
 }
 
 // Error 记录错误级别日志
-func (l *Logger) Error(msg string, args ...interface{}) {
-	if len(args) > 0 && containsFormatPlaceholders(msg) {
-		formattedMsg := fmt.Sprintf(msg, args...)
+func (l *Logger) Error(msg any, args ...interface{}) {
+	msgText := logMessageText(msg)
+	if len(args) > 0 && containsFormatPlaceholders(msgText) {
+		formattedMsg := fmt.Sprintf(msgText, args...)
 		l.log(slog.LevelError, formattedMsg)
 	} else {
-		l.log(slog.LevelError, msg, args...)
+		l.log(slog.LevelError, msgText, args...)
 	}
 }
 

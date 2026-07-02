@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hajimehoshi/go-mp3"
-	opus "github.com/qrtc/opus-go"
+	opus "github.com/AnimeAIChat/opus"
 )
 
 // OpusDecoder 封装opus解码器
@@ -542,8 +543,8 @@ func PCMToOpusData(pcmData []byte, sampleRate int, channels int) ([]byte, error)
 	encoder, err := opus.CreateOpusEncoder(&opus.OpusEncoderConfig{
 		SampleRate:    sampleRate,
 		MaxChannels:   channels,
-		Application:   opus.AppVoIP,
-		FrameDuration: opus.Framesize60Ms, // 使用60ms帧长
+		Application:   opus.ApplicationVoIP,
+		FrameDuration: 60 * time.Millisecond, // 使用60ms帧长
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建Opus编码器失败: %v", err)
@@ -639,8 +640,8 @@ func MP3ToOpusData(audioFile string) ([]byte, error) {
 	encoder, err := opus.CreateOpusEncoder(&opus.OpusEncoderConfig{
 		SampleRate:    sampleRate,
 		MaxChannels:   1, // 单声道
-		Application:   opus.AppVoIP,
-		FrameDuration: opus.Framesize60Ms, // 使用60ms帧长
+		Application:   opus.ApplicationVoIP,
+		FrameDuration: 60 * time.Millisecond, // 使用60ms帧长
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建Opus编码器失败: %v", err)
@@ -686,8 +687,9 @@ func PCMSlicesToOpusData(pcmSlices [][]byte, sampleRate int, channels int, bitra
 	encoder, err := opus.CreateOpusEncoder(&opus.OpusEncoderConfig{
 		SampleRate:    sampleRate,
 		MaxChannels:   channels,
-		Application:   opus.AppVoIP,
-		FrameDuration: opus.Framesize60Ms, // 使用60ms帧长
+		Application:   opus.ApplicationVoIP,
+		FrameDuration: 60 * time.Millisecond, // 使用60ms帧长
+		Bitrate:       bitrate,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建Opus编码器失败: %v", err)
