@@ -1,0 +1,9 @@
+{
+  "name": "玄凤小智",
+  "title": "玄凤小智管理后台",
+  "welcome": "欢迎使用玄凤小智后台管理面板",
+  "logoUrl": "/logo.png",
+  "favicon": "/favicon.ico",
+  "homeLink": "https://github.com/AnimeAIChat/xiaozhi-server-go/tree/main",
+  "copyright": "玄凤小智"
+}

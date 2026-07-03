@@ -1,15 +1,27 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-<meta http-equiv="X-UA-Compatible" content="ie=edge">
-<title>管理后台</title>
-<link rel="stylesheet" href="/umi.0da0e9b5.css">
-<script async src="\scripts\loading.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>玄凤小智管理后台</title>
+  <link rel="icon" href="/favicon.ico">
+  <script>
+    window.__STATIC_WEB_BASE__ = location.protocol === 'file:' ? './' : '/';
+    document.write('<link rel="stylesheet" href="' + window.__STATIC_WEB_BASE__ + 'assets/app.css">');
+  </script>
 </head>
 <body>
-<div id="root"></div>
-<script src="/umi.00842e6f.js"></script>
+  <div id="app">
+    <div class="app-loading">
+      <div class="loading-mark"></div>
+      <div>正在加载管理后台...</div>
+    </div>
+  </div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script>
+    document.write('<script src="' + window.__STATIC_WEB_BASE__ + 'assets/app.js"><\/script>');
+  </script>
 </body>
 </html>
