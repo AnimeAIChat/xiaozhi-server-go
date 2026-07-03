@@ -27,7 +27,6 @@ import (
 	"xiaozhi-server-go/src/core/types"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/models"
-	"xiaozhi-server-go/src/task"
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
@@ -67,15 +66,13 @@ type llmConfigGetter interface {
 // ConnectionHandler 连接处理器结构
 type ConnectionHandler struct {
 	// 确保实现 AsrEventListener 接口
-	_                providers.AsrEventListener
-	config           *configs.Config
-	logger           *utils.Logger
-	conn             Connection
-	closeOnce        sync.Once
-	taskMgr          *task.TaskManager
-	authManager      *auth.AuthManager // 认证管理器
-	safeCallbackFunc func(func(*ConnectionHandler)) func()
-	providers        struct {
+	_           providers.AsrEventListener
+	config      *configs.Config
+	logger      *utils.Logger
+	conn        Connection
+	closeOnce   sync.Once
+	authManager *auth.AuthManager // 认证管理器
+	providers   struct {
 		asr   providers.ASRProvider
 		llm   providers.LLMProvider
 		tts   providers.TTSProvider
@@ -477,37 +474,6 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 	}
 
 	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))
-}
-
-func (h *ConnectionHandler) SetTaskCallback(callback func(func(*ConnectionHandler)) func()) {
-	h.safeCallbackFunc = callback
-}
-
-func (h *ConnectionHandler) SubmitTask(taskType string, params map[string]interface{}) {
-	_task, id := task.NewTask(h.ctx, "", params)
-	h.LogInfo(fmt.Sprintf("提交任务: %s, ID: %s, 参数: %v", _task.Type, id, params))
-	// 创建安全回调用于任务完成时调用
-	var taskCallback func(result interface{})
-	if h.safeCallbackFunc != nil {
-		taskCallback = func(result interface{}) {
-			fmt.Print("任务完成回调: ")
-			safeCallback := h.safeCallbackFunc(func(handler *ConnectionHandler) {
-				// 处理任务完成逻辑
-				handler.handleTaskComplete(_task, id, result)
-			})
-			// 执行安全回调
-			if safeCallback != nil {
-				safeCallback()
-			}
-		}
-	}
-	cb := task.NewCallBack(taskCallback)
-	_task.Callback = cb
-	h.taskMgr.SubmitTask(h.sessionID, _task)
-}
-
-func (h *ConnectionHandler) handleTaskComplete(task *task.Task, id string, result interface{}) {
-	h.LogInfo(fmt.Sprintf("任务 %s 完成，ID: %s, %v", task.Type, id, result))
 }
 
 func (h *ConnectionHandler) LogInfo(msg string) {

@@ -27,7 +27,6 @@ import (
 	_ "xiaozhi-server-go/src/docs"
 	"xiaozhi-server-go/src/httpsvr/ota"
 	"xiaozhi-server-go/src/httpsvr/vision"
-	"xiaozhi-server-go/src/task"
 
 	_ "xiaozhi-server-go/src/docs"
 
@@ -127,13 +126,6 @@ func StartTransportServer(
 		return nil, fmt.Errorf("初始化提供者管理器失败: %v", err)
 	}
 
-	// 初始化任务管理器
-	taskMgr := task.NewTaskManager(task.ResourceConfig{
-		MaxWorkers:        12,
-		MaxTasksPerClient: 20,
-	})
-	taskMgr.Start()
-
 	// 创建传输管理器
 	transportManager := transport.NewTransportManager(config, logger)
 
@@ -141,7 +133,6 @@ func StartTransportServer(
 	handlerFactory := transport.NewDefaultConnectionHandlerFactory(
 		config,
 		providerManager,
-		taskMgr,
 		logger,
 	)
 

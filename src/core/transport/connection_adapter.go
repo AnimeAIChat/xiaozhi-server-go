@@ -9,7 +9,6 @@ import (
 	"xiaozhi-server-go/src/core"
 	"xiaozhi-server-go/src/core/provider"
 	"xiaozhi-server-go/src/core/utils"
-	"xiaozhi-server-go/src/task"
 )
 
 type ConnectionContextAdapter struct {
@@ -29,7 +28,6 @@ func NewConnectionContextAdapter(
 	config *configs.Config,
 	providerSet *provider.ProviderSet,
 	providerMgr *provider.ProviderManager,
-	taskMgr *task.TaskManager,
 	logger *utils.Logger,
 	req *http.Request,
 ) *ConnectionContextAdapter {
@@ -49,7 +47,6 @@ func NewConnectionContextAdapter(
 		cancel:      connCancel,
 	}
 
-	handler.SetTaskCallback(adapter.CreateSafeCallback())
 	return adapter
 }
 
@@ -97,45 +94,20 @@ func (a *ConnectionContextAdapter) GetConnectionHandler() *core.ConnectionHandle
 	return a.handler
 }
 
-func (a *ConnectionContextAdapter) CreateSafeCallback() func(func(*core.ConnectionHandler)) func() {
-	return func(callback func(*core.ConnectionHandler)) func() {
-		return func() {
-			if !a.IsActive() {
-				a.logger.Info("client %s connection closed, skipping callback", a.clientID)
-				return
-			}
-
-			select {
-			case <-a.ctx.Done():
-				a.logger.Info("client %s context canceled, skipping callback", a.clientID)
-				return
-			default:
-			}
-
-			if a.handler != nil {
-				callback(a.handler)
-			}
-		}
-	}
-}
-
 type DefaultConnectionHandlerFactory struct {
 	config      *configs.Config
 	providerMgr *provider.ProviderManager
-	taskMgr     *task.TaskManager
 	logger      *utils.Logger
 }
 
 func NewDefaultConnectionHandlerFactory(
 	config *configs.Config,
 	providerMgr *provider.ProviderManager,
-	taskMgr *task.TaskManager,
 	logger *utils.Logger,
 ) *DefaultConnectionHandlerFactory {
 	return &DefaultConnectionHandlerFactory{
 		config:      config,
 		providerMgr: providerMgr,
-		taskMgr:     taskMgr,
 		logger:      logger,
 	}
 }
@@ -164,7 +136,6 @@ func (f *DefaultConnectionHandlerFactory) CreateHandler(
 		f.config,
 		providerSet,
 		f.providerMgr,
-		f.taskMgr,
 		f.logger,
 		req,
 	)
