@@ -29,10 +29,6 @@ func (cfg *Config) setDefaults() {
 	cfg.Log.LogLevel = "INFO"
 	cfg.Log.LogFile = "server.log"
 
-	cfg.PoolConfig.PoolMinSize = 0
-	cfg.PoolConfig.PoolMaxSize = 0
-	cfg.PoolConfig.PoolCheckInterval = 30
-
 }
 
 func NewDefaultInitConfig() *Config {

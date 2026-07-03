@@ -19,7 +19,7 @@ import (
 	"xiaozhi-server-go/src/core/function"
 	"xiaozhi-server-go/src/core/image"
 	"xiaozhi-server-go/src/core/mcp"
-	"xiaozhi-server-go/src/core/pool"
+	"xiaozhi-server-go/src/core/provider"
 	"xiaozhi-server-go/src/core/providers"
 	"xiaozhi-server-go/src/core/providers/llm"
 	"xiaozhi-server-go/src/core/providers/tts"
@@ -155,7 +155,7 @@ type ConnectionHandler struct {
 // NewConnectionHandler 创建新的连接处理器
 func NewConnectionHandler(
 	config *configs.Config,
-	providerSet *pool.ProviderSet,
+	providerSet *provider.ProviderSet,
 	logger *utils.Logger,
 	req *http.Request,
 	ctx context.Context,
@@ -550,7 +550,7 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 		return
 
 	} else {
-		h.LogInfo("[MCP] [管理器] 使用资源池快速绑定连接")
+		h.LogInfo("[MCP] [管理器] 绑定连接级MCP管理器")
 		// 池化的管理器已经预初始化，只需要绑定连接
 		params := map[string]interface{}{
 			"session_id": h.sessionID,

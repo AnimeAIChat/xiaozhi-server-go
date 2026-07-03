@@ -15,8 +15,8 @@ type Config struct {
 		Port  int    `yaml:"port" json:"port"`
 		Token string `json:"token"`
 		Auth  struct {
-			Enabled       bool     `yaml:"enabled" json:"enabled"`
-			Store         struct {
+			Enabled bool `yaml:"enabled" json:"enabled"`
+			Store   struct {
 				Type   string `yaml:"type" json:"type"`     // memory/file/redis
 				Expiry int    `yaml:"expiry" json:"expiry"` // 过期时间(小时)
 			} `yaml:"store" json:"store"`
@@ -79,9 +79,6 @@ type Config struct {
 
 	SelectedModule map[string]string `yaml:"selected_module" json:"selected_module"`
 
-	PoolConfig    PoolConfig    `yaml:"pool_config"`
-	McpPoolConfig McpPoolConfig `yaml:"mcp_pool_config"`
-
 	ASR   map[string]ASRConfig  `yaml:"ASR"   json:"ASR"`
 	TTS   map[string]TTSConfig  `yaml:"TTS"   json:"TTS"`
 	LLM   map[string]LLMConfig  `yaml:"LLM"   json:"LLM"`
@@ -100,19 +97,6 @@ type Role struct {
 	Name        string `yaml:"name"         json:"name"`        // 角色名称
 	Description string `yaml:"description"  json:"description"` // 角色描述
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`     // 是否启用
-}
-
-type PoolConfig struct {
-	PoolMinSize       int `yaml:"pool_min_size"`
-	PoolMaxSize       int `yaml:"pool_max_size"`
-	PoolRefillSize    int `yaml:"pool_refill_size"`
-	PoolCheckInterval int `yaml:"pool_check_interval"`
-}
-type McpPoolConfig struct {
-	PoolMinSize       int `yaml:"pool_min_size"`
-	PoolMaxSize       int `yaml:"pool_max_size"`
-	PoolRefillSize    int `yaml:"pool_refill_size"`
-	PoolCheckInterval int `yaml:"pool_check_interval"`
 }
 
 // ASRConfig ASR配置结构

@@ -34,13 +34,11 @@ type Manager struct {
 	isInitialized         bool              // 添加初始化状态标记
 	systemCfg             *configs.Config
 	mu                    sync.RWMutex
-
-	AutoReturnToPool bool // 是否自动归还到资源池
 }
 
-// NewManagerForPool 创建用于资源池的MCP管理器
-func NewManagerForPool(lg *utils.Logger, cfg *configs.Config) *Manager {
-	lg.Info("创建MCP Manager用于资源池")
+// NewManager creates an MCP manager for one connection.
+func NewManager(lg *utils.Logger, cfg *configs.Config) *Manager {
+	lg.Info("创建MCP Manager")
 	projectDir := utils.GetProjectDir()
 	configPath := filepath.Join(projectDir, ".mcp_server_settings.json")
 

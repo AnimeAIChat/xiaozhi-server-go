@@ -20,7 +20,7 @@ import (
 	"xiaozhi-server-go/src/configs/database"
 	"xiaozhi-server-go/src/core/auth"
 	"xiaozhi-server-go/src/core/auth/store"
-	"xiaozhi-server-go/src/core/pool"
+	"xiaozhi-server-go/src/core/provider"
 	"xiaozhi-server-go/src/core/transport"
 	"xiaozhi-server-go/src/core/transport/websocket"
 	"xiaozhi-server-go/src/core/utils"
@@ -120,11 +120,11 @@ func StartTransportServer(
 	g *errgroup.Group,
 	groupCtx context.Context,
 ) (*transport.TransportManager, error) {
-	// 初始化资源池管理器
-	poolManager, err := pool.NewPoolManager(config, logger)
+	// 初始化连接级提供者管理器
+	providerManager, err := provider.NewProviderManager(config, logger)
 	if err != nil {
-		logger.Error(fmt.Sprintf("初始化资源池管理器失败: %v", err))
-		return nil, fmt.Errorf("初始化资源池管理器失败: %v", err)
+		logger.Error(fmt.Sprintf("初始化提供者管理器失败: %v", err))
+		return nil, fmt.Errorf("初始化提供者管理器失败: %v", err)
 	}
 
 	// 初始化任务管理器
@@ -140,7 +140,7 @@ func StartTransportServer(
 	// 创建连接处理器工厂
 	handlerFactory := transport.NewDefaultConnectionHandlerFactory(
 		config,
-		poolManager,
+		providerManager,
 		taskMgr,
 		logger,
 	)
