@@ -1,243 +1,144 @@
-# ✨ 小智 AI 聊天机器人后端服务（商业版）
+# 小智语音助手服务端（Go）
 
-小智 AI 是一个语音交互机器人，结合 Qwen、DeepSeek 等强大大模型，通过 MCP 协议连接多端设备（ESP32、Android、Python 等），实现高效自然的人机对话。
+`xiaozhi-server-go` 是面向个人和家庭场景的小智语音助手服务端。它通过 WebSocket 与兼容的小智客户端通信，将语音识别、对话模型和语音合成串成一段可本地部署的语音会话。
 
-本项目是其后端服务，旨在提供一套 **商业级部署方案** —— 高并发、低成本、功能完整、开箱即用。
+> 想快速跑通一台设备？请直接阅读 [快速开始](docs/quick-start.md)。
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3" alt="Xiaozhi Architecture" width="600">
+  <img src="https://github.com/user-attachments/assets/aa1e2f26-92d3-4d16-a74a-68232f34cca3" alt="小智服务端架构示意图" width="600">
 </p>
 
-项目初始基于 [虾哥的 ESP32 开源项目](https://github.com/78/xiaozhi-esp32?tab=readme-ov-file)，目前已形成完整生态，支持多种客户端协议兼容接入。
+本项目兼容小智 WebSocket 协议，可配合 ESP32、Android、Python 等兼容客户端使用。
 
----
+## 已实现功能
 
-## ✨ 核心优势
+| 分类 | 功能 |
+| --- | --- |
+| 设备连接 | WebSocket 连接；PCM / Opus 语音编解码；兼容小智协议客户端 |
+| 语音对话 | 自动、手动、实时三种对话模式；支持语音打断 |
+| 模型接入 | ASR、LLM、TTS、视觉模型均可按 `config.yaml` 选择；内置 OpenAI 兼容接口、Ollama、豆包、Coze、Edge TTS、Deepgram、GoSherpa、讯飞、阶跃等接入实现 |
+| 视觉能力 | 客户端可通过语音触发摄像头图像识别 |
+| 角色与声音 | 预设角色、预设声音与语音指令切换 |
+| 扩展能力 | 本地 MCP、设备 MCP 与外部 Stdio MCP；可配置天气、地图等工具 |
+| 设备接入 | OTA 接口、固件文件下载接口与 WebSocket 地址下发 |
+| 运维与数据 | 本地 SQLite 配置存储、日志、Swagger API 文档、Docker 运行方式 |
 
-| 优势         | 说明                                                   |
-| ---------- | ---------------------------------------------------- |
-| 🚀 高并发     | 单机支持 3000+ 在线，分布式可扩展至百万用户                            |
-| 👥 用户系统    | 完整的用户注册、登录、权限管理能力                                    |
-| 💰 支付集成    | 接入支付系统，助力商业闭环                                        |
-| 🛠️ 模型接入灵活 | 支持通过 API 调用多种大模型，简化部署，支持定制本地部署                       |
-| 📈 商业支持    | 提供 7×24 技术支持与运维保障                                    |
-| 🧠 模型兼容    | 支持 ASR（豆包）、TTS（EdgeTTS）、LLM（OpenAI、Ollama）、图文解说（智谱）等 |
+上述能力以当前代码和配置模板为准；尚在规划或开发中的功能会通过 [Issues](https://github.com/AnimeAIChat/xiaozhi-server-go/issues) 跟踪。
 
----
+## 5 分钟快速开始
 
-## ✅ 社区版功能清单
+完整说明见 [docs/quick-start.md](docs/quick-start.md)。以下为最短路径：
 
-* [x] 支持 websocket 连接
-* [x] 支持 PCM / Opus 格式语音对话
-* [x] 支持大模型：ASR（豆包流式）、TTS（EdgeTTS/豆包）、LLM（OpenAI API、Ollama）
-* [x] 支持语音控制调用摄像头识别图像（智谱 API）
-* [x] 支持 auto/manual/realtime 三种对话模式，支持对话实时打断
-* [x] 支持 ESP32 小智客户端、Python 客户端、Android 客户端连入，无需校验
-* [x] OTA 固件下发
-* [x] 支持 MCP 协议（客户端 / 本地 / 服务器），可接入高德地图、天气查询等
-* [x] 支持语音控制切换角色声音
-* [x] 支持语音控制切换预设角色
-* [x] 支持语音控制播放音乐
-* [x] 支持单机部署服务
-* [x] 支持本地数据库 sqlite
-* [x] 支持coze工作流 
-* [x] 支持Docker部署
-## ✅商务版功能清单
-* [x] 社区版所有功能
-* [x] 开发团队技术支持
-* [x] 后续核心功能免费更新
-* [x] 商务版管理后台，更多的功能选项
-* [x] 支持多用户管理
-* [x] 自定义修改欢迎界面
-* [x] 自定义修改版权logo，使用自己公司的商务标识
-* [x] 自定义修改Agent角色模板
-* [x] 支持更多的模型
-* [x] 支持 websocket 和 MQTT+UDP 两种通信协议
-* [x] 支持 tts 流式生成及发送
-* [x] 支持声音克隆
-* [x] 支持知识库
-* [x] 支持定制音色（cosyvoice2, indextts）
-* [x] 支持通过 OTA 升级固件
-* [x] 支持 Coze 工作流
-* [x] 支持 Dify 工作流
-* [x] 深度优化响应速度
-* [x] 支持用户身份验证，激活绑定设备
-* [x] 支持设备管理：解绑/禁用
-* [x] 支持后台解绑设备
-* [x] 支持用户自定义 Agent
-* [x] 国际化多语言支持：中文、英语、日语、西班牙语、印尼语等
-* [x] 支持MCP接入点
-* [x] 支持网络数据库
-* [x] 支持分布式部署
-* [x] 支持本地部署大模型
+1. 从 [Releases](https://github.com/AnimeAIChat/xiaozhi-server-go/releases) 下载与系统匹配的服务端程序，并将 `config.yaml` 放到同一目录。
+2. 复制为私有配置文件并填写至少一组可用的 ASR、LLM、TTS 配置：
 
-商务版测试/体验地址：
+   ```powershell
+   Copy-Item config.yaml .config.yaml
+   ```
 
-https://xiaozhi.xf.bj.cn/login
+   ```bash
+   cp config.yaml .config.yaml
+   ```
 
----
+3. 将 `web.websocket` 配置为设备能够访问的地址，例如 `ws://192.168.1.10:8000`；不要使用 `localhost` 作为设备地址。
+4. 启动下载的程序，浏览器打开 `http://127.0.0.1:8080`。局域网设备使用 `http://<服务器局域网 IP>:8080/api/ota/` 作为 OTA 地址。
+5. 让设备联网并发起一次语音对话；服务端日志会依次显示连接、识别、模型回答和播报过程。
 
-## 🚀 快速开始
+首次启动会把配置保存到同目录的 `config.db`。因此请在首次启动前完成 `.config.yaml` 的基础配置；后续修改请通过管理接口保存，或在备份后重新创建运行目录。详情见 [配置与排错](docs/quick-start.md#配置与排错)。
 
-### 1. 下载 Release 版
+## 配置要点
 
-> 推荐直接下载 Release 版本，无需配置开发环境：
-
-👉 [点击前往 Releases 页面](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)
-
-* 选择你平台对应的版本（如 Windows: `windows-amd64-server.exe`）
-* `.upx.exe` 是压缩版本，功能一致，体积更小，适合远程部署
-
----
-
-
-### 2. 配置 `.config.yaml`
-
-* 推荐复制一份 `config.yaml` 改名为 `.config.yaml`
-* 按需求配置模型、WebSocket、OTA 地址等字段
-* 不建议自行删减字段结构
-
-#### WebSocket 地址配置（必配）
+配置模板：[`config.yaml`](config.yaml)。建议始终保留原有字段，仅替换示例值。
 
 ```yaml
+server:
+  port: 8000
+
 web:
-  websocket: ws://your-server-ip:8000
+  port: 8080
+  # 供局域网设备连接的地址，替换成服务器局域网 IP 或域名
+  websocket: ws://192.168.1.10:8000
+
+selected_module:
+  ASR: DoubaoASR
+  TTS: EdgeTTS
+  LLM: OllamaLLM
+  VLLLM: ChatGLMVLLM
 ```
 
-用于 OTA 服务下发给客户端的连接地址，ESP32 客户端会自动从此地址连接 WS，不再手动配置。
+- `selected_module` 中的名称必须与下方 `ASR`、`TTS`、`LLM`、`VLLLM` 分组中的配置名称一致。
+- 凭据只保存在本机的 `.config.yaml` 或配置数据库中。请勿将 `.config.yaml`、`config.db`、日志或 MCP 密钥提交到仓库。
+- 设备与服务端不在同一台机器时，需要允许 TCP `8000` 和 `8080` 通过系统防火墙；设备与服务端应能相互访问。
+- 本项目当前使用 WebSocket 接入设备，`transport.websocket.enabled` 应保持为 `true`。
 
-注：如果是局域网调试，your-server-ip要配置为**电脑在局域网中的IP**，且终端设备和电脑在同一网段，设备才能通过这个IP地址连到电脑上的服务。
+## 源码运行
 
-#### OTA 地址配置（必配）
-
-```text
-http://your-server-ip:8080/api/ota/
-```
-
-> ESP32 固件内置 OTA 地址，确保该服务地址可用，**服务运行后可以在浏览器中输出此地址，确认服务可以访问**。
-
-ESP32设备可以在联网界面修改OTA地址，从而在不重新刷固件的情况下，切换后端服务。
-
-#### 配置ASR，LLM，TTS
-
-根据配置文件的格式，配置好相关模型服务，尽量不要增减字段
-
----
-
-## 💬 MCP 协议配置
-
-参考：`src/core/mcp/README.md`
-
----
-
-## 🧪 源码安装与运行
-
-### 前置条件
-
-* Go 1.24.2+
-* Windows 用户需安装 CGO 和 Opus 库（见下文）
+源码运行适合开发与调试。需要 Go `1.24.2`（项目指定的 toolchain）以及可用的 C 编译器供 SQLite 驱动构建；Opus 依赖已随仓库提供，无需单独安装系统 Opus 库。
 
 ```bash
 git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
 cd xiaozhi-server-go
 cp config.yaml .config.yaml
-```
-
----
-
-### Windows 安装 Opus 编译环境
-
-安装 [MSYS2](https://www.msys2.org/)，打开MYSY2 MINGW64控制台，然后输入以下命令：
-
-```bash
-pacman -Syu
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-go mingw-w64-x86_64-opus
-pacman -S mingw-w64-x86_64-pkg-config
-```
-
-设置环境变量（用于 PowerShell 或系统变量）：
-
-```bash
-set PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
-set CGO_ENABLED=1
-```
-
-尽量在MINGW64环境下运行一次 “go run ./src/main.go” 命令，确保服务正常运行
-
-GO mod如果更新较慢，可以考虑设置go代理，切换国内镜像源。
-
----
-
-### 运行项目
-
-```bash
-go mod tidy
 go run ./src/main.go
 ```
 
-### 编译发布版本
+Windows PowerShell：
 
-```bash
-go build -o xiaozhi-server.exe src/main.go
+```powershell
+git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
+Set-Location xiaozhi-server-go
+Copy-Item config.yaml .config.yaml
+go run ./src/main.go
 ```
 
-### 测试
-* 推荐使用ESP32硬件设备测试，可以最大程度避免兼容问题
-* 推荐使用玄凤小智Android客户端，在设置界面增加本地服务的ota地址即可。安卓版本在Release页面发布，可选择最新版本
-  <img width="221" height="470" alt="image" src="https://github.com/user-attachments/assets/145a6612-8397-439b-9429-325855a99101" />
+如果 Windows 上提示找不到 C 编译器，请安装 MSYS2 的 UCRT64 或 MINGW64 工具链，并确保 `gcc` 位于 `PATH` 后重新执行。不要在配置文件中填写真实密钥后提交或分享该文件。
 
-  [xiaozhi-0.0.6.apk](https://github.com/AnimeAIChat/xiaozhi-server-go/releases/download/v0.1.0/xiaozhi-0.0.6.apk)
-* 可使用其他兼容小智协议的客户端进行测试
----
-
-## 📚 Swagger 文档
-
-* 打开浏览器访问：`http://localhost:8080/swagger/index.html`
-
-### 更新 Swagger 文档（每次修改 API 后都要运行）
+编译程序：
 
 ```bash
-cd src
-swag init -g main.go
+go build -o xiaozhi-server ./src/main.go
 ```
 
----
+## Docker 运行
 
-## ☁️ CentOS 源码部署指南
+仓库提供 [`docker-compose.yml`](docker-compose.yml)，用于运行已下载的 Linux 版本程序。将下列文件放入同一目录后，按实际文件名修改 `command`：
 
-> 文档见：[Centos 8 安装指南](Centos_Guide.md)
+- Linux 服务端程序；
+- `.config.yaml`；
+- `docker-compose.yml`。
 
----
+然后执行：
 
-## Docker 环境部署
+```bash
+docker compose up -d
+docker compose logs -f
+```
 
-1. 准备`docker-compose.yml`,`.config.yaml`,二进制程序文件
+需要将 `8000` 与 `8080` 映射到宿主机，并把 `.config.yaml` 中的 `web.websocket` 写为设备能够访问的宿主机 IP 或域名。
 
-👉 [点击前往 Releases 页面](https://github.com/AnimeAIChat/xiaozhi-server-go/releases)下载二进制程序文件
+## MCP 配置
 
-* 选择你平台对应的版本（默认使用 Liunx: `linux-amd64-server-upx`，如使用其他版本，需要修改docker-compose.yml）
+MCP 使用方式、外部 Stdio MCP 示例和设备 MCP 说明见 [src/core/mcp/README.md](src/core/mcp/README.md)。外部 MCP 配置文件为 `.mcp_server_settings.json`，其中可能含有服务密钥，应只保存在本机。
 
-2. 三个文件放到同一目录下，配置`docker-compose.yml`,`.config.yaml`
+## 接口与排错
 
-3. 运行`docker compose up -d`
+- Web 控制台：`http://127.0.0.1:8080`
+- Swagger：`http://127.0.0.1:8080/swagger/index.html`
+- OTA 健康检查：`http://127.0.0.1:8080/api/ota/`
+- 运行日志：`logs/server.log`
+- 常见问题与一台设备的验证流程：[docs/quick-start.md](docs/quick-start.md)
 
----
+## 更多功能
 
-## 💬 社区支持
+小智商业版在相同协议与模型接入基础上，提供更多设备管理、知识库、声音复刻、定制音色、工作流和部署能力。若希望了解这些功能，可通过下方微信二维码联系。
 
+## 社区与反馈
 
-欢迎提交 Issue、PR 或新功能建议！
+欢迎提交 Issue、PR 或功能建议。
 
-<img src="https://github.com/Eric0308/assert/blob/main/xiaozhi/qr.jpg" width="450" alt="微信群二维码"> 
+<img src="https://github.com/Eric0308/assert/blob/main/xiaozhi/qr.jpg" width="450" alt="微信交流群二维码">
 <img src="https://github.com/user-attachments/assets/074c6aec-cfb5-4a68-8fc2-2d08679e366b" width="450" alt="QQ群二维码">
----
 
-## 🛠️ 定制开发
+## License
 
-我们接受各种定制化开发项目，如果您有特定需求，欢迎通过微信联系洽谈。
-
-<img src="https://github.com/user-attachments/assets/e2639bc3-a58a-472f-9e72-b9363f9e79a3" width="450" alt="群主二维码">
-
-## 📄 License
-
-本仓库遵循 `Xiaozhi-server-go Open Source License`（基于 Apache 2.0 增强版）
+本仓库遵循 `Xiaozhi-server-go Open Source License`（基于 Apache 2.0 增强版）。
