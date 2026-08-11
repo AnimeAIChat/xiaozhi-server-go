@@ -103,6 +103,7 @@ type ConnectionHandler struct {
 
 	clientListenMode string
 	isDeviceVerified bool
+	isDeviceDisabled bool
 	closeAfterChat   bool
 
 	// Agent 相关
@@ -450,6 +451,11 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 		h.LogError(fmt.Sprintf("查找设备失败: %v", err))
 		return
 	}
+	if device.Mode == "ban" {
+		h.isDeviceDisabled = true
+		h.LogError("设备已被禁用，拒绝建立会话")
+		return
+	}
 
 	if device.AgentID != nil {
 		h.agentID = *device.AgentID // 获取设备绑定的AgentID
@@ -485,6 +491,10 @@ func (h *ConnectionHandler) Handle(conn Connection) {
 	defer conn.Close()
 
 	h.conn = conn
+	if h.isDeviceDisabled {
+		h.LogError("设备已被禁用，连接已关闭")
+		return
+	}
 
 	// 启动消息处理协程
 	go h.processClientAudioMessagesCoroutine() // 添加客户端音频消息处理协程

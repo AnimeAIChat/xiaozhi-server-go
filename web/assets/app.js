@@ -1009,10 +1009,12 @@
           <div><span class="muted">MAC 地址：</span>${escapeHtml(maskDeviceId(deviceId))}</div>
           <div><span class="muted">固件版本：</span>${escapeHtml(device.version || '-')}</div>
           <div><span class="muted">最近活跃：</span>${escapeHtml(formatDate(device.lastActiveTimeV2 || device.lastActiveTime))}</div>
+          <div><span class="muted">设备状态：</span>${device.mode === 'ban' ? '<span class="tag red">已禁用</span>' : '<span class="tag green">可用</span>'}</div>
           <div><span class="muted">OTA 升级：</span>${device.ota ? '<span class="tag green">开启</span>' : '<span class="tag">关闭</span>'}</div>
         </div>
         <div class="divider"></div>
         <button class="btn small" data-copy="${escapeHtml(deviceId)}">复制 MAC</button>
+        <button class="btn small" data-toggle-device="${escapeHtml(deviceId)}" data-disabled="${device.mode === 'ban' ? 'true' : 'false'}">${device.mode === 'ban' ? '启用设备' : '禁用设备'}</button>
       </div>
     `;
   }
@@ -1734,6 +1736,20 @@
       confirmAction('解绑设备', '设备解绑后需要重新绑定，确认继续吗？', async () => {
         await request('/api/user/device', { method: 'DELETE', body: { deviceID: unbind.dataset.unbindDevice } });
         toast('解绑成功', 'success');
+        render();
+      });
+      return;
+    }
+
+    const toggleDevice = target.closest('[data-toggle-device]');
+    if (toggleDevice) {
+      const currentlyDisabled = toggleDevice.dataset.disabled === 'true';
+      confirmAction(currentlyDisabled ? '启用设备' : '禁用设备', currentlyDisabled ? '恢复后设备可以重新建立语音会话，确认继续吗？' : '禁用后将立即拒绝该设备的新语音会话，确认继续吗？', async () => {
+        await request(`/api/user/device/${encodeURIComponent(toggleDevice.dataset.toggleDevice)}`, {
+          method: 'PUT',
+          body: { disabled: !currentlyDisabled },
+        });
+        toast(currentlyDisabled ? '设备已启用' : '设备已禁用', 'success');
         render();
       });
       return;

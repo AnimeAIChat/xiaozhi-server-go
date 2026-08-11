@@ -40,6 +40,7 @@ type DeviceUpdateRequest struct {
 	LastActiveTime *time.Time `json:"lastActiveTime,omitempty"`
 	AgentID        *uint      `json:"agent_id,omitempty"`
 	Name           *string    `json:"name,omitempty"`
+	Disabled       *bool      `json:"disabled,omitempty"`
 }
 
 // handleDeviceList 设备列表
@@ -202,6 +203,13 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 	}
 	if req.Name != nil {
 		device.Name = *req.Name
+	}
+	if req.Disabled != nil {
+		if *req.Disabled {
+			device.Mode = "ban"
+		} else {
+			device.Mode = ""
+		}
 	}
 	if err := database.UpdateDevice(database.GetDB(), device); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
