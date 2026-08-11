@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -86,6 +87,10 @@ type Config struct {
 
 	CMDExit []string `yaml:"CMD_exit" json:"CMD_exit"`
 }
+
+// ErrInitialConfigCreated 表示首次启动已生成私有配置，用户需要填写必填项后再次启动。
+// 这时不应把占位配置写入数据库，否则后续修改 .config.yaml 不会生效。
+var ErrInitialConfigCreated = errors.New("首次启动已创建私有配置文件")
 
 type LocalMCPFun struct {
 	Name        string `yaml:"name"         json:"name"`        // 函数名称
@@ -201,21 +206,29 @@ func LoadConfig(dbi ConfigDBInterface) (*Config, string, error) {
 		}
 	}
 
-	// 尝试从文件读取
+	// 首次启动始终创建私有配置文件。若发行包中提供了 config.yaml，则以它为模板；
+	// 若没有模板，则写入内置默认配置。这样凭据不会被误写回公开模板文件。
 	path = ".config.yaml"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		path = "config.yaml"
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		data, err = os.ReadFile("config.yaml")
+		if errors.Is(err, os.ErrNotExist) {
+			config = NewDefaultInitConfig()
+			data, err = yaml.Marshal(config)
+		}
+		if err != nil {
+			return nil, path, fmt.Errorf("读取首次启动配置失败: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			return nil, path, fmt.Errorf("创建私有配置文件失败: %w", err)
+		}
+		return nil, path, fmt.Errorf("%w %s；请填写模型服务配置后重新启动服务", ErrInitialConfigCreated, path)
+	} else if err != nil {
+		return nil, path, fmt.Errorf("读取私有配置文件失败: %w", err)
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// 读取配置文件失败，使用默认配置
-		config = NewDefaultInitConfig()
-		data, _ = yaml.Marshal(config)
-	} else {
-		if err := yaml.Unmarshal(data, config); err != nil {
-			return nil, path, err
-		}
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return nil, path, err
 	}
 
 	err = dbi.InitServerConfig(string(data))

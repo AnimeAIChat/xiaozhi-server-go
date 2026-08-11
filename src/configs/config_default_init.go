@@ -7,7 +7,7 @@ func (cfg *Config) setDefaults() {
 	cfg.Transport.WebSocket.IP = "0.0.0.0"
 	cfg.Transport.WebSocket.Port = 8000
 
-	cfg.Transport.MQTTUDP.Enabled = true
+	cfg.Transport.MQTTUDP.Enabled = false
 	cfg.Transport.MQTTUDP.MQTT.IP = "你的IP或域名:1883"
 	cfg.Transport.MQTTUDP.MQTT.Port = 1883
 	cfg.Transport.MQTTUDP.MQTT.QoS = 1

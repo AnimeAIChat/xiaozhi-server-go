@@ -2,8 +2,10 @@ package database
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"time"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/models"
@@ -14,6 +16,22 @@ import (
 var (
 	AdminUserID uint = 1
 )
+
+const initialAdminPasswordLength = 16
+
+const initialAdminPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+func generateInitialAdminPassword() (string, error) {
+	password := make([]byte, initialAdminPasswordLength)
+	for i := range password {
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(initialAdminPasswordAlphabet))))
+		if err != nil {
+			return "", fmt.Errorf("生成初始管理员密码失败: %w", err)
+		}
+		password[i] = initialAdminPasswordAlphabet[index.Int64()]
+	}
+	return string(password), nil
+}
 
 func InitAdminUser(db *gorm.DB, config *configs.Config) error {
 	var count int64
@@ -27,7 +45,10 @@ func InitAdminUser(db *gorm.DB, config *configs.Config) error {
 		return nil
 	}
 
-	password := "123456" // 默认管理员密码
+	password, err := generateInitialAdminPassword()
+	if err != nil {
+		return err
+	}
 	hash := md5.Sum([]byte(password + "xiaozhi_salt"))
 	pwd := hex.EncodeToString(hash[:])
 	// 创建管理员用户
@@ -45,7 +66,7 @@ func InitAdminUser(db *gorm.DB, config *configs.Config) error {
 		// 创建失败
 		return err
 	}
-	fmt.Println("管理员用户初始化成功 admin:123456, 请及时修改密码")
+	fmt.Printf("首次启动已创建本地管理员账号 admin，临时密码：%s。请登录后立即修改密码；该密码只会在本次启动日志中显示。\n", password)
 
 	return nil
 }
