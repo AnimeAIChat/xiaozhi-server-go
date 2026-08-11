@@ -35,7 +35,6 @@
     providers: '模型供应商',
     unbindDevice: '设备解绑',
     advancedConfig: '高级配置',
-    users: '用户管理',
     whiteList: '白名单',
   };
 
@@ -277,7 +276,6 @@
     if (clean === '/admin/providers') return { key: 'providers', path: clean };
     if (clean === '/admin/unbindDevice') return { key: 'unbindDevice', path: clean };
     if (clean === '/admin/systemConfig') return { key: 'advancedConfig', path: clean };
-    if (clean === '/admin/userManage') return { key: 'users', path: clean };
     if (clean === '/admin/whiteList') return { key: 'whiteList', path: clean };
     return { key: 'welcome', path: '/welcome' };
   }
@@ -306,7 +304,6 @@
         <div class="nav-group">
           <div class="nav-title">管理页</div>
           ${navItem('/admin/dashboard', '仪表盘', route.path)}
-          ${navItem('/admin/userManage', '用户管理', route.path)}
           ${navItem('/admin/settings', '系统配置', route.path)}
           ${navItem('/admin/providers', '模型供应商', route.path)}
           ${navItem('/admin/unbindDevice', '设备解绑', route.path)}
@@ -439,7 +436,6 @@
       providers: renderProviders,
       unbindDevice: renderUnbindDevice,
       advancedConfig: renderAdvancedConfig,
-      users: renderUsers,
       whiteList: renderWhiteList,
     };
 
@@ -1497,41 +1493,6 @@
         showError(error, '保存失败');
       }
     });
-  }
-
-  async function renderUsers() {
-    page().innerHTML = `
-      ${pageHeader('用户管理', '查看和编辑用户状态与额度')}
-      <div id="users-body">${loadingCard()}</div>
-    `;
-    try {
-      const payload = await request('/api/admin/user/list?current=1&pageSize=50');
-      const table = normalizeTablePayload(payload);
-      byId('users-body').innerHTML = `
-        <div class="card">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>状态</th><th>每日额度</th><th>创建时间</th><th>操作</th></tr></thead>
-              <tbody>
-                ${table.data.map((user) => `
-                  <tr>
-                    <td>${escapeHtml(user.id)}</td>
-                    <td>${escapeHtml(user.username)}</td>
-                    <td>${escapeHtml(user.email || '')}</td>
-                    <td>${user.status === 1 ? '<span class="tag green">正常</span>' : '<span class="tag red">禁用</span>'}</td>
-                    <td>${escapeHtml(user.profile?.quotaUsed ?? 0)} / ${escapeHtml(user.profile?.quotaTotal ?? '-')}</td>
-                    <td>${escapeHtml(formatDate(user.createdAt))}</td>
-                    <td><button class="btn small" data-edit-user="${escapeHtml(user.id)}">编辑</button></td>
-                  </tr>
-                `).join('') || `<tr><td colspan="7">${emptyState('暂无用户')}</td></tr>`}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    } catch (error) {
-      byId('users-body').innerHTML = `<div class="alert warning">当前服务未提供用户管理接口，或当前账号无权限访问。</div>`;
-    }
   }
 
   async function renderWhiteList() {

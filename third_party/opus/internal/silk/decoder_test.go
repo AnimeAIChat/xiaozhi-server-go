@@ -1,0 +1,935 @@
+﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-License-Identifier: MIT
+
+package silk
+
+import (
+	"testing"
+
+	"github.com/AnimeAIChat/opus/internal/rangecoding"
+	"github.com/stretchr/testify/assert"
+)
+
+const floatEqualityThreshold = 0.000001
+
+func testSilkFrame() []byte {
+	return []byte{0x0B, 0xE4, 0xC1, 0x36, 0xEC, 0xC5, 0x80}
+}
+
+func testResQ10() []int16 {
+	return []int16{138, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+}
+
+func testNlsfQ1() []int16 {
+	return []int16{
+		2132, 3584, 5504, 7424, 9472, 11392, 13440, 15360, 17280, 19200, 21120, 23040, 25088, 27008, 28928, 30848,
+	}
+}
+
+func createRangeDecoder(
+	data []byte,
+	bitsRead uint,
+	rangeSize uint32,
+	highAndCodedDifference uint32,
+) rangecoding.Decoder {
+	d := rangecoding.Decoder{}
+	d.SetInternalValues(data, bitsRead, rangeSize, highAndCodedDifference)
+
+	return d
+}
+
+func TestResetPredictionForBandwidthChange(t *testing.T) {
+	decoder := NewDecoder()
+	decoder.haveDecoded = true
+	decoder.isPreviousFrameVoiced = true
+	decoder.previousLag = 77
+	decoder.previousLogGain = 22
+	decoder.previousFrameLPCValues = []float32{1}
+	decoder.finalOutValues[0] = 1
+	decoder.n0Q15 = []int16{1}
+
+	decoder.resetPredictionForBandwidthChange(BandwidthNarrowband)
+	assert.Equal(t, BandwidthNarrowband, decoder.previousBandwidth)
+	assert.True(t, decoder.haveDecoded)
+	assert.True(t, decoder.isPreviousFrameVoiced)
+	assert.Equal(t, 77, decoder.previousLag)
+	assert.Equal(t, int32(22), decoder.previousLogGain)
+	assert.Equal(t, []float32{1}, decoder.previousFrameLPCValues)
+	assert.Equal(t, float32(1), decoder.finalOutValues[0])
+	assert.Equal(t, []int16{1}, decoder.n0Q15)
+
+	decoder.resetPredictionForBandwidthChange(BandwidthWideband)
+	assert.Equal(t, BandwidthWideband, decoder.previousBandwidth)
+	assert.False(t, decoder.haveDecoded)
+	assert.False(t, decoder.isPreviousFrameVoiced)
+	assert.Equal(t, 100, decoder.previousLag)
+	assert.Equal(t, int32(10), decoder.previousLogGain)
+	assert.Nil(t, decoder.previousFrameLPCValues)
+	assert.Equal(t, make([]float32, len(decoder.finalOutValues)), decoder.finalOutValues)
+	assert.Nil(t, decoder.n0Q15)
+}
+
+func TestDecodeUnsupportedFrameDuration(t *testing.T) {
+	d := &Decoder{}
+	assert.ErrorIs(t, errUnsupportedSilkFrameDuration, d.Decode(testSilkFrame(), []float32{}, false, 1, BandwidthWideband))
+}
+
+func TestDecodeNon20MsDurations(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		nanoseconds int
+		out         []float32
+	}{
+		{name: "10ms", nanoseconds: nanoseconds10Ms, out: make([]float32, 160)},
+		{name: "40ms", nanoseconds: nanoseconds40Ms, out: make([]float32, 640)},
+		{name: "60ms", nanoseconds: nanoseconds60Ms, out: make([]float32, 960)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d := NewDecoder()
+			assert.NoError(t, d.Decode(nil, test.out, false, test.nanoseconds, BandwidthWideband))
+		})
+	}
+}
+
+func TestDecodeStereo(t *testing.T) {
+	d := NewDecoder()
+	err := d.Decode(testSilkFrame(), make([]float32, 640), true, nanoseconds20Ms, BandwidthWideband)
+	assert.NoError(t, err)
+	assert.NotErrorIs(t, err, errUnsupportedSilkStereo)
+}
+
+func TestStereoPredictionWeights(t *testing.T) {
+	w0Q13, w1Q13 := stereoPredictionWeights(0, 0, 0, 0, 0)
+	assert.Equal(t, int32(0), w0Q13)
+	assert.Equal(t, int32(-13364), w1Q13)
+}
+
+func TestStereoUnmix(t *testing.T) {
+	d := NewDecoder()
+	mid := []float32{1, 0}
+	side := []float32{0, 0}
+	out := make([]float32, 4)
+
+	d.stereoUnmix(mid, side, out, 0, 0, BandwidthNarrowband)
+
+	assert.Equal(t, []float32{0, 0, 1, 1}, out)
+	assert.Equal(t, [2]float32{1, 0}, d.previousMidValues)
+	assert.Equal(t, float32(0), d.previousSideValue)
+	assert.True(t, d.wasStereo)
+}
+
+func TestStereoScratchBuffers(t *testing.T) {
+	decoder := NewDecoder()
+	mid, side := decoder.stereoScratchBuffers(8)
+	mid[0] = 1
+	side[0] = 2
+	midPtr := &mid[0]
+	sidePtr := &side[0]
+
+	mid, side = decoder.stereoScratchBuffers(4)
+	assert.Len(t, mid, 4)
+	assert.Len(t, side, 4)
+	assert.Equal(t, midPtr, &mid[0])
+	assert.Equal(t, sidePtr, &side[0])
+
+	mid, side = decoder.stereoScratchBuffers(16)
+	assert.Len(t, mid, 16)
+	assert.Len(t, side, 16)
+	assert.NotEqual(t, midPtr, &mid[0])
+	assert.NotEqual(t, sidePtr, &side[0])
+}
+
+func TestDelayMono(t *testing.T) {
+	d := NewDecoder()
+	d.previousMidValues = [2]float32{0.25, 0.5}
+	out := []float32{1, 2, 3}
+
+	d.delayMono(out)
+
+	assert.Equal(t, []float32{0.5, 1, 2}, out)
+	assert.Equal(t, [2]float32{2, 3}, d.previousMidValues)
+	assert.Equal(t, float32(0), d.previousSideValue)
+	assert.False(t, d.wasStereo)
+}
+
+func TestDecodeFrameType(t *testing.T) {
+	d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 31, 536870912, 437100388)}
+
+	signalType, quantizationOffsetType := d.determineFrameType(false)
+	assert.Equal(t, frameSignalTypeInactive, signalType)
+	assert.Equal(t, frameQuantizationOffsetTypeHigh, quantizationOffsetType)
+}
+
+func TestDecodeSubframeQuantizations(t *testing.T) {
+	d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 31, 482344960, 437100388)}
+	assert.Equal(t,
+		[]float32{210944, 112640, 96256, 96256},
+		d.decodeSubframeQuantizations(frameSignalTypeInactive, 4, true),
+	)
+}
+
+func TestDecodeSubframeQuantizationsAfterUncodedSideFrame(t *testing.T) {
+	d := &Decoder{
+		rangeDecoder:    createRangeDecoder(testSilkFrame(), 31, 482344960, 437100388),
+		previousLogGain: 63,
+	}
+	assert.Equal(t,
+		[]float32{210944, 112640, 96256, 96256},
+		d.decodeSubframeQuantizations(frameSignalTypeInactive, 4, false),
+	)
+}
+
+func TestDecodeBufferSize(t *testing.T) {
+	d := NewDecoder()
+	err := d.Decode([]byte{}, make([]float32, 50), false, nanoseconds20Ms, BandwidthWideband)
+	assert.Equal(t, errOutBufferTooSmall, err)
+}
+
+func TestDecodeWithRange(t *testing.T) {
+	decoder := NewDecoder()
+	assert.ErrorIs(
+		t,
+		decoder.DecodeWithRange(nil, make([]float32, 320), false, nanoseconds20Ms, BandwidthWideband),
+		errOutBufferTooSmall,
+	)
+
+	rangeDecoder := rangecoding.Decoder{}
+	rangeDecoder.Init(testSilkFrame())
+
+	err := decoder.DecodeWithRange(&rangeDecoder, make([]float32, 320), false, nanoseconds20Ms, BandwidthWideband)
+
+	assert.NoError(t, err)
+	assert.NotZero(t, rangeDecoder.FinalRange())
+}
+
+func TestDecodeWithRangeToChannelsSupportsStereoStreamMonoOutput(t *testing.T) {
+	decoder := NewDecoder()
+	rangeDecoder := rangecoding.Decoder{}
+	rangeDecoder.Init(testSilkFrame())
+
+	err := decoder.DecodeWithRangeToChannels(
+		&rangeDecoder,
+		make([]float32, 320),
+		true,
+		1,
+		nanoseconds20Ms,
+		BandwidthWideband,
+	)
+
+	assert.NoError(t, err)
+}
+
+func TestDecodeLowBitrateRedundancyFlags(t *testing.T) {
+	decoder := NewDecoder()
+	decoder.rangeDecoder.Init(make([]byte, 8))
+
+	assert.Equal(t, []bool{false, false}, decoder.decodeLowBitrateRedundancyFlags(2, false))
+	assert.Equal(t, []bool{true}, decoder.decodeLowBitrateRedundancyFlags(1, true))
+
+	flags40Ms := decoder.decodeLowBitrateRedundancyFlags(2, true)
+	flags60Ms := decoder.decodeLowBitrateRedundancyFlags(3, true)
+	assert.Len(t, flags40Ms, 2)
+	assert.Len(t, flags60Ms, 3)
+	assert.True(t, flags40Ms[0] || flags40Ms[1])
+	assert.True(t, flags60Ms[0] || flags60Ms[1] || flags60Ms[2])
+}
+
+func TestConsumeLowBitrateRedundancyFrameSkipsUncodedFrame(t *testing.T) {
+	decoder := NewDecoder()
+
+	err := decoder.consumeLowBitrateRedundancyFrame(
+		nil,
+		nil,
+		false,
+		false,
+		false,
+		false,
+		false,
+		nanoseconds20Ms,
+		BandwidthWideband,
+	)
+
+	assert.NoError(t, err)
+}
+
+func TestConsumeLowBitrateRedundancyFrameDecodesMidFrame(t *testing.T) {
+	decoder := NewDecoder()
+	decoder.rangeDecoder.Init(testSilkFrame())
+
+	err := decoder.consumeLowBitrateRedundancyFrame(
+		make([]float32, 320),
+		nil,
+		true,
+		false,
+		false,
+		true,
+		false,
+		nanoseconds20Ms,
+		BandwidthWideband,
+	)
+
+	assert.NoError(t, err)
+}
+
+func TestNormalizeLineSpectralFrequencyStageOne(t *testing.T) {
+	d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 47, 722810880, 387065757)}
+
+	assert.Equal(t, uint32(9), d.normalizeLineSpectralFrequencyStageOne(false, BandwidthWideband))
+}
+
+func TestNormalizeLSFStabilization(t *testing.T) {
+	decoder := &Decoder{}
+
+	in := []int16{
+		856, 2310, 3452, 4865, 4852,
+		7547, 9662, 11512, 13884, 15919,
+		18467, 20487, 23559, 25900, 28222,
+		30700,
+	}
+
+	expectedOut := []int16{
+		856, 2310, 3452, 4858, 4861,
+		7547, 9662, 11512, 13884, 15919,
+		18467, 20487, 23559, 25900, 28222,
+		30700,
+	}
+
+	decoder.normalizeLSFStabilization(in, 16, BandwidthWideband)
+	assert.Equal(t, in, expectedOut)
+
+	in = []int16{
+		1533, 1674, 2506, 4374, 6630,
+		9867, 10260, 10691, 14397, 16969,
+		19355, 21645, 25228, 26972, 30514, 30208,
+	}
+	expectedOut = []int16{
+		1533, 1674, 2506, 4374, 6630,
+		9867, 10260, 10691, 14397, 16969,
+		19355, 21645, 25228, 26972, 30360, 30363,
+	}
+	decoder.normalizeLSFStabilization(in, 16, BandwidthWideband)
+	assert.Equal(t, in, expectedOut)
+}
+
+func TestNormalizeLineSpectralFrequencyStageTwo(t *testing.T) {
+	d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 47, 50822640, 5895957)}
+
+	dLPC, resQ10 := d.normalizeLineSpectralFrequencyStageTwo(BandwidthWideband, 9)
+	assert.Equal(t, testResQ10(), resQ10)
+	assert.Equal(t, 16, dLPC)
+}
+
+func TestNormalizeLineSpectralFrequencyCoefficients(t *testing.T) {
+	d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 55, 493249168, 174371199)}
+
+	nlsfQ1 := d.normalizeLineSpectralFrequencyCoefficients(16, BandwidthWideband, testResQ10(), 9)
+	assert.Equal(t, testNlsfQ1(), nlsfQ1)
+}
+
+func TestNormalizeLSFInterpolation(t *testing.T) {
+	t.Run("wQ2 == 4", func(t *testing.T) {
+		d := &Decoder{rangeDecoder: createRangeDecoder(testSilkFrame(), 55, 493249168, 174371199)}
+		var expectedN1Q15 []int16
+
+		actualN1Q15, _ := d.normalizeLSFInterpolation(expectedN1Q15, nanoseconds20Ms)
+		assert.Equal(t, expectedN1Q15, actualN1Q15)
+	})
+
+	t.Run("wQ2 == 1", func(t *testing.T) {
+		frame := []byte{
+			0xac, 0xbd, 0xa9, 0xf7, 0x26, 0x24, 0x5a, 0xa4, 0x00, 0x37,
+			0xbf, 0x9c, 0xde, 0xe, 0xcf, 0x94, 0x64, 0xaa, 0xf9, 0x87,
+			0xd0, 0x79, 0x19, 0xa8, 0x21, 0xc0,
+		}
+		decoder := &Decoder{
+			rangeDecoder: createRangeDecoder(frame, 65, 1231761776, 1068195183),
+			haveDecoded:  true,
+			n0Q15: []int16{
+				518, 380, 4444, 6982, 8752, 10510, 12381, 14102, 15892, 17651, 19340, 21888, 23936, 25984, 28160, 30208,
+			},
+		}
+		n2Q15 := []int16{
+			215, 1447, 3712, 5120, 7168, 9088, 11264, 13184, 15232, 17536,
+			19712, 21888, 24192, 26240, 28416, 30336,
+		}
+		expectedN1Q15 := []int16{
+			442, 646, 4261, 6516, 8356, 10154, 12101, 13872, 15727,
+			17622, 19433, 21888, 24000, 26048, 28224, 30240,
+		}
+
+		actualN2Q15, _ := decoder.normalizeLSFInterpolation(n2Q15, nanoseconds20Ms)
+		assert.Equal(t, expectedN1Q15, actualN2Q15)
+	})
+
+	t.Run("wQ2 == 3 does not overflow int16 arithmetic", func(t *testing.T) {
+		decoder := &Decoder{
+			rangeDecoder: createRangeDecoder(nil, 0, 256, 190),
+			haveDecoded:  true,
+			n0Q15:        []int16{0},
+		}
+
+		actualN1Q15, actualWQ2 := decoder.normalizeLSFInterpolation([]int16{32767}, nanoseconds20Ms)
+		assert.Equal(t, int16(3), actualWQ2)
+		assert.Equal(t, []int16{24575}, actualN1Q15)
+	})
+}
+
+func TestConvertNormalizedLSFsToLPCCoefficients(t *testing.T) {
+	decoder := &Decoder{}
+
+	nlsfQ15 := []int16{
+		0x854, 0xe00, 0x1580, 0x1d00, 0x2500, 0x2c80, 0x3480,
+		0x3c00, 0x4380, 0x4b00, 0x5280, 0x5a00, 0x6200, 0x6980,
+		0x7100, 0x7880,
+	}
+
+	expectedA32Q17 := []int32{
+		12974, 9765, 4176, 3646, -3766, -4429, -2292, -4663,
+		-3441, -3848, -4493, -1614, -1960, -3112, -2153, -2898,
+	}
+
+	assert.Equal(t, expectedA32Q17, decoder.convertNormalizedLSFsToLPCCoefficients(nlsfQ15, BandwidthWideband))
+}
+
+func TestLimitLPCCoefficientsRange(t *testing.T) {
+	t.Run("already in range", func(t *testing.T) {
+		d := &Decoder{}
+		A32Q17 := []int32{
+			12974, 9765, 4176, 3646, -3766, -4429, -2292, -4663,
+			-3441, -3848, -4493, -1614, -1960, -3112, -2153, -2898,
+		}
+		expectedLimited := append([]int32(nil), A32Q17...)
+
+		d.limitLPCCoefficientsRange(A32Q17)
+
+		assert.Equal(t, expectedLimited, A32Q17)
+	})
+
+	t.Run("bandwidth expansion updates every chirp factor", func(t *testing.T) {
+		d := &Decoder{}
+		A32Q17 := []int32{2000000, 1500000, -1200000, 900000}
+
+		d.limitLPCCoefficientsRange(A32Q17)
+
+		assert.Equal(t, []int32{1046539, 410705, -171937, 67483}, A32Q17)
+	})
+}
+
+func TestExcitation(t *testing.T) {
+	expected := []int32{
+		25, -25, -25, -25, 25, 25, -25, 25, 25, -25, 25, -25, -25, -25, 25, 25, -25,
+		25, 25, 25, 25, -211, -25, -25, 25, -25, 25, -25, 25, -25, -25, -25, 25, 25,
+		-25, -25, 261, 517, -25, 25, -25, -25, -25, -25, -25, -25, 25, -25, -25, 25,
+		-25, 25, -25, 25, 25, 25, 25, -25, 25, -25, 25, 25, 25, 25, -25, 25, 25, 25,
+		25, -25, -25, -25, -25, -25, -25, -25, 25, 25, -25, 25, 211, 25, -25, -25,
+		25, 211, 25, 25, 25, -25, 25, 25, -25, -25, -25, 25, 25, 25, 25, -25, 25, 25,
+		-25, 25, 25, 25, 25, 25, -25, -25, 25, -25, -25, 25, 25, -25, 25, 25, 25, -25,
+		-25, -25, -25, -25, -25, 25, 25, 25, 25, 25, -25, 25, -25, -25, 25, 25, 25, 25,
+		25, 25, 25, -25, 25, -211, 25, -25, -25, 25, 25, -25, -25, -25, -25, -25, -25,
+		-25, 25, 25, -25, -25, 25, 25, -25, 25, -25, -25, -25, 25, 25, -25, 25, -25, -211,
+		-25, 25, 25, 25, -25, -25, -25, -25, 25, 25, -25, -25, 25, -25, -25, 25, 25, 25,
+		-25, -25, -25, -25, -25, 25, 25, -25, -211, 25, -25, 25, 25, -25, -25, 25, -25,
+		25, -25, 25, 25, -25, -211, -25, 25, 25, -25, 25, 25, -25, -211, -25, 25, 25, 25,
+		-25, -25, -25, -25, 25, -211, 25, 25, 25, 25, 25, 25, -25, -25, 25, -25, 517, 517,
+		-467, -25, 25, 25, -25, -25, 25, -25, 25, 25, 25, -25, -25, -25, 25, 25, -25, -25,
+		25, -25, 25, -25, 25, -25, 25, -25, -25, -25, 25, 25, -25, -25, 211, 25, 25, 25, 25,
+		-25, -25, 25, -25, -25, -25, -25, 211, -25, 25, -25, -25, 25, -25, -25, 25,
+		-25, 25, -25, 25, 25, -25, 25, -25, 25, 25, 25, 25, -25, -25, -25, 25, -25, 25, 25,
+		-25, -25, -25, 25,
+	}
+
+	silkFrame := []byte{
+		0x84, 0x2e, 0x67, 0xd3, 0x85, 0x65, 0x54, 0xe3, 0x9d, 0x90, 0x0a,
+		0xfa, 0x98, 0xea, 0xfd, 0x98, 0x94, 0x41, 0xf9, 0x6d, 0x1d, 0xa0,
+	}
+	d := &Decoder{rangeDecoder: createRangeDecoder(silkFrame, 71, 851775140, 846837397)}
+
+	lcgSeed := d.decodeLinearCongruentialGeneratorSeed()
+	shellblocks := d.decodeShellblocks(nanoseconds20Ms, BandwidthWideband)
+	rateLevel := d.decodeRatelevel(false)
+	pulsecounts, lsbcounts := d.decodePulseAndLSBCounts(shellblocks, rateLevel)
+
+	eRaw := d.decodeExcitation(frameSignalTypeUnvoiced, frameQuantizationOffsetTypeLow, lcgSeed, pulsecounts, lsbcounts)
+	assert.Equal(t, expected, eRaw)
+}
+
+func TestLimitLPCFilterPredictionGain(t *testing.T) {
+	t.Run("stable coefficients", func(t *testing.T) {
+		d := &Decoder{}
+
+		a32Q17 := []int32{
+			12974, 9765, 4176, 3646, -3766, -4429, -2292, -4663, -3441, -3848,
+			-4493, -1614, -1960, -3112, -2153, -2898,
+		}
+
+		expectedAQ12 := []float32{
+			405, 305, 131, 114, -118, -138, -72, -146, -108, -120, -140, -50, -61,
+			-97, -67, -91,
+		}
+
+		aQ12 := d.limitLPCFilterPredictionGain(a32Q17)
+		assert.Equal(t, aQ12, expectedAQ12)
+	})
+
+	t.Run("re-quantizes after the final bandwidth expansion round", func(t *testing.T) {
+		d := &Decoder{}
+
+		a32Q17 := []int32{
+			1102852, 136167, -791773, 138666, -832129,
+			-874422, 291321, 470182, 1637922, 401952,
+		}
+
+		aQ12 := d.limitLPCFilterPredictionGain(a32Q17)
+		assert.Equal(t, []float32{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, aQ12)
+	})
+}
+
+func TestLPCSynthesis(t *testing.T) { //nolint:lll
+	decoder := NewDecoder()
+
+	dLPC := 16
+	aQ12 := []float32{
+		405, 305, 131, 114, -118, -138, -72, -146, -108, -120,
+		-140, -50, -61, -97, -67, -91,
+	}
+
+	//nolint:dupl,lll
+	res := []float32{
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+		7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06,
+		-7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06,
+		7.152557373046875e-06, -7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, -7.152557373046875e-06,
+		-7.152557373046875e-06, -7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06, 7.152557373046875e-06,
+	}
+
+	gainQ16 := []float32{
+		210944, 112640, 96256, 96256,
+	}
+
+	expectedOut := [][]float32{
+		{
+			0.000023, 0.000025, 0.000027, -0.000018, 0.000025,
+			-0.000021, 0.000021, -0.000024, 0.000021, 0.000021,
+			-0.000022, -0.000026, 0.000018, 0.000022, -0.000023,
+			-0.000025, -0.000027, 0.000017, 0.000020, -0.000021,
+			0.000023, 0.000027, -0.000018, -0.000023, -0.000024,
+			0.000020, -0.000024, 0.000021, 0.000023, 0.000027,
+			0.000029, -0.000016, -0.000020, -0.000025, 0.000018,
+			-0.000026, -0.000028, -0.000028, -0.000028, 0.000016,
+			-0.000025, -0.000025, 0.000021, 0.000025, 0.000027,
+			-0.000016, 0.000030, -0.000016, -0.000020, -0.000024,
+			-0.000026, 0.000019, 0.000022, 0.000025, -0.000019,
+			-0.000021, -0.000024, -0.000027, -0.000029, -0.000030,
+			0.000017, 0.000022, 0.000026, 0.000030, 0.000033,
+			-0.000012, -0.000018, -0.000023, -0.000026, -0.000029,
+			-0.000029, 0.000016, -0.000025, 0.000021, 0.000024,
+			0.000028, -0.000017, 0.000027, 0.000028, 0.000029,
+		},
+		{
+			-0.000006, 0.000017, 0.000015, 0.000015, -0.000011,
+			0.000011, 0.000011, -0.000014, 0.000008, -0.000016,
+			0.000008, -0.000016, -0.000016, -0.000018, -0.000017,
+			-0.000017, 0.000008, -0.000014, -0.000013, -0.000013,
+			-0.000012, 0.000011, -0.000010, 0.000015, 0.000016,
+			-0.000006, 0.000015, -0.000008, -0.000009, -0.000012,
+			0.000012, 0.000012, 0.000013, -0.000009, -0.000011,
+			0.000011, 0.000012, -0.000012, 0.000012, 0.000013,
+			0.000014, -0.000011, 0.000013, -0.000011, -0.000013,
+			-0.000016, 0.000008, -0.000015, 0.000010, -0.000013,
+			-0.000013, -0.000015, 0.000010, -0.000013, 0.000011,
+			-0.000011, -0.000011, -0.000013, 0.000012, -0.000011,
+			0.000013, 0.000015, 0.000016, 0.000016, 0.000017,
+			-0.000007, -0.000010, -0.000013, -0.000015, -0.000017,
+			0.000007, -0.000015, -0.000015, 0.000009, 0.000012,
+			-0.000011, 0.000012, -0.000010, 0.000013, -0.000011,
+		},
+		{
+			0.000012, 0.000012, 0.000014, 0.000014, -0.000007,
+			0.000012, -0.000010, 0.000010, 0.000010, 0.000011,
+			-0.000010, 0.000009, -0.000011, 0.000008, 0.000009,
+			-0.000010, -0.000013, -0.000013, -0.000014, 0.000006,
+			0.000009, -0.000010, -0.000011, -0.000011, -0.000012,
+			0.000008, 0.000011, 0.000013, -0.000007, -0.000008,
+			-0.000010, -0.000011, 0.000009, -0.000010, -0.000011,
+			0.000009, -0.000010, -0.000011, 0.000010, 0.000012,
+			-0.000009, -0.000010, -0.000010, -0.000012, 0.000009,
+			0.000011, 0.000012, 0.000014, -0.000007, 0.000012,
+			-0.000009, 0.000011, -0.000010, 0.000010, -0.000011,
+			-0.000012, -0.000013, -0.000013, -0.000014, 0.000007,
+			-0.000012, 0.000009, -0.000010, -0.000010, -0.000011,
+			0.000010, 0.000012, 0.000013, -0.000006, 0.000013,
+			-0.000007, -0.000009, 0.000010, -0.000010, -0.000011,
+			0.000008, -0.000010, -0.000012, -0.000012, 0.000009,
+		},
+		{
+			0.000009, 0.000011, 0.000013, 0.000014, 0.000015,
+			0.000014, -0.000007, 0.000012, 0.000011, 0.000012,
+			-0.000010, -0.000012, 0.000008, 0.000008, 0.000009,
+			0.000009, -0.000010, -0.000012, -0.000014, -0.000014,
+			0.000006, 0.000008, -0.000010, -0.000012, 0.000010,
+			-0.000010, 0.000010, 0.000012, 0.000013, -0.000008,
+			-0.000009, -0.000010, 0.000009, -0.000010, -0.000011,
+			0.000008, -0.000011, -0.000012, -0.000012, -0.000012,
+			-0.000013, 0.000008, -0.000011, -0.000011, 0.000010,
+			0.000013, -0.000007, -0.000008, -0.000009, -0.000010,
+			0.000009, 0.000011, 0.000013, -0.000007, 0.000013,
+			-0.000008, 0.000011, -0.000010, 0.000011, 0.000011,
+			0.000012, 0.000012, 0.000013, -0.000008, 0.000010,
+			-0.000011, 0.000009, -0.000012, -0.000013, -0.000014,
+			0.000006, -0.000013, -0.000013, 0.000008, -0.000011,
+			-0.000012, -0.000012, 0.000010, 0.000011, 0.000013,
+		},
+	}
+
+	lpc := make([]float32, decoder.samplesInSubframe(BandwidthWideband)*maxSubframeCount)
+	for i := range expectedOut {
+		out := make([]float32, 80)
+		decoder.lpcSynthesis(out, decoder.samplesInSubframe(BandwidthWideband), i, dLPC, aQ12, res, gainQ16, lpc)
+		for j := range out {
+			assert.Less(t, out[j]-expectedOut[i][j], float32(floatEqualityThreshold))
+		}
+	}
+}
+
+func TestDecodePitchLags(t *testing.T) {
+	silkFrame := []byte{
+		0xb4, 0xe2, 0x2c, 0x0e, 0x10, 0x65, 0x1d, 0xa9, 0x07, 0x5c, 0x36,
+		0x8f, 0x96, 0x7b, 0xf4, 0x89, 0x41, 0x55, 0x98, 0x7a, 0x39, 0x2e,
+		0x6b, 0x71, 0xa4, 0x3, 0x70, 0xbf,
+	}
+	d := &Decoder{rangeDecoder: createRangeDecoder(silkFrame, 73, 30770362, 1380489)}
+
+	lagMax, pitchLags := d.decodePitchLags(frameSignalTypeVoiced, BandwidthWideband, nanoseconds20Ms, true)
+	assert.Equal(t, uint32(288), lagMax)
+	assert.Equal(t, []int{206, 206, 206, 206}, pitchLags)
+}
+
+func TestLPCSynthesisWithShorterPreviousHistory(t *testing.T) {
+	d := &Decoder{
+		previousFrameLPCValues: make([]float32, 10),
+	}
+
+	assert.NotPanics(t, func() {
+		d.lpcSynthesis(
+			make([]float32, 80),
+			80,
+			0,
+			16,
+			make([]float32, 16),
+			make([]float32, 80),
+			[]float32{65536},
+			make([]float32, 80),
+		)
+	})
+}
+
+func TestDecodePitchLagsRelative(t *testing.T) {
+	d := &Decoder{
+		rangeDecoder:          createRangeDecoder(nil, 0, 256, 208),
+		isPreviousFrameVoiced: true,
+		previousLag:           100,
+	}
+
+	lagMax, pitchLags := d.decodePitchLags(frameSignalTypeVoiced, BandwidthWideband, nanoseconds10Ms, false)
+	assert.Equal(t, uint32(288), lagMax)
+	assert.Len(t, pitchLags, 2)
+	assert.Equal(t, 92, d.previousLag)
+}
+
+func TestDecodePitchLagsBandwidths(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		bandwidth   Bandwidth
+		nanoseconds int
+		lagMax      uint32
+		previousLag int
+	}{
+		{
+			name: "Narrowband 10ms", bandwidth: BandwidthNarrowband,
+			nanoseconds: nanoseconds10Ms, lagMax: 144, previousLag: 140,
+		},
+		{
+			name: "Mediumband 20ms", bandwidth: BandwidthMediumband,
+			nanoseconds: nanoseconds20Ms, lagMax: 216, previousLag: 210,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d := &Decoder{rangeDecoder: createRangeDecoder(nil, 0, 256, 0)}
+			lagMax, pitchLags := d.decodePitchLags(frameSignalTypeVoiced, test.bandwidth, test.nanoseconds, true)
+			assert.Equal(t, test.lagMax, lagMax)
+			assert.Len(t, pitchLags, subframeCount(test.nanoseconds))
+			assert.Equal(t, test.previousLag, d.previousLag)
+		})
+	}
+}
+
+func TestDecodeLTPFilterCoefficients(t *testing.T) {
+	silkFrame := []byte{
+		0xb4, 0xe2, 0x2c, 0x0e, 0x10, 0x65, 0x1d, 0xa9, 0x07, 0x5c, 0x36,
+		0x8f, 0x96, 0x7b, 0xf4, 0x89, 0x41, 0x55, 0x98, 0x7a, 0x39, 0x2e,
+		0x6b, 0x71, 0xa4, 0x03, 0x70, 0xbf,
+	}
+	d := &Decoder{rangeDecoder: createRangeDecoder(silkFrame, 89, 253853952, 138203876)}
+
+	bQ7 := d.decodeLTPFilterCoefficients(frameSignalTypeVoiced, 4)
+	assert.Equal(t, [][]int8{
+		{1, 1, 8, 1, 1},
+		{2, 0, 77, 11, 9},
+		{1, 1, 8, 1, 1},
+		{-1, 36, 64, 27, -6},
+	}, bQ7)
+}
+
+func TestDecodeLTPScalingParameter(t *testing.T) {
+	t.Run("Voiced", func(t *testing.T) {
+		silkFrame := []byte{
+			0xb4, 0xe2, 0x2c, 0x0e, 0x10, 0x65, 0x1d, 0xa9, 0x07, 0x5c, 0x36,
+			0x8f, 0x96, 0x7b, 0xf4, 0x89, 0x41, 0x55, 0x98, 0x7a, 0x39, 0x2e,
+			0x6b, 0x71, 0xa4, 0x03, 0x70, 0xbf,
+		}
+		d := &Decoder{rangeDecoder: createRangeDecoder(silkFrame, 105, 160412192, 164623240)}
+		assert.Equal(t, float32(15565.0), d.decodeLTPScalingParameter(frameSignalTypeVoiced, true))
+	})
+
+	t.Run("Unvoiced", func(t *testing.T) {
+		d := &Decoder{}
+		assert.Equal(t, float32(15565.0), d.decodeLTPScalingParameter(frameSignalTypeUnvoiced, true))
+	})
+
+	t.Run("Subsequent voiced", func(t *testing.T) {
+		d := &Decoder{}
+		assert.Equal(t, float32(15565.0), d.decodeLTPScalingParameter(frameSignalTypeVoiced, false))
+	})
+}
+
+func TestDecode(t *testing.T) {
+	decoder := NewDecoder()
+	out := make([]float32, 320)
+	previousSample := float32(0)
+
+	compareBuffer := func(t *testing.T, out, expectedOut []float32) {
+		t.Helper()
+
+		for i := range expectedOut {
+			expectedSample := previousSample
+			if i > 0 {
+				expectedSample = expectedOut[i-1]
+			}
+			// The decoder keeps this stage in float, so cross-frame LPC state
+			// updates accumulate a few extra LSBs versus the old fixture.
+			assert.InDelta(t, expectedSample, out[i], 4*floatEqualityThreshold)
+		}
+
+		previousSample = expectedOut[len(expectedOut)-1]
+	}
+
+	t.Run("Unvoiced Single Frame", func(t *testing.T) {
+		assert.NoError(t, decoder.Decode(testSilkFrame(), out, false, nanoseconds20Ms, BandwidthWideband))
+
+		// nolint: dupl
+		expectedOut := []float32{
+			0.000023, 0.000025, 0.000027, -0.000018, 0.000025,
+			-0.000021, 0.000021, -0.000024, 0.000021, 0.000021,
+			-0.000022, -0.000026, 0.000018, 0.000022, -0.000023,
+			-0.000025, -0.000027, 0.000017, 0.000020, -0.000021,
+			0.000023, 0.000027, -0.000018, -0.000023, -0.000024,
+			0.000020, -0.000024, 0.000021, 0.000023, 0.000027,
+			0.000029, -0.000016, -0.000020, -0.000025, 0.000018,
+			-0.000026, -0.000028, -0.000028, -0.000028, 0.000016,
+			-0.000025, -0.000025, 0.000021, 0.000025, 0.000027,
+			-0.000016, 0.000030, -0.000016, -0.000020, -0.000024,
+			-0.000026, 0.000019, 0.000022, 0.000025, -0.000019,
+			-0.000021, -0.000024, -0.000027, -0.000029, -0.000030,
+			0.000017, 0.000022, 0.000026, 0.000030, 0.000033,
+			-0.000012, -0.000018, -0.000023, -0.000026, -0.000029,
+			-0.000029, 0.000016, -0.000025, 0.000021, 0.000024,
+			0.000028, -0.000017, 0.000027, 0.000028, 0.000029,
+			-0.000006, 0.000017, 0.000015, 0.000015, -0.000011,
+			0.000011, 0.000011, -0.000014, 0.000008, -0.000016,
+			0.000008, -0.000016, -0.000016, -0.000018, -0.000017,
+			-0.000017, 0.000008, -0.000014, -0.000013, -0.000013,
+			-0.000012, 0.000011, -0.000010, 0.000015, 0.000016,
+			-0.000006, 0.000015, -0.000008, -0.000009, -0.000012,
+			0.000012, 0.000012, 0.000013, -0.000009, -0.000011,
+			0.000011, 0.000012, -0.000012, 0.000012, 0.000013,
+			0.000014, -0.000011, 0.000013, -0.000011, -0.000013,
+			-0.000016, 0.000008, -0.000015, 0.000010, -0.000013,
+			-0.000013, -0.000015, 0.000010, -0.000013, 0.000011,
+			-0.000011, -0.000011, -0.000013, 0.000012, -0.000011,
+			0.000013, 0.000015, 0.000016, 0.000016, 0.000017,
+			-0.000007, -0.000010, -0.000013, -0.000015, -0.000017,
+			0.000007, -0.000015, -0.000015, 0.000009, 0.000012,
+			-0.000011, 0.000012, -0.000010, 0.000013, -0.000011,
+			0.000012, 0.000012, 0.000014, 0.000014, -0.000007,
+			0.000012, -0.000010, 0.000010, 0.000010, 0.000011,
+			-0.000010, 0.000009, -0.000011, 0.000008, 0.000009,
+			-0.000010, -0.000013, -0.000013, -0.000014, 0.000006,
+			0.000009, -0.000010, -0.000011, -0.000011, -0.000012,
+			0.000008, 0.000011, 0.000013, -0.000007, -0.000008,
+			-0.000010, -0.000011, 0.000009, -0.000010, -0.000011,
+			0.000009, -0.000010, -0.000011, 0.000010, 0.000012,
+			-0.000009, -0.000010, -0.000010, -0.000012, 0.000009,
+			0.000011, 0.000012, 0.000014, -0.000007, 0.000012,
+			-0.000009, 0.000011, -0.000010, 0.000010, -0.000011,
+			-0.000012, -0.000013, -0.000013, -0.000014, 0.000007,
+			-0.000012, 0.000009, -0.000010, -0.000010, -0.000011,
+			0.000010, 0.000012, 0.000013, -0.000006, 0.000013,
+			-0.000007, -0.000009, 0.000010, -0.000010, -0.000011,
+			0.000008, -0.000010, -0.000012, -0.000012, 0.000009,
+			0.000009, 0.000011, 0.000013, 0.000014, 0.000015,
+			0.000014, -0.000007, 0.000012, 0.000011, 0.000012,
+			-0.000010, -0.000012, 0.000008, 0.000008, 0.000009,
+			0.000009, -0.000010, -0.000012, -0.000014, -0.000014,
+			0.000006, 0.000008, -0.000010, -0.000012, 0.000010,
+			-0.000010, 0.000010, 0.000012, 0.000013, -0.000008,
+			-0.000009, -0.000010, 0.000009, -0.000010, -0.000011,
+			0.000008, -0.000011, -0.000012, -0.000012, -0.000012,
+			-0.000013, 0.000008, -0.000011, -0.000011, 0.000010,
+			0.000013, -0.000007, -0.000008, -0.000009, -0.000010,
+			0.000009, 0.000011, 0.000013, -0.000007, 0.000013,
+			-0.000008, 0.000011, -0.000010, 0.000011, 0.000011,
+			0.000012, 0.000012, 0.000013, -0.000008, 0.000010,
+			-0.000011, 0.000009, -0.000012, -0.000013, -0.000014,
+			0.000006, -0.000013, -0.000013, 0.000008, -0.000011,
+			-0.000012, -0.000012, 0.000010, 0.000011, 0.000013,
+		}
+		compareBuffer(t, out, expectedOut)
+	})
+
+	t.Run("Unvoiced Subsequent Frame", func(t *testing.T) {
+		assert.NoError(t, decoder.Decode(
+			[]byte{0x07, 0xc9, 0x72, 0x27, 0xe1, 0x44, 0xea, 0x50},
+			out,
+			false,
+			nanoseconds20Ms,
+			BandwidthWideband,
+		))
+
+		expectedOut := []float32{
+			0.000011, -0.000009, -0.000011, -0.000012, 0.000009,
+			0.000010, -0.000010, 0.000011, 0.000012, -0.000008,
+			0.000011, -0.000009, -0.000010, -0.000012, 0.000008,
+			0.000009, -0.000010, 0.000011, 0.000012, 0.000013,
+			0.000012, 0.000013, -0.000007, 0.000011, 0.000011,
+			0.000011, 0.000011, 0.000012, -0.000009, 0.000009,
+			-0.000012, -0.000013, 0.000006, 0.000008, 0.000009,
+			0.000010, 0.000012, 0.000012, 0.000012, -0.000009,
+			-0.000011, -0.000013, 0.000007, -0.000013, 0.000008,
+			0.000009, 0.000011, -0.000009, -0.000011, 0.000009,
+			-0.000011, -0.000012, -0.000013, 0.000008, 0.000010,
+			-0.000009, 0.000011, -0.000008, -0.000010, 0.000009,
+			-0.000010, 0.000010, 0.000011, -0.000008, 0.000011,
+			-0.000009, -0.000010, 0.000029, -0.000008, -0.000010,
+			0.000009, 0.000012, -0.000010, -0.000011, 0.000010,
+			0.000010, -0.000010, -0.000011, 0.000009, 0.000011,
+			0.000011, 0.000012, -0.000008, 0.000011, -0.000009,
+			-0.000011, 0.000008, -0.000011, -0.000012, 0.000007,
+			-0.000011, -0.000012, -0.000013, 0.000009, 0.000009,
+			0.000012, -0.000008, -0.000009, 0.000011, -0.000009,
+			-0.000010, -0.000011, -0.000012, -0.000013, 0.000008,
+			-0.000011, 0.000010, -0.000009, -0.000009, -0.000012,
+			0.000010, -0.000010, -0.000010, 0.000011, 0.000012,
+			-0.000008, 0.000012, -0.000007, 0.000012, -0.000009,
+			0.000011, 0.000011, 0.000012, -0.000008, 0.000011,
+			0.000012, 0.000012, 0.000012, 0.000012, 0.000012,
+			0.000012, -0.000009, -0.000012, -0.000014, -0.000015,
+			0.000005, 0.000007, 0.000009, -0.000011, -0.000011,
+			0.000009, -0.000011, 0.000009, -0.000010, -0.000010,
+			-0.000012, -0.000012, 0.000009, 0.000011, -0.000008,
+			0.000012, -0.000008, 0.000012, -0.000009, -0.000009,
+			-0.000011, 0.000009, -0.000010, 0.000009, 0.000012,
+			0.000013, -0.000008, -0.000009, -0.000011, 0.000009,
+			0.000010, 0.000011, -0.000009, -0.000010, 0.000010,
+			0.000010, 0.000011, -0.000009, -0.000010, 0.000029,
+			-0.000009, 0.000010, -0.000010, -0.000010, 0.000008,
+			-0.000012, 0.000009, 0.000009, -0.000009, 0.000010,
+			-0.000010, 0.000010, -0.000011, -0.000011, 0.000009,
+			-0.000011, 0.000010, -0.000011, 0.000011, 0.000011,
+			0.000012, -0.000008, 0.000011, -0.000009, 0.000010,
+			0.000010, -0.000009, -0.000011, 0.000009, -0.000011,
+			0.000008, 0.000010, -0.000009, -0.000012, 0.000009,
+			0.000010, 0.000011, 0.000013, 0.000013, -0.000008,
+			-0.000010, -0.000012, -0.000013, -0.000014, 0.000006,
+			0.000008, -0.000011, 0.000010, 0.000012, 0.000013,
+			-0.000008, 0.000012, -0.000009, 0.000010, 0.000011,
+			0.000012, 0.000013, -0.000008, -0.000010, -0.000013,
+			0.000007, 0.000008, 0.000010, -0.000010, 0.000010,
+			0.000010, 0.000012, -0.000009, 0.000011, -0.000010,
+			-0.000012, 0.000007, 0.000010, 0.000011, -0.000009,
+			-0.000010, -0.000013, -0.000013, 0.000007, 0.000009,
+			0.000011, -0.000009, 0.000011, -0.000009, 0.000011,
+			0.000012, 0.000013, -0.000008, -0.000010, 0.000009,
+			-0.000011, 0.000029, -0.000009, -0.000010, -0.000013,
+			0.000008, -0.000012, 0.000008, -0.000011, 0.000010,
+			0.000010, 0.000012, 0.000013, -0.000007, -0.000009,
+			-0.000012, -0.000013, 0.000007, 0.000009, -0.000010,
+			-0.000011, 0.000009, 0.000011, -0.000010, -0.000010,
+			-0.000011, -0.000012, 0.000008, -0.000011, -0.000011,
+			-0.000011, -0.000011, 0.000009, -0.000010, 0.000011,
+			0.000013, -0.000007, -0.000009, 0.000011, -0.000008,
+			-0.000010, -0.000011, 0.000010, -0.000011, -0.000011,
+			-0.000012, 0.000009, -0.000010, 0.000010, -0.000009,
+			-0.000010, -0.000011, 0.000010, -0.000010, 0.000011,
+		}
+		compareBuffer(t, out, expectedOut)
+	})
+}
