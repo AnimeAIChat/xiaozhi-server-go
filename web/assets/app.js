@@ -35,6 +35,7 @@
     providers: '模型供应商',
     unbindDevice: '设备解绑',
     advancedConfig: '高级配置',
+    diagnostics: '首次配置向导',
     whiteList: '白名单',
   };
 
@@ -276,6 +277,7 @@
     if (clean === '/admin/providers') return { key: 'providers', path: clean };
     if (clean === '/admin/unbindDevice') return { key: 'unbindDevice', path: clean };
     if (clean === '/admin/systemConfig') return { key: 'advancedConfig', path: clean };
+    if (clean === '/admin/diagnostics') return { key: 'diagnostics', path: clean };
     if (clean === '/admin/whiteList') return { key: 'whiteList', path: clean };
     return { key: 'welcome', path: '/welcome' };
   }
@@ -306,6 +308,7 @@
           ${navItem('/admin/dashboard', '仪表盘', route.path)}
           ${navItem('/admin/settings', '系统配置', route.path)}
           ${navItem('/admin/providers', '模型供应商', route.path)}
+          ${navItem('/admin/diagnostics', '首次配置向导', route.path)}
           ${navItem('/admin/unbindDevice', '设备解绑', route.path)}
           ${navItem('/admin/systemConfig', '高级配置', route.path)}
           ${navItem('/admin/whiteList', '白名单', route.path)}
@@ -436,6 +439,7 @@
       providers: renderProviders,
       unbindDevice: renderUnbindDevice,
       advancedConfig: renderAdvancedConfig,
+      diagnostics: renderDiagnostics,
       whiteList: renderWhiteList,
     };
 
@@ -467,7 +471,7 @@
               </div>
               <div class="field">
                 <label for="login-password">密码</label>
-                <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="123456" required>
+                <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="首次启动日志中的临时密码" required>
               </div>
               <label class="field checkbox">
                 <input type="checkbox" name="autoLogin" checked>
@@ -502,6 +506,61 @@
         toast(result?.message || '登录失败', 'error');
       } catch (error) {
         showError(error, '登录失败');
+      }
+    });
+  }
+
+  async function renderDiagnostics() {
+    page().innerHTML = `
+      ${pageHeader('首次配置向导', '完成模型与设备地址配置后，运行检查确认每个环节。检查结果不会显示密钥或令牌。')}
+      <div class="card">
+        <h3>1. 配置模型服务</h3>
+        <p class="muted">在“模型供应商”中填写并选择 ASR、LLM、TTS；地址与凭据只保存在本机配置中。</p>
+        <button class="btn" data-link="/admin/providers">打开模型供应商</button>
+      </div>
+      <div class="card">
+        <h3>2. 配置设备接入地址</h3>
+        <p class="muted">在“系统配置”中填写设备可访问的 WebSocket 地址。局域网设备不能使用 localhost。</p>
+        <button class="btn" data-link="/admin/systemConfig">打开系统配置</button>
+      </div>
+      <div class="card">
+        <div class="toolbar" style="justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0">3. 运行连通性检查</h3>
+            <p class="muted" style="margin:6px 0 0">检查 WebSocket、当前 HTTP 服务及已选择的 ASR、LLM、TTS 配置。</p>
+          </div>
+          <button class="btn primary" id="run-diagnostics">开始检查</button>
+        </div>
+        <div id="diagnostics-results" style="margin-top:16px"></div>
+      </div>
+    `;
+
+    const resultHost = byId('diagnostics-results');
+    const renderResults = (results) => {
+      if (!results?.length) {
+        resultHost.innerHTML = emptyState('暂无检查结果');
+        return;
+      }
+      resultHost.innerHTML = `<div class="table-wrap"><table><thead><tr><th>检查项</th><th>结果</th><th>说明</th><th>耗时</th></tr></thead><tbody>${results.map((result) => {
+        const status = result.status === 'ok' ? '通过' : result.status === 'ready' ? '已配置' : '需处理';
+        const className = result.status === 'ok' ? 'green' : result.status === 'ready' ? 'blue' : 'red';
+        return `<tr><td>${escapeHtml(result.name)}</td><td><span class="tag ${className}">${status}</span></td><td>${escapeHtml(result.message)}</td><td>${result.latencyMs == null ? '-' : `${escapeHtml(result.latencyMs)} ms`}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
+    };
+
+    byId('run-diagnostics').addEventListener('click', async () => {
+      const button = byId('run-diagnostics');
+      button.disabled = true;
+      button.textContent = '检查中...';
+      resultHost.innerHTML = loadingCard('正在逐项检查配置与服务地址...');
+      try {
+        const payload = await request('/api/admin/config/diagnostics', { method: 'POST', body: {} });
+        renderResults(payload.data || []);
+      } catch (error) {
+        resultHost.innerHTML = `<div class="alert error">${escapeHtml(error.message || '检查失败')}</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = '重新检查';
       }
     });
   }

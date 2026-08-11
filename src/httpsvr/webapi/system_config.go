@@ -46,6 +46,7 @@ func (s *SystemConfigService) RegisterRoutes(apiGroup *gin.RouterGroup) {
 		// Web配置
 		adminGroup.GET("/web", s.handleGetWebConfig)
 		adminGroup.PUT("/web", s.handleUpdateWebConfig)
+		adminGroup.POST("/diagnostics", s.handleRunDiagnostics)
 
 		// 日志配置
 		adminGroup.GET("/log", s.handleGetLogConfig)
