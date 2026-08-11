@@ -19,6 +19,7 @@
 | 模型接入 | ASR、LLM、TTS、视觉模型均可按 `config.yaml` 选择；内置 OpenAI 兼容接口、Ollama、豆包、Coze、Edge TTS、Deepgram、GoSherpa、讯飞、阶跃等接入实现 |
 | 视觉能力 | 客户端可通过语音触发摄像头图像识别 |
 | 角色与声音 | 预设角色、预设声音与语音指令切换 |
+| 短期记忆 | 已绑定设备重连后可延续短期上下文；按设备与智能体隔离，支持在设备管理页清空 |
 | 扩展能力 | 本地 MCP、设备 MCP 与外部 Stdio MCP；可配置天气、地图等工具 |
 | 设备接入 | OTA 接口、固件文件下载接口与 WebSocket 地址下发 |
 | 运维与数据 | 本地 SQLite 配置存储、日志、Swagger API 文档、Docker 运行方式 |
@@ -128,6 +129,7 @@ MCP 使用方式、外部 Stdio MCP 示例和设备 MCP 说明见 [src/core/mcp/
 - 运行日志：`logs/server.log`
 - 常见问题与一台设备的验证流程：[docs/quick-start.md](docs/quick-start.md)
 - 升级、回滚与 Release 包内容：[docs/release.md](docs/release.md)
+- 短期记忆的边界与清理方式：[docs/short-term-memory.md](docs/short-term-memory.md)
 
 ## 更多功能
 

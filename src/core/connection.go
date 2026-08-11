@@ -234,7 +234,9 @@ func NewConnectionHandler(
 	handler.quickReplyCache = utils.NewQuickReplyCache(handler.ttsProviderName, handler.voiceName)
 
 	// 初始化对话管理器
-	handler.dialogueManager = chat.NewDialogueManager(handler.logger, nil)
+	memory := chat.NewDeviceAgentShortTermMemory(handler.deviceID, handler.agentID)
+	handler.dialogueManager = chat.NewDialogueManager(handler.logger, memory)
+	handler.dialogueManager.SetShortTermMemoryLimits(chat.DefaultShortTermMemoryMessages, chat.DefaultShortTermMemoryTokens)
 	handler.dialogueManager.SetSystemMessage(prompt)
 	handler.functionRegister = function.NewFunctionRegistry()
 	handler.initMCPResultHandlers()
@@ -489,6 +491,7 @@ func (h *ConnectionHandler) LogError(msg string) {
 // Handle 处理WebSocket连接
 func (h *ConnectionHandler) Handle(conn Connection) {
 	defer conn.Close()
+	defer h.dialogueManager.EndSession()
 
 	h.conn = conn
 	if h.isDeviceDisabled {

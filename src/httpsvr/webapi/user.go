@@ -72,6 +72,8 @@ func (s *DefaultUserService) Start(
 		authGroup.DELETE("/providers/:type/:name", s.handleUserProvidersDelete)
 		///user/providers/{type}/{name} [put]
 		authGroup.PUT("/providers/:type/:name", s.handleUserProvidersUpdate)
+
+		authGroup.DELETE("/device/:id/memory", s.handleDeviceMemoryClear)
 	}
 
 	s.logger.Info("用户HTTP服务路由注册完成")

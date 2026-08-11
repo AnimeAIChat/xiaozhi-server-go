@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/src/core/chat"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -158,6 +159,23 @@ func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": device})
+}
+
+// handleDeviceMemoryClear clears the short-lived in-memory conversation context.
+func (s *DefaultUserService) handleDeviceMemoryClear(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	deviceID := strings.TrimSpace(c.Param("id"))
+	if deviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device id is required"})
+		return
+	}
+	device, err := database.FindDeviceByIDAndUser(database.GetDB(), deviceID, userID)
+	if err != nil || device.AgentID == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found or not bound"})
+		return
+	}
+	chat.ClearDeviceAgentShortTermMemory(deviceID, *device.AgentID)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // handleDeviceUpdate 设备更新

@@ -1015,6 +1015,7 @@
         <div class="divider"></div>
         <button class="btn small" data-copy="${escapeHtml(deviceId)}">复制 MAC</button>
         <button class="btn small" data-toggle-device="${escapeHtml(deviceId)}" data-disabled="${device.mode === 'ban' ? 'true' : 'false'}">${device.mode === 'ban' ? '启用设备' : '禁用设备'}</button>
+        <button class="btn ghost small" data-clear-device-memory="${escapeHtml(deviceId)}">清空短期记忆</button>
       </div>
     `;
   }
@@ -1751,6 +1752,15 @@
         });
         toast(currentlyDisabled ? '设备已启用' : '设备已禁用', 'success');
         render();
+      });
+      return;
+    }
+
+    const clearDeviceMemory = target.closest('[data-clear-device-memory]');
+    if (clearDeviceMemory) {
+      confirmAction('清空短期记忆', '这会清空此设备当前智能体的短期对话上下文，确认继续吗？', async () => {
+        await request(`/api/user/device/${encodeURIComponent(clearDeviceMemory.dataset.clearDeviceMemory)}/memory`, { method: 'DELETE' });
+        toast('短期记忆已清空', 'success');
       });
       return;
     }

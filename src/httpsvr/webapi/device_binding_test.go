@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"xiaozhi-server-go/src/configs/database"
+	"xiaozhi-server-go/src/core/chat"
 	"xiaozhi-server-go/src/models"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,23 @@ func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
 	}
 	if response := bind(2, otherAgent.ID); response.Code != http.StatusForbidden {
 		t.Fatalf("cross-user bind status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+
+	memory := chat.NewDeviceAgentShortTermMemory(device.DeviceID, agent.ID)
+	if err := memory.SaveMemory([]chat.Message{{Role: "user", Content: "clear me"}}); err != nil {
+		t.Fatal(err)
+	}
+	memoryRecorder := httptest.NewRecorder()
+	memoryContext, _ := gin.CreateTestContext(memoryRecorder)
+	memoryContext.Request = httptest.NewRequest(http.MethodDelete, "/api/user/device/device-001/memory", nil)
+	memoryContext.Params = gin.Params{{Key: "id", Value: device.DeviceID}}
+	memoryContext.Set("user_id", uint(1))
+	service.handleDeviceMemoryClear(memoryContext)
+	if memoryRecorder.Code != http.StatusOK {
+		t.Fatalf("clear memory status = %d, body = %s", memoryRecorder.Code, memoryRecorder.Body.String())
+	}
+	if saved, err := memory.QueryMemory(""); err != nil || saved != "" {
+		t.Fatalf("memory was not cleared, got %q, %v", saved, err)
 	}
 
 	disabled := true
