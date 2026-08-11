@@ -105,9 +105,8 @@ type MQTTInfo struct {
 }
 
 type Activation struct {
-	Code    string `json:"code"                example:"543091"`
-	Message string `json:"message"             example:"Anime AI Chat
-543091"`
+	Code      string `json:"code"                example:"543091"`
+	Message   string `json:"message"             example:"Anime AI Chat 543091"`
 	Challenge string `json:"challenge,omitempty"` // 用于设备认证挑战
 }
 type OTAResponse struct {

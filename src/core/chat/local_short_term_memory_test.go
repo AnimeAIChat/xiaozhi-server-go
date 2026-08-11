@@ -2,6 +2,9 @@ package chat
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -60,6 +63,42 @@ func TestDialogueManagerAppliesMessageAndEstimatedTokenLimits(t *testing.T) {
 	for _, message := range dialogue[1:] {
 		if cost := estimateMessageTokens(message); cost > 12 {
 			t.Fatalf("message exceeded estimated token budget: %d, %#v", cost, message)
+		}
+	}
+}
+
+func TestTwentySimulatedDevicesKeepConversationsIsolated(t *testing.T) {
+	store := NewLocalShortTermMemoryStore(time.Minute)
+	const devices = 20
+
+	var waitGroup sync.WaitGroup
+	for i := 0; i < devices; i++ {
+		waitGroup.Add(1)
+		go func(index int) {
+			defer waitGroup.Done()
+			memory := &localShortTermMemory{store: store, key: memoryKey(fmt.Sprintf("device-%02d", index), 1)}
+			manager := NewDialogueManager(nil, memory)
+			manager.SetShortTermMemoryLimits(DefaultShortTermMemoryMessages, DefaultShortTermMemoryTokens)
+			manager.SetSystemMessage("system")
+			manager.Put(Message{Role: "user", Content: fmt.Sprintf("device-%02d message", index)})
+			manager.Put(Message{Role: "assistant", Content: fmt.Sprintf("reply-%02d", index)})
+		}(i)
+	}
+	waitGroup.Wait()
+
+	for i := 0; i < devices; i++ {
+		memory := &localShortTermMemory{store: store, key: memoryKey(fmt.Sprintf("device-%02d", i), 1)}
+		reconnected := NewDialogueManager(nil, memory)
+		dialogue := reconnected.GetLLMDialogue()
+		if len(dialogue) != 2 {
+			t.Fatalf("device %d got %d saved messages, want 2", i, len(dialogue))
+		}
+		for _, message := range dialogue {
+			for other := 0; other < devices; other++ {
+				if other != i && strings.Contains(message.Content, fmt.Sprintf("-%02d", other)) {
+					t.Fatalf("device %d received device %d content: %#v", i, other, dialogue)
+				}
+			}
 		}
 	}
 }
