@@ -1,8 +1,10 @@
 package webapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	"xiaozhi-server-go/src/configs/database"
 
@@ -19,7 +21,8 @@ import (
 // @Success 200 {object} models.Device "绑定成功返回设备信息"
 // @Router /user/device/bind [post]
 type DeviceBindRequest struct {
-	AgentID  uint   `json:"agentID"`
+	AgentID  uint   `json:"agentID" binding:"required"`
+	DeviceID string `json:"deviceID" binding:"required"`
 	AuthCode string `json:"authCode"`
 }
 
@@ -47,19 +50,68 @@ type DeviceUpdateRequest struct {
 // @Success 200 {object} []models.Device "设备列表"
 // @Router /user/device/list [get]
 func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
-	// userID := c.GetUint("user_id")
+	userID := c.GetUint("user_id")
 	agentID := c.Param("id")
 	id, err := strconv.Atoi(agentID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid agent id"})
 		return
 	}
-	devices, err := database.ListDevicesByAgent(database.GetDB(), uint(id))
+	if _, err := database.GetAgentByIDAndUser(database.GetDB(), uint(id), userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+	devices, err := database.ListDevicesByAgentAndUser(database.GetDB(), uint(id), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": devices})
+}
+
+func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var request DeviceBindRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bind request"})
+		return
+	}
+	request.DeviceID = strings.TrimSpace(request.DeviceID)
+	if request.DeviceID == "" || request.AgentID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "deviceID and agentID are required"})
+		return
+	}
+
+	var boundDevice interface{}
+	err := WithTxNoContext(func(tx *gorm.DB) error {
+		if _, err := database.GetAgentByIDAndUser(tx, request.AgentID, userID); err != nil {
+			return err
+		}
+		device, err := database.FindDeviceByID(tx, request.DeviceID)
+		if err != nil {
+			return err
+		}
+		if device.UserID != nil && *device.UserID != userID {
+			return fmt.Errorf("device is already owned by another user")
+		}
+		device.UserID = &userID
+		device.AgentID = &request.AgentID
+		device.AuthStatus = "bound"
+		if err := database.UpdateDevice(tx, device); err != nil {
+			return err
+		}
+		boundDevice = device
+		return nil
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "another user") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "device is already owned"})
+		} else {
+			c.JSON(http.StatusNotFound, gin.H{"error": "device or agent not found"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": boundDevice})
 }
 
 // handleDeviceListByUser 获取当前用户的所有设备
@@ -141,7 +193,7 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 		device.LastActiveTimeV2 = *req.LastActiveTime
 	}
 	if req.AgentID != nil {
-		_, err = database.GetAgentByID(database.GetDB(), *req.AgentID)
+		_, err = database.GetAgentByIDAndUser(database.GetDB(), *req.AgentID, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "agent not found"})
 			return
@@ -182,14 +234,17 @@ func (s *DefaultUserService) handleDeviceDelete(c *gin.Context) {
 	deviceID := requestData.DeviceID
 	s.logger.Info("handleDeviceDelete called with id: %s", deviceID)
 
-	_, err := database.FindDeviceByIDAndUser(database.GetDB(), deviceID, userID)
+	device, err := database.FindDeviceByIDAndUser(database.GetDB(), deviceID, userID)
 	// 查找设备
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
 		return
 	}
 
-	err = database.DeleteDevice(database.GetDB(), deviceID)
+	device.AgentID = nil
+	device.UserID = nil
+	device.AuthStatus = "pending"
+	err = database.UpdateDevice(database.GetDB(), device)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete device"})
 		return

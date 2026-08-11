@@ -695,7 +695,7 @@
       <div id="agents-body">${loadingCard('正在加载智能体列表...')}</div>
     `;
 
-    byId('agent-add-device').addEventListener('click', () => toast('社区版本暂不支持绑定设备', 'warning'));
+    byId('agent-add-device').addEventListener('click', () => openBindDeviceModal());
     byId('create-agent').addEventListener('click', () => openCreateAgentModal());
 
     const [agentPayload, ttsProviders] = await Promise.all([
@@ -794,6 +794,45 @@
         render();
       } catch (error) {
         showError(error, '创建失败');
+      }
+    });
+  }
+
+  async function openBindDeviceModal(selectedAgentId = '') {
+    const agents = normalizeList(await request('/api/user/agent/list'));
+    if (!agents.length) {
+      toast('请先创建一个智能体', 'warning');
+      return;
+    }
+    openModal({
+      title: '绑定设备',
+      body: `
+        <form class="form" id="bind-device-form">
+          <div class="field">
+            <label>智能体</label>
+            <select name="agentID" required>
+              ${agents.map((agent) => `<option value="${escapeHtml(agent.id)}" ${String(agent.id) === String(selectedAgentId) ? 'selected' : ''}>${escapeHtml(agent.name || `智能体 ${agent.id}`)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>设备 ID</label>
+            <input name="deviceID" placeholder="设备完成 OTA 请求后显示的 Device ID" required>
+          </div>
+          <p class="muted">设备必须已请求过本服务的 OTA 地址。设备 ID 只会用于本次绑定，不会在页面中展示密钥。</p>
+        </form>
+      `,
+      footer: `<button class="btn" data-close-modal>取消</button><button class="btn primary" id="bind-device-submit">绑定</button>`,
+    });
+    byId('bind-device-submit').addEventListener('click', async () => {
+      const form = byId('bind-device-form');
+      if (!form.reportValidity()) return;
+      try {
+        await request('/api/user/device/bind', { method: 'POST', body: formValues(form) });
+        closeModal();
+        toast('设备绑定成功', 'success');
+        render();
+      } catch (error) {
+        showError(error, '绑定失败：请确认设备已接入且未被其他用户绑定');
       }
     });
   }
@@ -950,7 +989,7 @@
       `)}
       <div id="devices-body">${loadingCard()}</div>
     `;
-    byId('add-device').addEventListener('click', () => toast('社区版本暂不支持绑定设备', 'warning'));
+    byId('add-device').addEventListener('click', () => openBindDeviceModal(id));
     const payload = await request(`/api/user/device/list/${id}`);
     const devices = normalizeList(payload);
     byId('devices-body').innerHTML = devices.length

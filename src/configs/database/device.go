@@ -50,6 +50,14 @@ func ListDevicesByAgent(tx *gorm.DB, agentID uint) ([]models.Device, error) {
 	return devices, nil
 }
 
+func ListDevicesByAgentAndUser(tx *gorm.DB, agentID, userID uint) ([]models.Device, error) {
+	var devices []models.Device
+	if err := tx.Where("agent_id = ? AND user_id = ?", agentID, userID).Find(&devices).Error; err != nil {
+		return nil, err
+	}
+	return devices, nil
+}
+
 // 支持事务的 ListDevicesByUser
 func ListDevicesByUser(tx *gorm.DB, userID uint) ([]models.Device, error) {
 	var devices []models.Device

@@ -108,13 +108,14 @@ func (s *DefaultUserService) handleAgentList(c *gin.Context) {
 // @Success 200 {object} models.Agent "Agent信息"
 // @Router /user/agent/{id} [get]
 func (s *DefaultUserService) handleAgentGet(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 	WithTx(c, func(tx *gorm.DB) error {
-		agent, err := database.GetAgentByID(tx, uint(id))
+		agent, err := database.GetAgentByIDAndUser(tx, uint(id), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
 			return err
@@ -135,6 +136,7 @@ func (s *DefaultUserService) handleAgentGet(c *gin.Context) {
 // @Success 200 {object} models.Agent "更新后的Agent信息"
 // @Router /user/agent/{id} [put]
 func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -146,7 +148,7 @@ func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
 		return
 	}
 	WithTx(c, func(tx *gorm.DB) error {
-		agent, err := database.GetAgentByID(tx, uint(id))
+		agent, err := database.GetAgentByIDAndUser(tx, uint(id), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
 			return err
@@ -210,6 +212,7 @@ func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
 // @Success 200 {object} []models.AgentDialog "对话记录列表"
 // @Router /user/agent/history_dialog_list/{id} [post]
 func (s *DefaultUserService) handleAgentHistoryDialogList(c *gin.Context) {
+	userID := c.GetUint("user_id")
 	agentID := c.Param("id")
 	id, err := strconv.Atoi(agentID)
 	if err != nil {
@@ -217,6 +220,10 @@ func (s *DefaultUserService) handleAgentHistoryDialogList(c *gin.Context) {
 		return
 	}
 	WithTx(c, func(tx *gorm.DB) error {
+		if _, err := database.GetAgentByIDAndUser(tx, uint(id), userID); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+			return err
+		}
 		dialogs, err := database.GetAgentDialogsWithoutDetailByID(tx, uint(id))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

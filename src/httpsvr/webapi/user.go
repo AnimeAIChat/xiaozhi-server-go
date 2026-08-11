@@ -60,6 +60,7 @@ func (s *DefaultUserService) Start(
 
 		authGroup.GET("/device/list/:id", s.handleDeviceList)
 		authGroup.GET("/device/list", s.handleDeviceListByUser)
+		authGroup.POST("/device/bind", s.handleDeviceBind)
 		authGroup.GET("/device/:id", s.handleDeviceGet)
 		authGroup.PUT("/device/:id", s.handleDeviceUpdate)
 		authGroup.DELETE("/device", s.handleDeviceDelete)

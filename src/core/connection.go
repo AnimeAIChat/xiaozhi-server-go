@@ -453,24 +453,6 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 
 	if device.AgentID != nil {
 		h.agentID = *device.AgentID // 获取设备绑定的AgentID
-	} else {
-		// 查询当前agent列表，绑定到第一个agent
-		agents, err := database.ListAgentsByUser(database.GetDB(), database.AdminUserID)
-		if err != nil {
-			h.LogError(fmt.Sprintf("查询智能体失败: %v", err))
-			return
-		}
-		if len(agents) > 0 {
-			h.agentID = agents[0].ID
-			device.AgentID = &h.agentID
-			err = database.UpdateDevice(database.GetDB(), device)
-			if err != nil {
-				h.LogError(fmt.Sprintf("更新设备绑定的智能体失败: %v", err))
-				return
-			}
-		} else {
-			h.agentID = 0 // 未绑定则为0
-		}
 	}
 
 	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))
