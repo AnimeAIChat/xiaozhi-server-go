@@ -1,4 +1,4 @@
-name: Build Go binaries
+name: Build release packages
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -6,125 +6,96 @@ concurrency:
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
-
-env:
-  OPUS_VERSION: 1.3.1
 
 permissions:
   contents: write
 
 jobs:
-  build-windows-amd64:
+  build-windows:
+    name: Build Windows AMD64
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
-
+          go-version: "1.24.2"
       - name: Install cross-compilation tools
-        run: |
-          sudo apt update
-          sudo apt install -y mingw-w64 pkg-config build-essential wget upx-ucl
-
-      - name: Download & build libopus (static)
-        run: |
-          wget https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz
-          tar xf opus-${OPUS_VERSION}.tar.gz
-          pushd opus-${OPUS_VERSION}
-          ./configure \
-            --host=x86_64-w64-mingw32 \
-            --disable-shared --enable-static \
-            --disable-doc --disable-extra-programs \
-            --prefix="$HOME/opus-win"
-          make -j"$(nproc)"
-          make install
-          popd
-
-      - name: Configure env for Windows build
-        run: |
-          echo "PKG_CONFIG_PATH=$HOME/opus-win/lib/pkgconfig" >> $GITHUB_ENV
-          echo "CGO_ENABLED=1"                   >> $GITHUB_ENV
-          echo "GOOS=windows"                   >> $GITHUB_ENV
-          echo "GOARCH=amd64"                   >> $GITHUB_ENV
-          echo "CC=x86_64-w64-mingw32-gcc"      >> $GITHUB_ENV
-
-      - name: Build & compress Windows binaries
-        run: |
-          go mod tidy
-          cd src
-          go build -v \
-            -ldflags "-s -w -extldflags '-static'" \
-            -o ../windows-amd64-server.exe
-          cp ../windows-amd64-server.exe ../windows-amd64-server-upx.exe
-          upx --lzma ../windows-amd64-server-upx.exe
-
-      - name: Upload Windows binaries
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: windows
+          GOARCH: amd64
+          CC: x86_64-w64-mingw32-gcc
+        run: go build -trimpath -ldflags "-s -w -extldflags '-static'" -o dist/windows-amd64/xiaozhi-server.exe ./src/main.go
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: windows-binaries
-          path: |
-            windows-amd64-server.exe
-            windows-amd64-server-upx.exe
+          name: build-windows-amd64
+          path: dist/windows-amd64
 
   build-linux:
+    name: Build Linux ${{ matrix.arch }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runs-on: ubuntu-latest
+            runner: ubuntu-latest
           - arch: arm64
-            runs-on: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runs-on }}
-
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Compile & compress in container
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build static binary
         run: |
           docker run --rm --platform=linux/${{ matrix.arch }} \
-            -v "${{ github.workspace }}:/src" \
-            -w /src \
-            golang:1.24.2-alpine sh -c "\
-              apk add --no-cache build-base autoconf automake libtool pkgconfig musl-dev wget upx && \
-              wget https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz && \
-              tar xf opus-${OPUS_VERSION}.tar.gz && \
-              cd opus-${OPUS_VERSION} && \
-              ./configure --enable-static --disable-shared --disable-doc --disable-extra-programs && \
-              make -j$(nproc) && make install && \
-              cd /src && go mod tidy && cd src && \
+            -v "${{ github.workspace }}:/src" -w /src golang:1.24.2-alpine \
+            sh -ec 'apk add --no-cache build-base musl-dev && \
               CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.arch }} \
-                go build -v -ldflags '-s -w -extldflags \"-static\"' \
-                -o ../linux-${{ matrix.arch }}-server && \
-              # copy original binary before compression
-              cp ../linux-${{ matrix.arch }}-server ../linux-${{ matrix.arch }}-server-upx && \
-              upx --lzma ../linux-${{ matrix.arch }}-server-upx\
-            "
-
-      - name: Upload Linux binaries
+              go build -trimpath -ldflags "-s -w -extldflags '\''-static'\''" \
+              -o dist/linux-${{ matrix.arch }}/xiaozhi-server ./src/main.go'
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: linux-binaries-${{ matrix.arch }}
-          path: |
-            linux-${{ matrix.arch }}-server
-            linux-${{ matrix.arch }}-server-upx
+          name: build-linux-${{ matrix.arch }}
+          path: dist/linux-${{ matrix.arch }}
+
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: macos-13
+          - arch: arm64
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.2"
+      - name: Build native binary
+        run: go build -trimpath -ldflags "-s -w" -o dist/darwin-${{ matrix.arch }}/xiaozhi-server ./src/main.go
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-darwin-${{ matrix.arch }}
+          path: dist/darwin-${{ matrix.arch }}
 
   build-android:
+    name: Build Android ${{ matrix.arch }}
     runs-on: ubuntu-latest
-
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: arm64
@@ -133,148 +104,95 @@ jobs:
           - arch: arm
             target: armv7a-linux-androideabi
             target_arch: armeabi-v7a
-
     env:
-      OPUS_VERSION: 1.3.1
       NDK_VERSION: r26d
-      ANDROID_API: 21
-
+      ANDROID_API: "21"
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config
-
-      - name: Cache NDK
+          go-version: "1.24.2"
+      - name: Cache Android NDK
         id: cache-ndk
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: |
-            android-ndk-${{ env.NDK_VERSION }}
+          path: android-ndk-${{ env.NDK_VERSION }}
           key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}
-
-      - name: Download and set up Android NDK
+      - name: Download Android NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && unzip -q android-ndk-${NDK_VERSION}-linux.zip
+      - name: Build
+        env:
+          NDK_DIR: ${{ github.workspace }}/android-ndk-r26d
+          CGO_ENABLED: "1"
+          GOOS: android
+          GOARCH: ${{ matrix.arch }}
         run: |
-          wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-          unzip android-ndk-${NDK_VERSION}-linux.zip
-
-      - name: Set NDK environment
-        run: |
-          echo "NDK_DIR=$PWD/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
-          echo "TOOLCHAIN=$PWD/android-ndk-${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-
-
-      - name: Download libopus
-        run: |
-          wget https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz
-          tar xzf opus-${OPUS_VERSION}.tar.gz
-
-      - name: Build libopus with NDK
-        run: |
-          export TOOLCHAIN=$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64
-          export TARGET=${{ matrix.target }}
-          export API=$ANDROID_API
-          export CC=$TOOLCHAIN/bin/${TARGET}${API}-clang
-          export AR=$TOOLCHAIN/bin/llvm-ar
-          
-          cd opus-${OPUS_VERSION}
-          ./configure \
-            --prefix=$HOME/libopus-prefix \
-            --host=$TARGET \
-            --enable-static \
-            --disable-shared \
-            CC=$CC \
-            AR=$AR \
-            CFLAGS="--sysroot=$TOOLCHAIN/sysroot"
-          make -j$(nproc)
-          make install
-
-      - name: Set up pkg-config for libopus
-        run: |
-          echo "PKG_CONFIG_PATH=$HOME/libopus-prefix/lib/pkgconfig" >> $GITHUB_ENV
-          echo "CGO_ENABLED=1" >> $GITHUB_ENV
-          echo "GOOS=android" >> $GITHUB_ENV
-          echo "GOARCH=${{ matrix.arch }}" >> $GITHUB_ENV
-          echo "CC=$TOOLCHAIN/bin/${{ matrix.target }}$ANDROID_API-clang" >> $GITHUB_ENV
-          echo "CGO_CFLAGS=--sysroot=$TOOLCHAIN/sysroot" >> $GITHUB_ENV
-          echo "CGO_LDFLAGS=-L$HOME/libopus-prefix/lib -lopus -L$TOOLCHAIN/sysroot -lm" >> $GITHUB_ENV
-
-      - name: Build Go binary for Android
-        run: |
-          # Use -tags=go_json to force gin to use encoding/json instead of sonic
-          # sonic does not support 32-bit ARM architectures
-          cd src && go build -v -tags=go_json -ldflags="-s -w" -o ../android-${{ matrix.arch }}-server
-
-      - name: Upload Android binary
+          TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64"
+          export CC="$TOOLCHAIN/bin/${{ matrix.target }}${ANDROID_API}-clang"
+          export CGO_CFLAGS="--sysroot=$TOOLCHAIN/sysroot"
+          go build -trimpath -tags=go_json -ldflags "-s -w" -o dist/android-${{ matrix.target_arch }}/xiaozhi-server ./src/main.go
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: android-${{ matrix.arch }}-server
-          path: android-${{ matrix.arch }}-server
-
+          name: build-android-${{ matrix.target_arch }}
+          path: dist/android-${{ matrix.target_arch }}
 
   release:
-    needs:
-      - build-windows-amd64
-      - build-linux
-      - build-android
+    name: Package and publish release
+    needs: [build-windows, build-linux, build-macos, build-android]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download Windows binaries
+      - uses: actions/checkout@v4
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          name: windows-binaries
+          pattern: build-*
           path: artifacts
-
-      - name: Download Linux AMD64 binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-binaries-amd64
-          path: artifacts
-
-      - name: Download Linux ARM64 binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-binaries-arm64
-          path: artifacts
-
-      - name: Download Android ARM64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: android-arm64-server
-          path: artifacts
-
-      - name: Download Android ARM binary
-        uses: actions/download-artifact@v4
-        with:
-          name: android-arm-server
-          path: artifacts
-
+          merge-multiple: false
+      - name: Create release packages
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          mkdir -p release
+          package() {
+            target="$1"
+            binary="$2"
+            extension="$3"
+            package_dir="release/xiaozhi-server-go-${VERSION}-${target}"
+            mkdir -p "$package_dir/docs"
+            cp "artifacts/build-${target}/${binary}" "$package_dir/xiaozhi-server${extension}"
+            cp config.yaml "$package_dir/config.yaml"
+            cp README.md "$package_dir/README.md"
+            cp LICENSE "$package_dir/LICENSE"
+            cp docs/quick-start.md "$package_dir/docs/quick-start.md"
+            cp docs/release.md "$package_dir/docs/release.md"
+            cp -R web "$package_dir/web"
+            if [ "$extension" = ".exe" ]; then
+              cp scripts/start.bat "$package_dir/start.bat"
+              (cd release && zip -qr "xiaozhi-server-go-${VERSION}-${target}.zip" "xiaozhi-server-go-${VERSION}-${target}")
+            else
+              cp scripts/start.sh "$package_dir/start.sh"
+              chmod +x "$package_dir/start.sh" "$package_dir/xiaozhi-server"
+              tar -czf "release/xiaozhi-server-go-${VERSION}-${target}.tar.gz" -C release "xiaozhi-server-go-${VERSION}-${target}"
+            fi
+          }
+          package "windows-amd64" "xiaozhi-server.exe" ".exe"
+          package "linux-amd64" "xiaozhi-server" ""
+          package "linux-arm64" "xiaozhi-server" ""
+          package "darwin-amd64" "xiaozhi-server" ""
+          package "darwin-arm64" "xiaozhi-server" ""
+          cp artifacts/build-android-arm64-v8a/xiaozhi-server release/xiaozhi-server-go-${VERSION}-android-arm64-v8a
+          cp artifacts/build-android-armeabi-v7a/xiaozhi-server release/xiaozhi-server-go-${VERSION}-android-armeabi-v7a
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name:    ${{ github.ref_name }}
-          draft:   false
-          prerelease: false
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
           files: |
-            artifacts/android-arm64-server
-            artifacts/android-arm-server
-            artifacts/windows-amd64-server.exe
-            artifacts/windows-amd64-server-upx.exe
-            artifacts/linux-amd64-server
-            artifacts/linux-amd64-server-upx
-            artifacts/linux-arm64-server
-            artifacts/linux-arm64-server-upx
+            release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

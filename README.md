@@ -127,6 +127,7 @@ MCP 使用方式、外部 Stdio MCP 示例和设备 MCP 说明见 [src/core/mcp/
 - OTA 健康检查：`http://127.0.0.1:8080/api/ota/`
 - 运行日志：`logs/server.log`
 - 常见问题与一台设备的验证流程：[docs/quick-start.md](docs/quick-start.md)
+- 升级、回滚与 Release 包内容：[docs/release.md](docs/release.md)
 
 ## 更多功能
 
