@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/core/utils"
 	"xiaozhi-server-go/src/models"
@@ -274,9 +275,10 @@ func GetProviderByTypeInternal(providerType string, userID uint, bRemoveSensitiv
 				continue
 			}
 			if bRemoveSensitive {
-				llms[config.Name], _ = RemoveSensitiveFields(config.Data)
+				sanitized, _ := RemoveSensitiveFields(config.Data)
+				llms[config.Name] = normalizeProviderNumericData("LLM", datatypes.JSON([]byte(sanitized)))
 			} else {
-				llms[config.Name] = string(config.Data)
+				llms[config.Name] = normalizeProviderNumericData("LLM", config.Data)
 			}
 		}
 		return llms, nil
@@ -292,9 +294,10 @@ func GetProviderByTypeInternal(providerType string, userID uint, bRemoveSensitiv
 				continue
 			}
 			if bRemoveSensitive {
-				vlllms[config.Name], _ = RemoveSensitiveFields(config.Data)
+				sanitized, _ := RemoveSensitiveFields(config.Data)
+				vlllms[config.Name] = normalizeProviderNumericData("VLLLM", datatypes.JSON([]byte(sanitized)))
 			} else {
-				vlllms[config.Name] = string(config.Data)
+				vlllms[config.Name] = normalizeProviderNumericData("VLLLM", config.Data)
 			}
 		}
 		return vlllms, nil
@@ -332,7 +335,57 @@ func normalizeProviderDataType(name, providerType string, data datatypes.JSON) s
 	return string(normalized)
 }
 
+// normalizeProviderNumericData 兼容旧版网页将数值字段存成字符串的配置。
+// 读取时规范化，既避免启动失败，也让下一次保存写入标准 JSON 数字。
+func normalizeProviderNumericData(providerType string, data datatypes.JSON) string {
+	if providerType != "LLM" && providerType != "VLLLM" {
+		return string(data)
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return string(data)
+	}
+	normalizeProviderNumericFields(config)
+	normalized, err := json.Marshal(config)
+	if err != nil {
+		return string(data)
+	}
+	return string(normalized)
+}
+
+func normalizeProviderNumericFields(config map[string]interface{}) {
+	if value, ok := config["max_tokens"].(string); ok {
+		if number, err := strconv.Atoi(value); err == nil {
+			config["max_tokens"] = number
+		}
+	}
+	for _, field := range []string{"temperature", "top_p"} {
+		if value, ok := config[field].(string); ok {
+			if number, err := strconv.ParseFloat(value, 64); err == nil {
+				config[field] = number
+			}
+		}
+	}
+}
+
+func normalizeProviderInput(providerType string, data interface{}) interface{} {
+	if providerType != "LLM" && providerType != "VLLLM" {
+		return data
+	}
+	config, ok := data.(map[string]interface{})
+	if !ok {
+		return data
+	}
+	copyConfig := make(map[string]interface{}, len(config))
+	for key, value := range config {
+		copyConfig[key] = value
+	}
+	normalizeProviderNumericFields(copyConfig)
+	return copyConfig
+}
+
 func CreateProvider(providerType, name string, data interface{}, createUserID uint) error {
+	data = normalizeProviderInput(providerType, data)
 	providerJson, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("序列化提供者数据失败: %v", err)
@@ -388,6 +441,7 @@ func CreateProvider(providerType, name string, data interface{}, createUserID ui
 
 // UpdateProvider 更新提供者
 func UpdateProvider(providerType, name string, data interface{}, userID uint) error {
+	data = normalizeProviderInput(providerType, data)
 	providerJson, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("序列化提供者数据失败: %v", err)

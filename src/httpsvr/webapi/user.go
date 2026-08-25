@@ -68,6 +68,7 @@ func (s *DefaultUserService) Start(
 		// providers
 		authGroup.GET("/providers/:type", s.handleUserProvidersType)
 		authGroup.POST("/providers/create", s.handleUserProvidersCreate)
+		authGroup.POST("/providers/:type/:name/test", s.handleUserProviderTest)
 		///user/providers/{type}/{name} [delete]
 		authGroup.DELETE("/providers/:type/:name", s.handleUserProvidersDelete)
 		///user/providers/{type}/{name} [put]

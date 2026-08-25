@@ -21,11 +21,17 @@ func (h *ConnectionHandler) initMCPResultHandlers() {
 		"mcp_handler_change_role":  h.mcp_handler_change_role,
 		"mcp_handler_play_music":   h.mcp_handler_play_music,
 		"mcp_handler_switch_agent": h.mcp_handler_switch_agent,
+		"mcp_handler_list_agents":  h.mcp_handler_list_agents,
+		"mcp_handler_create_agent": h.mcp_handler_create_agent,
+		"mcp_handler_update_agent": h.mcp_handler_update_agent,
 	}
 }
 
 // mcp_handler_switch_agent 处理切换智能体的请求，参数可以是 {"agent_id": <number>} 或 {"agent_id": "123"} 或 {"agent_name": "名字"}
 func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) string {
+	if !database.IsOnboardingAgent(database.GetDB(), h.agentID) {
+		return "只有初始设置助手可以切换智能体"
+	}
 	var newAgentID uint = 0
 	var agentName string
 
@@ -86,11 +92,20 @@ func (h *ConnectionHandler) mcp_handler_switch_agent(args interface{}) string {
 
 	for _, ag := range agents {
 		if ag.ID == newAgentID || (agentName != "" && ag.Name == agentName) {
+			if ag.IsOnboarding {
+				return "当前已在初始设置助手中，无需切换"
+			}
 			// 找到对应的agent
 			h.logger.Info("mcp_handler_switch_agent: found agent %d, name %s", ag.ID, ag.Name)
 			h.agentID = ag.ID
 			device.AgentID = &ag.ID
-			database.UpdateDevice(database.GetDB(), device) // 更新设备的agent_id
+			ownerID := ag.UserID
+			device.UserID = &ownerID
+			device.AuthStatus = "bound"
+			if err := database.UpdateDevice(database.GetDB(), device); err != nil {
+				h.logger.Error("mcp_handler_switch_agent: UpdateDevice failed: %v", err)
+				return "切换智能体失败：保存设备绑定失败"
+			}
 			agent, prompt := h.InitWithAgent()
 			// 更新对话系统提示并保留最近上下文
 			h.dialogueManager.SetSystemMessage(prompt)

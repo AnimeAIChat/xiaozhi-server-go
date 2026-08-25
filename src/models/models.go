@@ -30,6 +30,8 @@ type Agent struct {
 	Description        string    `gorm:"type:text"            json:"description"`        // 智能体描述
 	CatalogyID         uint      `                            json:"catalogy_id"`        // 分类ID
 	Extra              string    `gorm:"type:text"            json:"extra"`              // 额外信息，JSON格式
+	// IsOnboarding 标记系统创建的初始设置助手。该智能体会自动接管新设备，直到用户主动切换。
+	IsOnboarding bool `gorm:"default:false;index"  json:"isOnboarding"`
 }
 type AgentDialog struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`

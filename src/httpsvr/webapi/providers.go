@@ -1,12 +1,103 @@
 package webapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"xiaozhi-server-go/src/configs/database"
 
 	"github.com/gin-gonic/gin"
 )
+
+// handleUserProviderTest 验证当前用户可见的已保存 Provider 配置。
+// 测试成功必须取得 Provider 的真实响应，不会把字段完整误报为服务可用。
+func (s *DefaultUserService) handleUserProviderTest(c *gin.Context) {
+	providerType := strings.ToUpper(strings.TrimSpace(c.Param("type")))
+	name := strings.TrimSpace(c.Param("name"))
+	if name == "" {
+		c.JSON(400, gin.H{"success": false, "message": "Provider 名称不能为空"})
+		return
+	}
+
+	providers, err := database.GetProviderByTypeInternal(providerType, c.GetUint("user_id"), false)
+	if err != nil {
+		c.JSON(400, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	rawConfig, ok := providers[name]
+	if !ok {
+		c.JSON(404, gin.H{"success": false, "message": "未找到可测试的 Provider"})
+		return
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal([]byte(rawConfig), &config); err != nil {
+		c.JSON(400, gin.H{"success": false, "message": "Provider 配置不是有效 JSON"})
+		return
+	}
+	subType, _ := config["type"].(string)
+	subType = strings.ToLower(strings.TrimSpace(subType))
+	if subType == "" {
+		c.JSON(200, gin.H{"success": false, "message": "缺少具体类型（type）"})
+		return
+	}
+	if missing := missingProviderTestFields(providerType, subType, config); len(missing) > 0 {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("还需填写：%s", strings.Join(missing, "、")),
+			"data":    gin.H{"level": "configuration", "missing_fields": missing},
+		})
+		return
+	}
+
+	result, err := s.runLiveProviderTest(c.Request.Context(), providerType, name, subType, config)
+	if err != nil {
+		c.JSON(200, gin.H{"success": false, "message": err.Error(), "data": gin.H{"level": "live"}})
+		return
+	}
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": result.message,
+		"data":    result.data,
+	})
+}
+
+func stringConfig(config map[string]interface{}, key string) string {
+	value, _ := config[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func missingProviderTestFields(providerType, subType string, config map[string]interface{}) []string {
+	required := map[string]map[string][]string{
+		"ASR": {
+			"doubao": {"appid", "access_token"}, "deepgram": {"addr", "api_key"}, "gosherpa": {"addr"},
+			"stepfun": {"api_key", "model", "voice"}, "iflytek": {"appid", "api_key", "api_secret"},
+		},
+		"TTS": {
+			"edge": {"voice"}, "doubao": {"appid", "token", "cluster", "voice"}, "gosherpa": {"cluster"},
+			"deepgram": {"cluster", "token", "voice"}, "iflytek": {"appid", "token", "cluster"},
+		},
+		"LLM": {
+			"openai": {"url", "api_key", "model_name"}, "ollama": {"url", "model_name"},
+			"doubao": {"url", "api_key", "model_name"}, "coze": {"bot_id", "user_id", "personal_access_token"},
+		},
+		"VLLLM": {
+			"openai": {"url", "api_key", "model_name"}, "ollama": {"url", "model_name"},
+		},
+	}
+	fields, known := required[providerType][subType]
+	if !known {
+		return []string{"当前类型暂不支持测试"}
+	}
+	missing := make([]string, 0)
+	for _, field := range fields {
+		if stringConfig(config, field) == "" {
+			missing = append(missing, field)
+		}
+	}
+	return missing
+}
 
 // handleSystemProvidersGet 获取所有Provider
 // @Summary 获取所有Provider

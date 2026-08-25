@@ -683,8 +683,12 @@ func (p *Provider) sendAudioData(data []byte, isLast bool) error {
 		}
 	}()
 
-	// 检查连接是否存在
-	if p.conn == nil {
+	// Reset 会在语音打断时关闭并清空连接；发送与重置必须共用同一把锁，
+	// 否则可能在 nil 检查之后发生空指针写入。
+	p.connMutex.Lock()
+	defer p.connMutex.Unlock()
+	conn := p.conn
+	if conn == nil {
 		return fmt.Errorf("WebSocket连接不存在")
 	}
 
@@ -708,7 +712,7 @@ func (p *Provider) sendAudioData(data []byte, isLast bool) error {
 	audioMessage := append(header, size...)
 	audioMessage = append(audioMessage, compressedAudio...)
 
-	if err := p.conn.WriteMessage(websocket.BinaryMessage, audioMessage); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, audioMessage); err != nil {
 		return fmt.Errorf("发送音频数据失败: %v", err)
 	}
 

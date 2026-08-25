@@ -8,7 +8,9 @@
   <link rel="icon" href="/favicon.ico">
   <script>
     window.__STATIC_WEB_BASE__ = location.protocol === 'file:' ? './' : '/';
-    document.write('<link rel="stylesheet" href="' + window.__STATIC_WEB_BASE__ + 'assets/app.css">');
+    // 静态管理页使用版本参数，避免浏览器继续执行旧版脚本而看不到新功能。
+    window.__STATIC_WEB_VERSION__ = '20260824-provider-test';
+    document.write('<link rel="stylesheet" href="' + window.__STATIC_WEB_BASE__ + 'assets/app.css?v=' + window.__STATIC_WEB_VERSION__ + '">');
   </script>
 </head>
 <body>
@@ -21,7 +23,7 @@
   <div id="toast-root" class="toast-root" aria-live="polite"></div>
   <div id="modal-root"></div>
   <script>
-    document.write('<script src="' + window.__STATIC_WEB_BASE__ + 'assets/app.js"><\/script>');
+    document.write('<script src="' + window.__STATIC_WEB_BASE__ + 'assets/app.js?v=' + window.__STATIC_WEB_VERSION__ + '"><\/script>');
   </script>
 </body>
 </html>

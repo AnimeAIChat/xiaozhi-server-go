@@ -199,7 +199,7 @@ func (c *LocalClient) AddToolSwitchAgent() error {
 	}
 
 	c.AddTool("switch_agent",
-		"当且仅当用户说‘切换到{name}智能体’或‘切换智能体到{name}’时调用，严格校验格式，如果用户没有明确到要切换到的智能体id或者name，需要先和用户确认，不要直接调用本工具，调用时必须提供agent_id（数字）或agent_name（字符串）其中之一",
+		"仅初始设置助手使用：当用户明确说‘切换到{name}智能体’或‘切换智能体到{name}’时调用。用户未明确名称或ID时，先询问确认。调用时必须提供agent_id（数字）或agent_name（字符串）其中之一。",
 		InputSchema,
 		func(ctx context.Context, args map[string]any) (interface{}, error) {
 			// 验证至少提供了一个参数
@@ -225,4 +225,61 @@ func (c *LocalClient) AddToolSwitchAgent() error {
 		})
 
 	return nil
+}
+
+func (c *LocalClient) AddToolListAgents() error {
+	inputSchema := ToolInputSchema{Type: "object", Properties: map[string]any{}, Required: []string{}}
+	return c.AddTool("list_agents",
+		"仅初始设置助手使用：当用户询问有哪些可切换智能体时调用，返回预设智能体列表。",
+		inputSchema,
+		func(ctx context.Context, args map[string]any) (interface{}, error) {
+			return types.ActionResponse{Action: types.ActionTypeCallHandler, Result: types.ActionResponseCall{
+				FuncName: "mcp_handler_list_agents", Args: args,
+			}}, nil
+		})
+}
+
+func (c *LocalClient) AddToolCreateAgent() error {
+	inputSchema := ToolInputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"name":        map[string]any{"type": "string", "description": "新智能体名称"},
+			"llm":         map[string]any{"type": "string", "description": "已配置的 LLM 提供者名称；未提供时使用当前默认模型"},
+			"voice":       map[string]any{"type": "string", "description": "TTS 音色 ID；未提供时使用当前默认音色"},
+			"prompt":      map[string]any{"type": "string", "description": "智能体角色提示词"},
+			"description": map[string]any{"type": "string", "description": "智能体的简短用途说明"},
+		},
+		Required: []string{"name"},
+	}
+	return c.AddTool("create_agent",
+		"仅初始设置助手使用：用户明确要求创建智能体、并提供名称后调用。模型或音色不明确时先询问，或明确说明会使用默认值。",
+		inputSchema,
+		func(ctx context.Context, args map[string]any) (interface{}, error) {
+			return types.ActionResponse{Action: types.ActionTypeCallHandler, Result: types.ActionResponseCall{
+				FuncName: "mcp_handler_create_agent", Args: args,
+			}}, nil
+		})
+}
+
+func (c *LocalClient) AddToolUpdateAgent() error {
+	inputSchema := ToolInputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"agent_name":  map[string]any{"type": "string", "description": "要修改的智能体名称"},
+			"new_name":    map[string]any{"type": "string", "description": "修改后的名称"},
+			"llm":         map[string]any{"type": "string", "description": "已配置的 LLM 提供者名称"},
+			"voice":       map[string]any{"type": "string", "description": "TTS 音色 ID"},
+			"prompt":      map[string]any{"type": "string", "description": "完整替换后的角色提示词"},
+			"description": map[string]any{"type": "string", "description": "完整替换后的用途说明"},
+		},
+		Required: []string{"agent_name"},
+	}
+	return c.AddTool("update_agent",
+		"仅初始设置助手使用：用户明确要求修改某个其他智能体的名称、LLM、音色或角色提示词时调用。目标或改动不清楚时必须先确认。",
+		inputSchema,
+		func(ctx context.Context, args map[string]any) (interface{}, error) {
+			return types.ActionResponse{Action: types.ActionTypeCallHandler, Result: types.ActionResponseCall{
+				FuncName: "mcp_handler_update_agent", Args: args,
+			}}, nil
+		})
 }

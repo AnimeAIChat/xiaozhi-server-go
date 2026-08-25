@@ -459,6 +459,62 @@ textarea:disabled {
   font-size: 12px;
 }
 
+.provider-card .card-title {
+  align-items: flex-start;
+}
+
+.provider-test-result:empty {
+  display: none;
+}
+
+.provider-test-result {
+  margin-top: 12px;
+}
+
+.provider-test-message {
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.provider-test-message.success {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.provider-test-message.error {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.provider-test-audio {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.provider-form-intro {
+  margin: 0;
+}
+
+.provider-advanced {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px 12px;
+}
+
+.provider-advanced summary {
+  cursor: pointer;
+  color: #344054;
+  font-weight: 500;
+}
+
+.provider-advanced .codebox {
+  margin-top: 12px;
+}
+
 .form {
   display: grid;
   gap: 16px;

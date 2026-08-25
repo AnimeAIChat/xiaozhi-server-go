@@ -687,7 +687,7 @@
 
   async function renderAgents() {
     page().innerHTML = `
-      ${pageHeader('智能体', '管理角色、模型和设备绑定', `
+      ${pageHeader('智能体', '新设备会先自动绑定“初始设置助手”，可在对话中创建、配置或切换其他智能体', `
         <input id="agent-search" placeholder="搜索智能体" style="min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:6px">
         <button class="btn primary" id="create-agent">新建智能体</button>
         <button class="btn" id="agent-add-device">添加设备</button>
@@ -724,7 +724,7 @@
       <div class="card">
         <div class="card-title">
           <h3>${escapeHtml(agent.name || '未命名智能体')}</h3>
-          <button class="btn ghost danger small" data-delete-agent="${escapeHtml(agent.id)}">删除</button>
+          ${agent.isOnboarding ? '<span class="tag blue">初始设置</span>' : `<button class="btn ghost danger small" data-delete-agent="${escapeHtml(agent.id)}">删除</button>`}
         </div>
         <div class="chip-row">
           <span class="tag blue">ID ${escapeHtml(agent.id)}</span>
@@ -733,6 +733,7 @@
         <div class="divider"></div>
         <div class="form">
           <div><span class="muted">角色音色：</span>${escapeHtml(voiceLabel(voices, agent.voice) || '-')}</div>
+          ${agent.isOnboarding ? '<div><span class="muted">用途：</span>新设备的默认接待与设置助手</div>' : ''}
           <div><span class="muted">最近对话：</span>${escapeHtml(formatDate(agent.lastConversationAt))}</div>
           <div><span class="muted">设备数量：</span>${deviceCount}</div>
         </div>
@@ -1286,63 +1287,165 @@
 
   function providerCard(provider) {
     const config = provider.config || {};
-    const configRows = Object.entries(config).slice(0, 8).map(([key, value]) => `
-      <div><span class="muted">${escapeHtml(key)}：</span>${escapeHtml(maskSecret(value))}</div>
+    const configRows = Object.entries(config).filter(([key]) => key !== 'type').slice(0, 5).map(([key, value]) => `
+      <div><span class="muted">${escapeHtml(providerFieldLabel(key))}：</span>${escapeHtml(displayProviderValue(key, value))}</div>
     `).join('');
     return `
-      <div class="card">
+      <div class="card provider-card">
         <div class="card-title">
-          <h3>${escapeHtml(provider.name)}</h3>
-          <span class="tag blue">${escapeHtml(provider.type)}</span>
+          <div>
+            <h3>${escapeHtml(provider.name)}</h3>
+            <span class="subtle">${escapeHtml(providerTypeLabel(provider.type))}</span>
+          </div>
+          <div class="chip-row"><span class="tag blue">${escapeHtml(provider.type)}</span><span class="tag">${escapeHtml(config.type || '未设置类型')}</span></div>
         </div>
         <div class="form">${configRows || '<span class="muted">暂无配置</span>'}</div>
         <div class="divider"></div>
         <div class="inline-actions">
+          <button class="btn small" data-test-provider="${escapeHtml(provider.type)}:${escapeHtml(provider.name)}">测试</button>
           <button class="btn small" data-edit-provider="${escapeHtml(provider.type)}:${escapeHtml(provider.name)}">编辑</button>
           <button class="btn danger small" data-delete-provider="${escapeHtml(provider.type)}:${escapeHtml(provider.name)}">删除</button>
         </div>
+        <div class="provider-test-result" aria-live="polite"></div>
       </div>
     `;
   }
 
-  function maskSecret(value) {
+  const PROVIDER_FIELDS = {
+    ASR: {
+      doubao: { label: '火山语音识别', fields: [['appid', '应用 ID', '例如：1234567890', true], ['access_token', '访问令牌', '填写火山控制台生成的令牌', true], ['output_dir', '临时文件目录', 'tmp/'], ['end_window_size', '结束静音时长（毫秒）', '300', false, 'number']] },
+      deepgram: { label: 'Deepgram', fields: [['addr', '服务地址', 'wss://api.deepgram.com/v1/listen'], ['api_key', 'API 密钥', '填写 Deepgram API Key', true], ['lang', '识别语言', 'zh-CN'], ['output_dir', '临时文件目录', 'tmp/']] },
+      gosherpa: { label: 'GoSherpa', fields: [['addr', '服务地址', 'ws://127.0.0.1:8848/asr']] },
+      stepfun: { label: '阶跃星辰', fields: [['api_key', 'API 密钥', '填写阶跃星辰 API Key', true], ['model', '模型名称', 'step-audio-2-mini'], ['voice', '音色', 'qingchunshaonv']] },
+      iflytek: { label: '讯飞语音识别', fields: [['appid', '应用 ID', '填写 APPID', true], ['api_key', 'API Key', '填写 API Key', true], ['api_secret', 'API Secret', '填写 API Secret', true], ['asr_url', '服务地址', 'wss://iat-api.xfyun.cn/v2/iat']] },
+    },
+    TTS: {
+      edge: { label: 'Microsoft Edge TTS', fields: [['voice', '音色', 'zh-CN-XiaoxiaoNeural'], ['output_dir', '临时文件目录', 'tmp/']] },
+      doubao: { label: '火山语音合成', fields: [['appid', '应用 ID', '填写 APPID', true], ['token', '访问令牌', '填写 Access Token', true], ['cluster', '资源集群', '填写资源集群名称'], ['voice', '音色', 'zh_female_wanwanxiaohe_moon_bigtts'], ['output_dir', '临时文件目录', 'tmp/']] },
+      gosherpa: { label: 'GoSherpa', fields: [['cluster', '服务地址', 'ws://127.0.0.1:8848/tts'], ['output_dir', '临时文件目录', 'tmp/']] },
+      deepgram: { label: 'Deepgram', fields: [['cluster', '服务地址', 'wss://api.deepgram.com/v1/speak'], ['token', 'API 密钥', '填写 Deepgram API Key', true], ['voice', '音色', 'aura-2-zeus-en'], ['output_dir', '临时文件目录', 'tmp/']] },
+      iflytek: { label: '讯飞语音合成', fields: [['appid', '应用 ID', '填写 APPID', true], ['token', 'API Key', '填写 API Key', true], ['cluster', 'API Secret', '填写 API Secret', true], ['voice', '音色', 'xiaoyan'], ['output_dir', '临时文件目录', 'tmp/']] },
+    },
+    LLM: {
+      openai: { label: 'OpenAI 兼容接口', fields: [['url', 'API 地址', 'https://api.example.com/v1'], ['api_key', 'API 密钥', '填写 API Key', true], ['model_name', '模型名称', '例如：gpt-4o-mini'], ['max_tokens', '最大输出 Token', '500', false, 'number']] },
+      ollama: { label: 'Ollama 本地模型', fields: [['url', 'Ollama 地址', 'http://127.0.0.1:11434'], ['model_name', '模型名称', '例如：qwen3:8b']] },
+      doubao: { label: '火山方舟', fields: [['url', 'API 地址', 'https://ark.cn-beijing.volces.com/api/v3'], ['api_key', 'API 密钥', '填写 API Key', true], ['model_name', '模型名称', '填写模型端点 ID'], ['max_tokens', '最大输出 Token', '4000', false, 'number']] },
+      coze: { label: '扣子', fields: [['bot_id', '智能体 ID', '填写 Bot ID', true], ['user_id', '用户 ID', '填写 User ID', true], ['personal_access_token', '个人访问令牌', '填写 PAT', true], ['url', 'API 地址', 'https://api.coze.cn']] },
+    },
+    VLLLM: {
+      openai: { label: 'OpenAI 兼容视觉模型', fields: [['url', 'API 地址', 'https://api.example.com/v1'], ['api_key', 'API 密钥', '填写 API Key', true], ['model_name', '模型名称', '例如：glm-4v-flash'], ['max_tokens', '最大输出 Token', '1024', false, 'number']] },
+      ollama: { label: 'Ollama 视觉模型', fields: [['url', 'Ollama 地址', 'http://127.0.0.1:11434'], ['model_name', '模型名称', '例如：qwen2.5vl:7b']] },
+    },
+  };
+
+  const PROVIDER_FIELD_LABELS = { url: '服务地址', addr: '服务地址', asr_url: '服务地址', cluster: '服务地址 / 集群', model_name: '模型', model: '模型', voice: '音色', type: '具体类型', appid: '应用 ID', lang: '语言', output_dir: '临时目录', max_tokens: '最大输出 Token' };
+
+  function providerTypeLabel(type) {
+    return { ASR: '语音识别', TTS: '语音合成', LLM: '大语言模型', VLLLM: '视觉语言模型' }[type] || type;
+  }
+
+  function providerFieldLabel(key) {
+    return PROVIDER_FIELD_LABELS[key] || key;
+  }
+
+  function displayProviderValue(key, value) {
+    if (/(token|secret|key|password)/i.test(key)) return '已填写（已隐藏）';
     if (value == null) return '';
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    if (text.length > 32) return `${text.slice(0, 12)}...${text.slice(-6)}`;
-    return text;
+    return text.length > 64 ? `${text.slice(0, 56)}…` : text;
   }
 
   async function openProviderModal(provider = null) {
+    const config = provider?.config || { type: 'openai' };
+    const selectedType = provider?.type || 'LLM';
+    const selectedSubType = config.type || Object.keys(PROVIDER_FIELDS[selectedType] || {})[0] || 'openai';
     openModal({
       title: provider ? '编辑供应商' : '添加供应商',
       body: `
         <form class="form" id="provider-form">
+          <div class="alert provider-form-intro">先选择服务和具体类型，再填写可见字段；不常用的参数可在“高级 JSON”中补充。密钥不会显示在供应商卡片上。</div>
           <div class="form-grid">
             <div class="field">
               <label>服务分类</label>
               <select name="type" ${provider ? 'disabled' : ''}>
-                ${['ASR', 'TTS', 'LLM', 'VLLLM'].map((type) => `<option value="${type}" ${provider?.type === type ? 'selected' : ''}>${type}</option>`).join('')}
+                ${['ASR', 'TTS', 'LLM', 'VLLLM'].map((type) => `<option value="${type}" ${selectedType === type ? 'selected' : ''}>${type} · ${providerTypeLabel(type)}</option>`).join('')}
               </select>
             </div>
             <div class="field">
               <label>供应商名称</label>
-              <input name="name" value="${escapeHtml(provider?.name || '')}" ${provider ? 'disabled' : ''} required>
+              <input name="name" value="${escapeHtml(provider?.name || '')}" placeholder="例如：我的火山方舟" ${provider ? 'disabled' : ''} required>
             </div>
             <div class="field">
               <label>具体类型</label>
-              <input name="subType" value="${escapeHtml(provider?.config?.type || 'openai')}" required>
+              <input name="subType" id="provider-subtype" list="provider-subtype-options" value="${escapeHtml(selectedSubType)}" required>
+              <datalist id="provider-subtype-options"></datalist>
             </div>
           </div>
-          <div class="field">
-            <label>配置 JSON</label>
-            <textarea class="codebox" name="configJson" spellcheck="false">${escapeHtml(prettyJson(provider?.config || { type: 'openai' }))}</textarea>
-          </div>
+          <div id="provider-config-fields" class="form-grid"></div>
+          <details class="provider-advanced">
+            <summary>高级 JSON（可选）</summary>
+            <p class="subtle">字段表单会同步到此处；仅在需要填写未列出的参数时直接编辑。</p>
+            <textarea class="codebox" name="configJson" spellcheck="false">${escapeHtml(prettyJson(config))}</textarea>
+          </details>
+          <div id="provider-form-status" class="subtle">保存后可在供应商卡片上进行测试。</div>
         </form>
       `,
       footer: `<button class="btn" data-close-modal>取消</button><button class="btn primary" id="provider-submit">保存</button>`,
     });
+
+    const form = byId('provider-form');
+    const typeInput = form.elements.type;
+    const subTypeInput = form.elements.subType;
+    const jsonInput = form.elements.configJson;
+    const currentConfig = () => parseJson(jsonInput.value, {}) || {};
+    const renderProviderFields = (resetConfig = false) => {
+      const type = provider?.type || typeInput.value;
+      const definitions = PROVIDER_FIELDS[type] || {};
+      const options = Object.entries(definitions).map(([value, definition]) => `<option value="${escapeHtml(value)}">${escapeHtml(`${value} · ${definition.label}`)}</option>`).join('');
+      byId('provider-subtype-options').innerHTML = options;
+      const subType = subTypeInput.value.trim().toLowerCase();
+      const definition = definitions[subType];
+      if (resetConfig) {
+        jsonInput.value = prettyJson({ type: subType || Object.keys(definitions)[0] || 'openai' });
+      }
+      const configValue = currentConfig();
+      const fields = definition?.fields || [];
+      byId('provider-config-fields').innerHTML = fields.length ? fields.map(([key, label, placeholder, secret, inputType]) => `
+        <div class="field">
+          <label for="provider-field-${escapeHtml(key)}">${escapeHtml(label)}</label>
+          <div class="${secret ? 'input-with-button' : ''}">
+            <input id="provider-field-${escapeHtml(key)}" data-provider-config-field="${escapeHtml(key)}" type="${secret ? 'password' : (inputType || 'text')}" value="${escapeHtml(configValue[key] ?? '')}" placeholder="${escapeHtml(placeholder || '')}" ${['appid', 'access_token', 'api_key', 'api_secret', 'token', 'model_name', 'model', 'voice'].includes(key) ? 'required' : ''}>
+            ${secret ? `<button class="btn small" type="button" data-toggle-provider-secret aria-label="显示或隐藏${escapeHtml(label)}">显示</button>` : ''}
+          </div>
+        </div>
+      `).join('') : '<div class="alert warning">此具体类型暂无快捷字段，请在高级 JSON 中填写完整配置。</div>';
+      qsa('[data-provider-config-field]', form).forEach((input) => input.addEventListener('input', syncProviderJson));
+      qsa('[data-toggle-provider-secret]', form).forEach((button) => button.addEventListener('click', () => {
+        const input = button.parentElement.querySelector('[data-provider-config-field]');
+        const hidden = input.type === 'password';
+        input.type = hidden ? 'text' : 'password';
+        button.textContent = hidden ? '隐藏' : '显示';
+      }));
+      byId('provider-form-status').textContent = definition ? `已选择：${providerTypeLabel(type)} · ${definition.label}` : '可自定义具体类型，并在高级 JSON 中填写完整配置。';
+    };
+    const syncProviderJson = () => {
+      const configValue = currentConfig();
+      configValue.type = subTypeInput.value.trim();
+      qsa('[data-provider-config-field]', form).forEach((input) => {
+        const value = input.value.trim();
+        if (!value) return;
+        configValue[input.dataset.providerConfigField] = input.type === 'number' ? Number(value) : value;
+      });
+      jsonInput.value = prettyJson(configValue);
+    };
+    typeInput.addEventListener('change', () => {
+      const type = typeInput.value;
+      subTypeInput.value = Object.keys(PROVIDER_FIELDS[type] || {})[0] || 'openai';
+      renderProviderFields(true);
+    });
+    subTypeInput.addEventListener('change', () => { syncProviderJson(); renderProviderFields(false); });
+    renderProviderFields(false);
     byId('provider-submit').addEventListener('click', async () => {
-      const form = byId('provider-form');
       if (!form.reportValidity()) return;
       const values = formValues(form);
       const type = provider?.type || values.type;
@@ -1792,6 +1895,42 @@
       const providers = await getModelProviders();
       const provider = providers.find((item) => item.type === type && item.name === name);
       openProviderModal(provider);
+      return;
+    }
+
+    const testProvider = target.closest('[data-test-provider]');
+    if (testProvider) {
+      const [type, ...nameParts] = testProvider.dataset.testProvider.split(':');
+      const name = nameParts.join(':');
+      const resultNode = testProvider.closest('.provider-card')?.querySelector('.provider-test-result');
+      const previousText = testProvider.textContent;
+      testProvider.disabled = true;
+      testProvider.textContent = '测试中…';
+      if (resultNode) resultNode.innerHTML = '<span class="subtle">正在验证已保存的配置，请稍候…</span>';
+      try {
+        const result = await request(`/api/user/providers/${encodeURIComponent(type)}/${encodeURIComponent(name)}/test`, { method: 'POST' });
+        const success = result?.success === true;
+        if (resultNode) {
+          resultNode.innerHTML = `<div class="provider-test-message ${success ? 'success' : 'error'}">${escapeHtml(result?.message || (success ? '测试成功' : '测试失败'))}</div>`;
+          const audioData = result?.data?.audio_base64;
+          const audioFormat = String(result?.data?.audio_format || '').toLowerCase();
+          if (success && typeof audioData === 'string' && /^(wav|mp3|ogg)$/.test(audioFormat)) {
+            const player = document.createElement('audio');
+            player.className = 'provider-test-audio';
+            player.controls = true;
+            player.setAttribute('aria-label', '测试合成语音播放器');
+            player.src = `data:audio/${audioFormat};base64,${audioData}`;
+            resultNode.append(player);
+          }
+        }
+        toast(result?.message || (success ? '测试成功' : '测试失败'), success ? 'success' : 'error');
+      } catch (error) {
+        if (resultNode) resultNode.innerHTML = `<div class="provider-test-message error">${escapeHtml(error?.data?.message || error?.message || '测试失败')}</div>`;
+        showError(error, '测试失败');
+      } finally {
+        testProvider.disabled = false;
+        testProvider.textContent = previousText;
+      }
       return;
     }
 

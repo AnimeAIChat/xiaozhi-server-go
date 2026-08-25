@@ -399,17 +399,19 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 		}
 
 		llmName := getter.Config().Name
-		if llmName != agentLLMName {
-			// 根据agent.LLM类型设置LLM提供者
-			if cfg, ok := config.LLM[agentLLMName]; !ok {
-				h.LogError(fmt.Sprintf("Agent %d 的 LLM 类型 %s 不存在", h.agentID, agentLLMName))
-			} else {
-				if apiKey != "" {
-					cfg.APIKey = apiKey // 使用Agent的API密钥
-				}
-				if baseUrl != "" {
-					cfg.BaseURL = baseUrl // 使用Agent的BaseURL
-				}
+		if cfg, ok := config.LLM[agentLLMName]; !ok {
+			h.LogError(fmt.Sprintf("Agent %d 的 LLM 类型 %s 不存在", h.agentID, agentLLMName))
+		} else {
+			if apiKey != "" {
+				cfg.APIKey = apiKey // 使用Agent的API密钥
+			}
+			if baseUrl != "" {
+				cfg.BaseURL = baseUrl // 使用Agent的BaseURL
+			}
+			current := getter.Config()
+			// 同名提供者也可能在启动后从数据库载入了新密钥或地址，必须重建实例。
+			needsRecreate := llmName != agentLLMName || current.Type != cfg.Type || current.ModelName != cfg.ModelName || current.BaseURL != cfg.BaseURL || current.APIKey != cfg.APIKey
+			if needsRecreate {
 				llmCfg := &llm.Config{
 					Name:        agentLLMName,
 					Type:        cfg.Type,
@@ -426,17 +428,10 @@ func (h *ConnectionHandler) checkLLMProvider(agent *models.Agent, config *config
 					h.LogError(fmt.Sprintf("创建LLM提供者失败: %v", err))
 				} else {
 					h.providers.llm = newllm
-					h.LogInfo(fmt.Sprintf("已切换Agent %d 的 LLM 提供者到: %s", h.agentID, agentLLMName))
+					h.LogInfo(fmt.Sprintf("已应用Agent %d 的 LLM 提供者: %s", h.agentID, agentLLMName))
 				}
 			}
-		} else {
-			if apiKey != "" {
-				getter.Config().APIKey = apiKey
-			}
-			if baseUrl != "" {
-				getter.Config().BaseURL = baseUrl
-			}
-			h.LogInfo(fmt.Sprintf("使用Agent %d 的 LLM 类型: %s, BaseURL:%s", h.agentID, llmName, getter.Config().BaseURL))
+			h.LogInfo(fmt.Sprintf("使用Agent %d 的 LLM 类型: %s, BaseURL:%s", h.agentID, agentLLMName, cfg.BaseURL))
 		}
 	}
 }
@@ -461,6 +456,22 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 
 	if device.AgentID != nil {
 		h.agentID = *device.AgentID // 获取设备绑定的AgentID
+	} else {
+		onboardingAgent, ensureErr := database.EnsureOnboardingAgent(database.GetDB(), h.config)
+		if ensureErr != nil {
+			h.LogError(fmt.Sprintf("自动绑定初始设置助手失败: %v", ensureErr))
+		} else {
+			ownerID := onboardingAgent.UserID
+			device.AgentID = &onboardingAgent.ID
+			device.UserID = &ownerID
+			device.AuthStatus = "onboarding"
+			if err := database.UpdateDevice(database.GetDB(), device); err != nil {
+				h.LogError(fmt.Sprintf("保存设备初始绑定失败: %v", err))
+			} else {
+				h.agentID = onboardingAgent.ID
+				h.LogInfo("设备已自动绑定到初始设置助手")
+			}
+		}
 	}
 
 	h.LogInfo(fmt.Sprintf("设备绑定状态: AgentID=%d", h.agentID))

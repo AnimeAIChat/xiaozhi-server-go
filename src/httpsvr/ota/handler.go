@@ -305,6 +305,12 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 				}
 			}
 
+			onboardingAgent, err := database.EnsureOnboardingAgent(tx, cfg)
+			if err != nil {
+				utils.DefaultLogger.Error("初始化初始设置助手失败: %v", err)
+				return err
+			}
+			ownerID := onboardingAgent.UserID
 			device = &models.Device{
 				DeviceID:         deviceID,   // 设置设备ID
 				ClientID:         clientID,   // 设置客户端ID
@@ -318,7 +324,9 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 				SSID:             req.Board.SSID,    // 设置WiFi SSID
 				Language:         req.Language,      // 设置语言
 				OTA:              true,              // 设置支持OTA升级
-				AgentID:          nil,               // 初始AgentID为nil
+				AgentID:          &onboardingAgent.ID,
+				UserID:           &ownerID,
+				AuthStatus:       "onboarding",
 			}
 			appBytes, _ := json.Marshal(req.Application)
 			device.Application = string(appBytes)

@@ -108,6 +108,19 @@ func (p *Provider) AddAudioWithContext(ctx context.Context, data []byte) error {
 	return nil
 }
 
+// SendLastAudio 提交当前音频缓冲区，以便服务端立即完成本轮识别。
+func (p *Provider) SendLastAudio(data []byte) error {
+	if len(data) > 0 {
+		if err := p.AddAudio(data); err != nil {
+			return err
+		}
+	}
+	return p.sendJSON(map[string]interface{}{
+		"event_id": fmt.Sprintf("event_%d", time.Now().UnixNano()),
+		"type":     "input_audio_buffer.commit",
+	})
+}
+
 // Transcribe 直接识别整段音频（简化：流式通道发送并等待回调结果）
 func (p *Provider) Transcribe(ctx context.Context, audioData []byte) (string, error) {
 	if p.isStreaming {

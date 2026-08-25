@@ -37,9 +37,22 @@ func (c *LocalClient) RegisterTools() {
 		c.logger.Error("RegisterTools: config is nil")
 		return
 	}
+	// 初始设置助手必须能完成设备接管、智能体创建与配置，不依赖旧配置中的 LocalMCPFun 开关。
+	if err := c.AddToolSwitchAgent(); err != nil {
+		c.logger.Debug("RegisterTools: switch_agent: %v", err)
+	}
+	if err := c.AddToolListAgents(); err != nil {
+		c.logger.Debug("RegisterTools: list_agents: %v", err)
+	}
+	if err := c.AddToolCreateAgent(); err != nil {
+		c.logger.Debug("RegisterTools: create_agent: %v", err)
+	}
+	if err := c.AddToolUpdateAgent(); err != nil {
+		c.logger.Debug("RegisterTools: update_agent: %v", err)
+	}
 
 	if c.cfg.LocalMCPFun == nil {
-		c.logger.Warn("RegisterTools: LocalMCPFun is nil")
+		c.logger.Warn("RegisterTools: LocalMCPFun is nil; only onboarding tools are available")
 		return
 	}
 
