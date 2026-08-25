@@ -16,7 +16,7 @@ require (
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/joho/godotenv v1.5.1
 	github.com/mark3labs/mcp-go v0.29.0
-	github.com/AnimeAIChat/opus v0.0.0
+	github.com/AnimeAIChat/opus v0.1.0
 	github.com/sashabaranov/go-openai v1.40.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/stretchr/testify v1.12.0
@@ -88,5 +88,3 @@ require (
 	gorm.io/driver/mysql v1.6.0 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 )
-
-replace github.com/AnimeAIChat/opus => ./third_party/opus
