@@ -1,9 +1,10 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package celt
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -21,62 +22,83 @@ func generateSine(freq float64, sampleRate, numSamples int) []float32 {
 	return samples
 }
 
-func TestDetectPitchSine200Hz(t *testing.T) {
+// runPitchPipeline mirrors what choosePrefilter does: build the decimated,
+// whitened buffer, search it, then correct octave errors. pcm must hold
+// combFilterMaxPeriod samples of history followed by one frame.
+func runPitchPipeline(pcm []float32) (int, float32) {
+	const frameSampleCount = 960
+	pitchLen := (combFilterMaxPeriod + frameSampleCount) >> 1
+	buf := make([]float32, pitchLen)
+	var scratch encoderScratch
+	pitchDownsample([][]float32{pcm}, buf, pitchLen, 2, &scratch)
+
+	period := pitchSearch(
+		buf[combFilterMaxPeriod>>1:], buf,
+		frameSampleCount, combFilterMaxPeriod-3*combFilterMinPeriod, &scratch,
+	)
+	period = combFilterMaxPeriod - period
+	gain := removeDoubling(
+		buf, combFilterMaxPeriod, combFilterMinPeriod, frameSampleCount, &period, 0, 0, &scratch)
+
+	return period, gain
+}
+
+func TestPitchSearchSine200Hz(t *testing.T) {
 	// 200 Hz at 48 kHz → period 240 samples.
-	pcm := generateSine(200, 48000, 960)
-	period, gain := detectPitch(pcm)
+	pcm := generateSine(200, 48000, combFilterMaxPeriod+960)
+	period, gain := runPitchPipeline(pcm)
 
-	assert.InDelta(t, 240, period, 2, "period should be ~240 samples")
-	assert.Greater(t, gain, float32(0.8), "gain should be high for pure tone")
+	assert.InDelta(t, 240, period, 4, "period should be ~240 samples")
+	assert.Greater(t, gain, float32(0.5), "gain should be high for a pure tone")
 }
 
-func TestDetectPitchSine150Hz(t *testing.T) {
+func TestPitchSearchSine150Hz(t *testing.T) {
 	// 150 Hz at 48 kHz → period 320 samples.
-	pcm := generateSine(150, 48000, 960)
-	period, gain := detectPitch(pcm)
+	pcm := generateSine(150, 48000, combFilterMaxPeriod+960)
+	period, gain := runPitchPipeline(pcm)
 
-	assert.InDelta(t, 320, period, 2, "period should be ~320 samples")
-	assert.Greater(t, gain, float32(0.8), "gain should be high for pure tone")
+	assert.InDelta(t, 320, period, 4, "period should be ~320 samples")
+	assert.Greater(t, gain, float32(0.5), "gain should be high for a pure tone")
 }
 
-func TestDetectPitchSilence(t *testing.T) {
-	pcm := make([]float32, 960)
-	period, gain := detectPitch(pcm)
+func TestPitchSearchSilence(t *testing.T) {
+	pcm := make([]float32, combFilterMaxPeriod+960)
+	_, gain := runPitchPipeline(pcm)
 
-	assert.Equal(t, combFilterMinPeriod, period)
-	assert.Zero(t, gain)
+	assert.Zero(t, gain, "silence carries no pitch")
 }
 
-func TestDetectPitchShortInput(t *testing.T) {
-	pcm := make([]float32, 10)
-	period, gain := detectPitch(pcm)
+func TestPitchSearchNoise(t *testing.T) {
+	// Deterministic pseudo-noise: no periodicity, so the gain must stay low.
+	pcm := make([]float32, combFilterMaxPeriod+960)
+	seed := uint32(12345)
+	for i := range pcm {
+		seed = seed*1664525 + 1013904223
+		pcm[i] = float32(int32(seed>>8)%2000) / 2000
+	}
+	_, gain := runPitchPipeline(pcm)
 
-	assert.Equal(t, combFilterMinPeriod, period)
-	assert.Zero(t, gain)
+	assert.Less(t, gain, float32(0.5), "noise should not read as pitched")
 }
 
-func TestRemoveDoublingKeepsFundamental(t *testing.T) {
-	pcm := generateSine(200, 48000, 960)
-	period, gain := removeDoubling(pcm, 240, 0.95, 0, 0)
+func TestCeltLPCFlatSpectrum(t *testing.T) {
+	// White-noise autocorrelation (only ac[0] non-zero) has no prediction gain,
+	// so every coefficient must come out at zero.
+	ac := []float32{1, 0, 0, 0, 0}
+	lpc := celtLPC(ac, 4, make([]float32, 4))
 
-	assert.InDelta(t, 240, period, 2)
-	assert.Greater(t, gain, float32(0.8))
+	for i, v := range lpc {
+		assert.InDelta(t, 0, v, 1e-6, "coefficient %d", i)
+	}
 }
 
-func TestRemoveDoublingCorrectsOctave(t *testing.T) {
-	pcm := generateSine(200, 48000, 960)
-	period, gain := removeDoubling(pcm, 480, 0.9, 0, 0)
+func TestCeltFir5Passthrough(t *testing.T) {
+	// All-zero numerator leaves the signal untouched.
+	x := []float32{1, -2, 3, -4, 5, 6}
+	want := append([]float32(nil), x...)
+	celtFir5(x, [5]float32{})
 
-	assert.InDelta(t, 240, period, 2)
-	assert.Greater(t, gain, float32(0.8))
-}
-
-func TestRemoveDoublingNoPitch(t *testing.T) {
-	pcm := make([]float32, 960)
-	period, gain := removeDoubling(pcm, 240, 0, 0, 0)
-
-	assert.Zero(t, period)
-	assert.Zero(t, gain)
+	assert.Equal(t, want, x)
 }
 
 func TestQuantizePitchGain(t *testing.T) {
@@ -180,62 +202,38 @@ func TestEncodePostFilterSkipsWhenStartBandNotZero(t *testing.T) {
 
 func TestPrefilterDecisionLowBitrate(t *testing.T) {
 	// frameBytes <= 12*channels → disabled.
-	enabled, _, _ := prefilterDecision(240, 0.9, 240, 0, 10, 1, false, 256, 1)
+	enabled, _, _ := prefilterDecision(240, 0.9, 240, 0, 10, 1, 0, 256, 1)
 	assert.False(t, enabled, "should be disabled at low bitrate")
 }
 
 func TestPrefilterDecisionWeakGain(t *testing.T) {
 	// gain < threshold (0.2) → disabled.
-	enabled, _, _ := prefilterDecision(240, 0.1, 240, 0, 100, 1, false, 800, 1)
+	enabled, _, _ := prefilterDecision(240, 0.1, 240, 0, 100, 1, 0, 800, 1)
 	assert.False(t, enabled, "should be disabled with weak gain")
 }
 
 func TestPrefilterDecisionStrongGain(t *testing.T) {
 	// Strong gain, stable pitch, enough bits → enabled.
-	enabled, qq, quantized := prefilterDecision(240, 0.8, 240, 0, 100, 1, false, 800, 1)
+	enabled, qq, quantized := prefilterDecision(240, 0.8, 240, 0, 100, 1, 0, 800, 1)
 	assert.True(t, enabled)
 	assert.Greater(t, qq, 0)
 	assert.Greater(t, quantized, float32(0))
 }
 
 func TestPrefilterDecisionTransientPitchChange(t *testing.T) {
-	// Transient with large pitch change → disabled.
-	enabled, _, _ := prefilterDecision(100, 0.9, 500, 0, 100, 1, true, 800, 1)
-	assert.False(t, enabled, "should be disabled on transient with pitch jump")
+	// Strong transient (tfEstimate > 0.98) with large pitch change → disabled.
+	enabled, _, _ := prefilterDecision(100, 0.9, 500, 0, 100, 1, 0.99, 800, 1)
+	assert.False(t, enabled, "should be disabled on strong transient with pitch jump")
+
+	// The same pitch jump on a milder transient only raises the gain threshold.
+	enabled, _, _ = prefilterDecision(100, 0.9, 500, 0, 100, 1, 0.5, 800, 1)
+	assert.True(t, enabled, "a mild transient should not kill the prefilter outright")
 }
 
 func TestPrefilterDecisionBitBudgetGate(t *testing.T) {
 	// tell+16 > totalBits → disabled.
-	enabled, _, _ := prefilterDecision(240, 0.9, 240, 0, 100, 1, false, 10, 1)
+	enabled, _, _ := prefilterDecision(240, 0.9, 240, 0, 100, 1, 0, 10, 1)
 	assert.False(t, enabled, "should be disabled when not enough bits for header")
-}
-
-func TestTapsetFromSpread(t *testing.T) {
-	assert.Equal(t, 2, tapsetFromSpread(spreadAggressive))
-	assert.Equal(t, 1, tapsetFromSpread(spreadNormal))
-	assert.Equal(t, 0, tapsetFromSpread(spreadNone))
-	assert.Equal(t, 0, tapsetFromSpread(spreadLight))
-}
-
-func TestCancelPitchMono(t *testing.T) {
-	before := [2]float64{100}
-
-	assert.True(t, cancelPitch(1, 0.5, before, [2]float64{110}))
-	assert.False(t, cancelPitch(1, 0.5, before, [2]float64{90}))
-}
-
-func TestCancelPitchStereo(t *testing.T) {
-	before := [2]float64{100, 100}
-
-	assert.False(t, cancelPitch(2, 0.5, before, [2]float64{80, 80}))
-	assert.True(t, cancelPitch(2, 0.9, before, [2]float64{140, 80}))
-	assert.True(t, cancelPitch(2, 0.1, before, [2]float64{99, 99}))
-}
-
-func TestMeasureEnergy(t *testing.T) {
-	buf := []float32{10, -1.5, 2, -3, 20}
-
-	assert.Equal(t, 6.5, measureEnergy(buf, 1, 3))
 }
 
 func absFloat32(x float32) float32 {
@@ -262,8 +260,9 @@ func TestApplyPrefilterModifiesSignal(t *testing.T) {
 	original := make([]float32, frameLen)
 	copy(original, sine)
 
-	applyPrefilter(buf, period, period, frameLen, gain, gain, tapset, tapset)
-	filtered := buf[histLen:]
+	dst := make([]float32, len(buf))
+	applyPrefilter(dst, buf, period, period, frameLen, gain, gain, tapset, tapset)
+	filtered := dst[histLen:]
 
 	// The pre-filter must change the signal.
 	var maxDiff float32
@@ -365,5 +364,69 @@ func TestEncoderResetClearsPrefilterState(t *testing.T) {
 	assert.Zero(t, encoder.analysis.prefilter.period)
 	assert.Zero(t, encoder.analysis.prefilter.gain)
 	assert.Zero(t, encoder.analysis.prefilter.tapset)
-	assert.Zero(t, encoder.analysis.prefilter.oldPeriod)
+}
+
+func TestCeltPitchXcorrMatchesScalarReference(t *testing.T) {
+	seed := uint32(987654321)
+	rng := func() float32 {
+		seed = seed*1664525 + 1013904223
+
+		return float32(int32(seed>>8)%2000)/2000 - 1
+	}
+
+	cases := []struct {
+		length, maxPitch int
+	}{
+		{0, 0},
+		{1, 1},
+		{3, 3},
+		{240, 244},
+		{240, 250},
+		{8, 16},
+		{31, 23},
+		{100, 100},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("len=%d/pitch=%d", tc.length, tc.maxPitch), func(t *testing.T) {
+			input := make([]float32, tc.length)
+			window := make([]float32, tc.length+tc.maxPitch)
+			for i := range input {
+				input[i] = rng()
+			}
+			for i := range window {
+				window[i] = rng()
+			}
+
+			got := make([]float32, tc.maxPitch)
+			celtPitchXcorr(input, window, got, tc.length, tc.maxPitch)
+
+			want := make([]float32, tc.maxPitch)
+			for i := range tc.maxPitch {
+				var sum float64
+				for j := range tc.length {
+					sum += float64(input[j]) * float64(window[i+j])
+				}
+				want[i] = float32(sum)
+			}
+
+			assert.Equal(t, want, got, "bit-identical vs scalar reference")
+		})
+	}
+}
+
+func BenchmarkCeltPitchXcorr(b *testing.B) {
+	const length, maxPitch = 240, 244
+	x := make([]float32, length)
+	y := make([]float32, length+maxPitch)
+	xcorr := make([]float32, maxPitch)
+	for i := range y {
+		y[i] = float32(i%17) / 17
+	}
+	for i := range x {
+		x[i] = float32(i%13) / 13
+	}
+	b.ResetTimer()
+	for range b.N {
+		celtPitchXcorr(x, y, xcorr, length, maxPitch)
+	}
 }

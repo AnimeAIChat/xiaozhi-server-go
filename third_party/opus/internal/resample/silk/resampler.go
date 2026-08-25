@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 // Package silkresample ports the RFC 6716 SILK resampler.
@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	errInvalidInputSampleRate  = errors.New("input sample rate must be 8000, 12000, or 16000")
+	errInvalidInputSampleRate  = errors.New("input sample rate must be 8000, 12000, 16000, or 24000")
 	errInvalidOutputSampleRate = errors.New("output sample rate must be 8000, 12000, 16000, 24000, or 48000")
 	errInvalidInputLength      = errors.New("input length must be at least 1 ms")
 	errNonIntegralInputLength  = errors.New("input length must align to an integer output length")
@@ -44,6 +44,7 @@ var (
  *               8        C      UF     U      UF     UF
  *              12        AF     C      UF     U      UF
  * Fs_in (kHz)  16        D      AF     C      UF     UF
+ *              24        D      D      D      C      U
  *
  * C   -> Copy (no resampling)
  * D   -> Allpass-based 2x downsampling
@@ -51,13 +52,14 @@ var (
  * UF  -> Allpass-based 2x upsampling followed by FIR interpolation
  * AF  -> AR2 filter followed by FIR interpolation.
  */
-var delayMatrixDec = [3][5]int{ //nolint:gochecknoglobals
+var delayMatrixDec = [4][5]int{ //nolint:gochecknoglobals
 	{4, 0, 2, 0, 0},
 	{0, 9, 4, 7, 4},
 	{0, 3, 12, 7, 7},
+	{0, 0, 0, 0, 2},
 }
 
-// Resampler converts one SILK decoder channel from 8/12/16 kHz to
+// Resampler converts one SILK decoder channel from 8/12/16/24 kHz to
 // 8/12/16/24/48 kHz.
 type Resampler struct {
 	sIIR              [maxIIROrder]int32
@@ -239,6 +241,8 @@ func inputRateID(sampleRate int) (int, error) {
 		return 1, nil
 	case 16000:
 		return 2, nil
+	case 24000:
+		return 3, nil
 	default:
 		return 0, errInvalidInputSampleRate
 	}

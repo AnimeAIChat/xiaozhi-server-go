@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package celt
@@ -11,89 +11,117 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSpreadingDecisionTonalSignal(t *testing.T) {
-	// A spectrum with one dominant bin per band should read as tonal (high metric)
-	// and produce at least NORMAL spreading after warmup.
-	lm := maxLM
+// normalisedBands builds a [2][]float32 whoseeach band has unit norm, using per
+// bin values from gen.
+func normalisedBands(lm int, gen func(band, i, n int) float32) [2][]float32 {
 	scale := 1 << lm
-	mdct := make([]float32, scale*int(bandEdges[maxBands]))
-
+	buf := make([]float32, scale*int(bandEdges[maxBands]))
 	for band := range maxBands {
 		lo := scale * int(bandEdges[band])
-		hi := scale * int(bandEdges[band+1])
-		if hi > lo {
-			// put all energy in the first bin of each band
-			mdct[lo] = 1.0
+		n := scale * int(bandEdges[band+1]-bandEdges[band])
+		var norm float64
+		for i := range n {
+			v := gen(band, i, n)
+			buf[lo+i] = v
+			norm += float64(v) * float64(v)
+		}
+		if norm > 0 {
+			inv := float32(1 / math.Sqrt(norm))
+			for i := range n {
+				buf[lo+i] *= inv
+			}
 		}
 	}
 
-	var prevAvg float32
-	prev := defaultSpreadDecision
-	var decision int
-	for range 8 {
-		decision = spreadingDecision(mdct, lm, 0, maxBands, &prevAvg, prev, uniformSpreadWeight())
-		prev = decision
+	return [2][]float32{buf, buf}
+}
+
+func runSpreading(bands [2][]float32, lm, frames int) int {
+	avg, hf, tapset := 0, 0, 0
+	decision := defaultSpreadDecision
+	for range frames {
+		decision = spreadingDecision(bands, lm, 0, maxBands, 1, &avg, &hf, &tapset,
+			decision, true, uniformSpreadWeight())
 	}
-	assert.GreaterOrEqual(t, decision, spreadNormal,
-		"spike-per-band spectrum should reach at least NORMAL after warmup (got %d)", decision)
+
+	return decision
+}
+
+func TestSpreadingDecisionTonalSignal(t *testing.T) {
+	// One dominant bin per band: almost every bin falls below all three CDF
+	// thresholds, so the metric saturates and no spreading is applied.
+	bands := normalisedBands(maxLM, func(_, i, _ int) float32 {
+		if i == 0 {
+			return 1.0
+		}
+
+		return 0
+	})
+	assert.Equal(t, spreadNone, runSpreading(bands, maxLM, 8),
+		"a spike per band is tonal and should end up at SPREAD_NONE")
 }
 
 func TestSpreadingDecisionNoiseSignal(t *testing.T) {
-	// A flat spectrum (uniform energy per bin) is noise-like and should settle
-	// at NONE or LIGHT after warmup.
-	lm := maxLM
-	scale := 1 << lm
-	mdct := make([]float32, scale*int(bandEdges[maxBands]))
-	for i := range mdct {
-		mdct[i] = 0.01
-	}
-
-	var prevAvg float32
-	prev := defaultSpreadDecision
-	var decision int
-	for range 8 {
-		decision = spreadingDecision(mdct, lm, 0, maxBands, &prevAvg, prev, uniformSpreadWeight())
-		prev = decision
-	}
-	assert.LessOrEqual(t, decision, spreadLight,
-		"uniform-energy spectrum should settle at NONE or LIGHT after warmup (got %d)", decision)
+	// Flat band: every bin sits at 1/sqrt(N), so x²·N is 1 and clears every
+	// threshold. That is the noisiest reading and asks for full spreading.
+	bands := normalisedBands(maxLM, func(_, _, _ int) float32 { return 1 })
+	assert.Equal(t, spreadAggressive, runSpreading(bands, maxLM, 8),
+		"a flat band is noise-like and should end up at SPREAD_AGGRESSIVE")
 }
 
 func TestSpreadingDecisionRecursiveAvg(t *testing.T) {
-	// Two independent runs of N frames should produce the same avg value as a
-	// single run of 2N frames because the recursive average is stateless
-	// between calls.
-	lm := maxLM
-	scale := 1 << lm
-	mdct := make([]float32, scale*int(bandEdges[maxBands]))
-	for i := range mdct {
-		mdct[i] = 0.1 * float32(i%7+1)
-	}
+	// Half the bands tonal, half flat, so the metric lands mid-range and the
+	// recursive average needs several frames to converge.
+	bands := normalisedBands(maxLM, func(band, i, _ int) float32 {
+		if band%2 == 0 {
+			if i == 0 {
+				return 1.0
+			}
 
-	var avgA float32
-	prevA := defaultSpreadDecision
-	for range 4 {
-		prevA = spreadingDecision(mdct, lm, 0, maxBands, &avgA, prevA, uniformSpreadWeight())
-	}
+			return 0
+		}
 
-	var avgB float32
-	prevB := defaultSpreadDecision
+		return 1
+	})
+
+	avgA, hfA, tapA := 0, 0, 0
+	spreadingDecision(bands, maxLM, 0, maxBands, 1, &avgA, &hfA, &tapA,
+		defaultSpreadDecision, true, uniformSpreadWeight())
+
+	avgB, hfB, tapB := 0, 0, 0
+	prev := defaultSpreadDecision
 	for range 8 {
-		prevB = spreadingDecision(mdct, lm, 0, maxBands, &avgB, prevB, uniformSpreadWeight())
+		prev = spreadingDecision(bands, maxLM, 0, maxBands, 1, &avgB, &hfB, &tapB, prev, true, uniformSpreadWeight())
 	}
 
-	// After more frames the avg should converge further; after 8 frames it
-	// must not be identical to after 4.
-	assert.NotEqual(t, avgA, avgB, "recursive average should differ after different frame counts")
+	assert.NotEqual(t, avgA, avgB, "the recursive average should keep converging past the first frame")
 }
 
-func TestSpreadingDecisionSilentFrame(t *testing.T) {
-	lm := maxLM
-	mdct := make([]float32, (1<<lm)*int(bandEdges[maxBands]))
-	var prevAvg float32
-	// All zero input: should return prevDecision unchanged.
-	got := spreadingDecision(mdct, lm, 0, maxBands, &prevAvg, spreadNormal, uniformSpreadWeight())
-	assert.Equal(t, spreadNormal, got, "silent frame should return prevDecision")
+func TestSpreadingDecisionNarrowLastBand(t *testing.T) {
+	// libopus bails out to SPREAD_NONE when the last band is too narrow to
+	// carry usable statistics (celt/bands.c:484).
+	bands := normalisedBands(0, func(_, _, _ int) float32 { return 1 })
+	avg, hf, tapset := 0, 0, 0
+	got := spreadingDecision(bands, 0, 0, 2, 1, &avg, &hf, &tapset,
+		spreadNormal, true, uniformSpreadWeight())
+	assert.Equal(t, spreadNone, got, "a narrow last band should short-circuit to SPREAD_NONE")
+}
+
+func TestSpreadingDecisionUpdatesTapset(t *testing.T) {
+	// The high-band CDF drives tapset_decision, which the pre-filter reads.
+	bands := normalisedBands(maxLM, func(_, i, _ int) float32 {
+		if i == 0 {
+			return 1.0
+		}
+
+		return 0
+	})
+	avg, hf, tapset := 0, 0, 0
+	for range 8 {
+		spreadingDecision(bands, maxLM, 0, maxBands, 1, &avg, &hf, &tapset,
+			defaultSpreadDecision, true, uniformSpreadWeight())
+	}
+	assert.Equal(t, 2, tapset, "a tonal high band should push tapset to 2")
 }
 
 func TestAnalyzeFrameAdaptiveSpread(t *testing.T) {
@@ -136,110 +164,131 @@ func TestAnalyzeFrameAdaptiveSpread(t *testing.T) {
 			"(sine=%x, noise=%x)", enc1.FinalRange(), enc2.FinalRange())
 }
 
+// warmTransientState runs a few frames through detectTransient so
+// transientHistory settles into steady state, matching how the real encoder
+// calls it every frame rather than in isolation.
+func warmTransientState(state *analysisState, gen func(frame int) [][]float32) {
+	const warmupFrames = 4
+	for f := range warmupFrames {
+		detectTransient(gen(f), state)
+	}
+}
+
 func TestDetectTransientSteadySine(t *testing.T) {
 	state := newAnalysisState()
+	gen := func(f int) [][]float32 {
+		pcm := make([]float32, 960)
+		for i := range pcm {
+			pcm[i] = float32(0.5 * math.Sin(2*math.Pi*440*float64(f*960+i)/sampleRate))
+		}
+
+		return [][]float32{pcm}
+	}
+	warmTransientState(&state, gen)
+
+	metric, _ := transientFrameMetric(gen(4), &state)
+	t.Logf("steady 440 Hz sine metric=%d", metric)
+	assert.LessOrEqual(t, metric, transientMaskThreshold,
+		"a steady tone should not be detected as transient once history settles (metric=%d)", metric)
+}
+
+func TestDetectTransientWhiteNoiseNotFlagged(t *testing.T) {
+	state := newAnalysisState()
+	seed := uint32(12345)
+	noise := func() float32 {
+		seed = 1664525*seed + 1013904223
+
+		return float32(int32(seed>>8)%2000-1000) / 1000.0 //nolint:gosec // G115: bounded LCG output.
+	}
+	gen := func(int) [][]float32 {
+		pcm := make([]float32, 960)
+		for i := range pcm {
+			pcm[i] = 0.3 * noise()
+		}
+
+		return [][]float32{pcm}
+	}
+	warmTransientState(&state, gen)
+
+	metric, _ := transientFrameMetric(gen(4), &state)
+	t.Logf("white noise metric=%d", metric)
+	assert.LessOrEqual(t, metric, transientMaskThreshold,
+		"stationary broadband noise should not be detected as transient (metric=%d)", metric)
+}
+
+func TestDetectTransientSpikeAfterSteadySignal(t *testing.T) {
+	state := newAnalysisState()
+	amp := 0.3
+	gen := func(f int) [][]float32 {
+		pcm := make([]float32, 960)
+		for i := range pcm {
+			pcm[i] = float32(amp * math.Sin(2*math.Pi*440*float64(f*960+i)/sampleRate))
+		}
+
+		return [][]float32{pcm}
+	}
+	warmTransientState(&state, gen)
+
+	spike := gen(4)
+	spike[0][480] += 1.0
+	metric, _ := transientFrameMetric(spike, &state)
+	t.Logf("spike-after-steady metric=%d", metric)
+	assert.Greater(t, metric, transientMaskThreshold,
+		"a sharp mid-frame spike after steady content should be detected as transient (metric=%d)", metric)
+}
+
+func TestDetectTransientStereoSpikeOnOneChannel(t *testing.T) {
+	state := newAnalysisState()
+	gen := func(f int) [][]float32 {
+		left := make([]float32, 960)
+		right := make([]float32, 960)
+		for i := range left {
+			left[i] = float32(0.3 * math.Sin(2*math.Pi*440*float64(f*960+i)/sampleRate))
+		}
+
+		return [][]float32{left, right}
+	}
+	warmTransientState(&state, gen)
+
+	frame := gen(4)
+	frame[0][480] += 1.0 // right channel stays silent
+	metric, _ := transientFrameMetric(frame, &state)
+	assert.Greater(t, metric, transientMaskThreshold,
+		"a spike on either stereo channel should be detected, even with the other channel silent (metric=%d)", metric)
+}
+
+// TestDetectTransientColdStart documents intentional, expected behavior: the
+// very first call sees all-zero history, so a signal starting abruptly reads
+// as a real silence-to-signal transient. This isn't a bug — a fresh Encoder's
+// first frame has no prior context to compare against.
+func TestDetectTransientColdStart(t *testing.T) {
+	state := newAnalysisState()
 	pcm := make([]float32, 960)
 	for i := range pcm {
-		pcm[i] = float32(math.Sin(2 * math.Pi * 440 * float64(i) / sampleRate))
+		pcm[i] = float32(0.5 * math.Sin(2*math.Pi*440*float64(i)/sampleRate))
 	}
-	metric := debugDetectTransient([][]float32{pcm})
-	t.Logf("steady sine metric=%f", metric)
-	assert.False(t, detectTransient([][]float32{pcm}, &state),
-		"steady sine should not be detected as transient (metric=%f)", metric)
-}
-
-func TestDetectTransientSpike(t *testing.T) {
-	state := newAnalysisState()
-	pcm := make([]float32, 960)
-	pcm[480] = 1.0
-	metric := debugDetectTransient([][]float32{pcm})
-	t.Logf("spike metric=%f", metric)
-	assert.True(t, detectTransient([][]float32{pcm}, &state),
-		"mid-frame spike should be detected as transient (metric=%f)", metric)
-}
-
-func TestDetectTransientStereoSpike(t *testing.T) {
-	state := newAnalysisState()
-	left := make([]float32, 960)
-	right := make([]float32, 960)
-	left[480] = 1.0
-	metric := debugDetectTransient([][]float32{left, right})
-	t.Logf("stereo spike metric=%f", metric)
-	assert.True(t, detectTransient([][]float32{left, right}, &state),
-		"transient on a single stereo channel should be detected (metric=%f)", metric)
-}
-
-func TestDetectTransientSilentChannel(t *testing.T) {
-	state := newAnalysisState()
-	left := make([]float32, 960)
-	right := make([]float32, 960)
-	left[480] = 1.0
-	right[600] = 1.0
-	metric := debugDetectTransient([][]float32{left, right})
-	t.Logf("silent-channel metric=%f", metric)
-	assert.True(t, detectTransient([][]float32{left, right}, &state),
-		"transient on one stereo channel should be detected even when the "+
-			"other channel is silent (metric=%f)", metric)
-}
-
-func TestDetectTransientStereoSteady(t *testing.T) {
-	state := newAnalysisState()
-	left := make([]float32, 960)
-	right := make([]float32, 960)
-	for i := range left {
-		left[i] = float32(math.Sin(2 * math.Pi * 440 * float64(i) / sampleRate))
-		right[i] = float32(math.Sin(2 * math.Pi * 660 * float64(i) / sampleRate))
-	}
-	metric := debugDetectTransient([][]float32{left, right})
-	t.Logf("stereo steady metric=%f", metric)
-	assert.False(t, detectTransient([][]float32{left, right}, &state),
-		"steady stereo sines should not be detected as transient (metric=%f)", metric)
-}
-
-func TestDetectTransientGradualFade(t *testing.T) {
-	pcm := make([]float32, 960)
-	for i := range pcm {
-		pcm[i] = float32(i) / 960
-	}
-	metric := debugDetectTransient([][]float32{pcm})
-	t.Logf("gradual fade metric=%f", metric)
-	// A linear ramp from 0 to 1 over a frame is flagged by this detector
-	// because the second half carries more energy. This is a known
-	// limitation: libopus handles ramps correctly via sub-frame STFT and
-	// forward masking (transient_analysis in celt_encoder.c).
-	assert.Greater(t, metric, 1.0,
-		"gradual ramp should be flagged by the simple detector (metric=%f)", metric)
+	isTransient, _, _ := detectTransient([][]float32{pcm}, &state)
+	assert.True(t, isTransient,
+		"a signal starting from zero history is a legitimate transient")
 }
 
 func TestDetectTransientEmpty(t *testing.T) {
 	state := newAnalysisState()
-	assert.False(t, detectTransient(nil, &state),
-		"empty PCM should be a defensive false")
-	assert.False(t, detectTransient([][]float32{}, &state),
-		"empty channels should be a defensive false")
+	nilTransient, _, _ := detectTransient(nil, &state)
+	assert.False(t, nilTransient, "empty PCM should be a defensive false")
+	emptyTransient, _, _ := detectTransient([][]float32{}, &state)
+	assert.False(t, emptyTransient, "empty channels should be a defensive false")
 	pcm := make([]float32, 0)
-	assert.False(t, detectTransient([][]float32{pcm}, &state),
-		"zero-length frame should be a defensive false")
+	zeroTransient, _, _ := detectTransient([][]float32{pcm}, &state)
+	assert.False(t, zeroTransient, "zero-length frame should be a defensive false")
 }
 
 func TestDetectTransientFrameSize2_5ms(t *testing.T) {
 	pcm := make([]float32, 120)
 	pcm[60] = 1.0
 	state := newAnalysisState()
-	_ = detectTransient([][]float32{pcm}, &state)
-}
-
-func TestDetectTransientSmallSpike(t *testing.T) {
-	pcm := make([]float32, 960)
-	pcm[480] = 0.01
-	metric := debugDetectTransient([][]float32{pcm})
-	t.Logf("small spike metric=%f", metric)
-	// a small spike on a silent background has an infinite ratio; the
-	// simplified detector flags it as transient. This is the intended
-	// behavior: the encoder does not run on full silence, so any
-	// spike represents a real signal change.
-	assert.Greater(t, metric, 1.5,
-		"small spike on silence should be flagged by the simple detector (metric=%f)", metric)
+	_, _, tfChan := detectTransient([][]float32{pcm}, &state)
+	assert.Zero(t, tfChan, "mono only has one channel to pick from")
 }
 
 func TestDCBlockRemovesConstantOffset(t *testing.T) {
@@ -343,10 +392,10 @@ func TestAnalyzeFrameAppliesDCBlock(t *testing.T) {
 func TestChooseAllocationTrimDefault(t *testing.T) {
 	// Espectro plano a 128kbps → trim cerca de 5 (default).
 	logBandAmp := makeFlatLogBandAmp(0.0) // todas las bandas iguales
-	mdct := makeFlatMDCT(1.0)
+	mdct := makeFlatMDCT()
 	trim := chooseAllocationTrim(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
-		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 128*8*50,
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 0, 0, new(float32), 128000,
 	)
 	assert.InDelta(t, 5, trim, 1, "flat spectrum at 128kbps should stay near default")
 }
@@ -354,10 +403,10 @@ func TestChooseAllocationTrimDefault(t *testing.T) {
 func TestChooseAllocationTrimLowBitrate(t *testing.T) {
 	// A 32kbps → base trim=4 (no 5).
 	logBandAmp := makeFlatLogBandAmp(0.0)
-	mdct := makeFlatMDCT(1.0)
+	mdct := makeFlatMDCT()
 	trim := chooseAllocationTrim(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
-		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 32*8*50,
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 0, 0, new(float32), 32000,
 	)
 	assert.LessOrEqual(t, trim, 5, "low bitrate should bias trim downward")
 }
@@ -367,11 +416,13 @@ func TestChooseAllocationTrimSpectralTilt(t *testing.T) {
 	// (trim > 5 biases bits toward low bands). High-heavy → opposite.
 	lowHeavy := makeTiltedLogBandAmp(-1.0)  // bandas bajas con más energía
 	highHeavy := makeTiltedLogBandAmp(+1.0) // bandas altas con más energía
-	mdct := makeFlatMDCT(1.0)
+	mdct := makeFlatMDCT()
 	trimLow := chooseAllocationTrim([2][maxBands]float32{lowHeavy, lowHeavy},
-		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 128*8*50)
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 0, 0, new(float32), 128000,
+	)
 	trimHigh := chooseAllocationTrim([2][maxBands]float32{highHeavy, highHeavy},
-		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 128*8*50)
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 0, 0, new(float32), 128000,
+	)
 	assert.Greater(t, trimLow, trimHigh, "low-heavy spectrum should bias trim upward (more bits to lows)")
 }
 
@@ -380,14 +431,29 @@ func TestChooseAllocationTrimStereoCorrelated(t *testing.T) {
 	logBandAmp := makeFlatLogBandAmp(0.0)
 	mdct := makeSineMDCT(440) // mismo contenido en ambos canales
 	trimCorr := chooseAllocationTrim([2][maxBands]float32{logBandAmp, logBandAmp},
-		[2][]float32{mdct, mdct}, 2, maxLM, maxBands, 128*8*50)
+		[2][]float32{mdct, mdct}, 2, maxLM, maxBands, 0, 0, new(float32), 128000,
+	)
 
 	// L y R decorrelated → trim sin ajuste stereo.
 	mdctR := makeNoiseMDCT(42)
 	trimDecorr := chooseAllocationTrim([2][maxBands]float32{logBandAmp, logBandAmp},
-		[2][]float32{mdct, mdctR}, 2, maxLM, maxBands, 128*8*50)
+		[2][]float32{mdct, mdctR}, 2, maxLM, maxBands, 0, 0, new(float32), 128000,
+	)
 
 	assert.Less(t, trimCorr, trimDecorr, "correlated stereo should have lower trim than decorrelated")
+}
+
+func TestChooseAllocationTrimTFEstimate(t *testing.T) {
+	// A frame asking for finer time resolution gets its trim pulled down by
+	// twice tf_estimate, so bits move up the spectrum.
+	logBandAmp := makeFlatLogBandAmp(0.0)
+	mdct := makeFlatMDCT()
+	trimFlat := chooseAllocationTrim([2][maxBands]float32{logBandAmp, logBandAmp},
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 0, 0, new(float32), 128000,
+	)
+	trimTF := chooseAllocationTrim([2][maxBands]float32{logBandAmp, logBandAmp},
+		[2][]float32{mdct, mdct}, 1, maxLM, maxBands, 1.0, 0, new(float32), 128000)
+	assert.Equal(t, trimFlat-2, trimTF, "tf_estimate of 1.0 should drop the trim by 2")
 }
 
 // makeFlatLogBandAmp returns a per-band log amplitude array with every band
@@ -413,11 +479,11 @@ func makeTiltedLogBandAmp(slope float32) [maxBands]float32 {
 }
 
 // makeFlatMDCT returns an MDCT spectrum of the full frame with every bin set
-// to v. Cosine similarity between two identical flat spectra is 1.0.
-func makeFlatMDCT(v float32) []float32 {
+// to one. Cosine similarity between two identical flat spectra is 1.0.
+func makeFlatMDCT() []float32 {
 	mdct := make([]float32, (1<<maxLM)*int(bandEdges[maxBands]))
 	for i := range mdct {
-		mdct[i] = v
+		mdct[i] = 1
 	}
 
 	return mdct
@@ -463,13 +529,13 @@ func TestDynallocFlatSpectrumNoBoost(t *testing.T) {
 	// Flat spectrum → no isolated peaks → all offsets zero.
 	logBandAmp := makeFlatLogBandAmp(0.0)
 	prev := makeFlatLogBandAmp(0.0)
-	offsets, _ := dynallocAnalysis(
+	dr := dynallocAnalysis(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
 		[2][maxBands]float32{prev, prev},
-		maxLM, 0, maxBands, 1, 120, false,
+		maxLM, 0, maxBands, 1, 120, false, false, false,
 	)
 	for band := range maxBands {
-		assert.Equal(t, 0, offsets[band], "flat spectrum band %d should get no boost", band)
+		assert.Equal(t, 0, dr.offsets[band], "flat spectrum band %d should get no boost", band)
 	}
 }
 
@@ -478,12 +544,12 @@ func TestDynallocIsolatedPeakGetsBoost(t *testing.T) {
 	logBandAmp := makeFlatLogBandAmp(0.0)
 	logBandAmp[10] = 10.0
 	prev := makeFlatLogBandAmp(0.0)
-	offsets, _ := dynallocAnalysis(
+	dr := dynallocAnalysis(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
 		[2][maxBands]float32{prev, prev},
-		maxLM, 0, maxBands, 1, 120, false,
+		maxLM, 0, maxBands, 1, 120, false, false, false,
 	)
-	assert.Greater(t, offsets[10], 0, "isolated peak should get boost")
+	assert.Greater(t, dr.offsets[10], 0, "isolated peak should get boost")
 }
 
 func TestDynallocSpreadWeightMaskedBandReduced(t *testing.T) {
@@ -491,13 +557,32 @@ func TestDynallocSpreadWeightMaskedBandReduced(t *testing.T) {
 	logBandAmp := makeFlatLogBandAmp(0.0)
 	logBandAmp[15] = 20.0
 	prev := makeFlatLogBandAmp(0.0)
-	_, spreadWeight := dynallocAnalysis(
+	dr := dynallocAnalysis(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
 		[2][maxBands]float32{prev, prev},
-		maxLM, 0, maxBands, 1, 120, false,
+		maxLM, 0, maxBands, 1, 120, false, false, false,
 	)
 	// Bands far from the peak should have reduced weight.
-	assert.Less(t, spreadWeight[5], 32, "band far from peak should have reduced weight")
+	assert.Less(t, dr.spreadWeight[5], 32, "band far from peak should have reduced weight")
+}
+
+func TestDynallocSpreadWeightMaskDecayRate(t *testing.T) {
+	// The mask spreads by 2 per band upward and 3 downward, in the same log2
+	// domain as bandLogE. A peak of 4 stops masking two bands up, so the weight
+	// recovers there; reading those constants as dB would halve the step and
+	// leave the band masked.
+	logBandAmp := makeFlatLogBandAmp(0.0)
+	logBandAmp[10] = 4.0
+	prev := makeFlatLogBandAmp(0.0)
+	dr := dynallocAnalysis(
+		[2][maxBands]float32{logBandAmp, logBandAmp},
+		[2][maxBands]float32{prev, prev},
+		maxLM, 0, maxBands, 1, 120, false, false, false,
+	)
+	assert.Greater(t, dr.spreadWeight[12], dr.spreadWeight[11],
+		"weight should recover two bands above the peak")
+	assert.Less(t, dr.spreadWeight[9], dr.spreadWeight[8],
+		"the band just below the peak stays masked")
 }
 
 func TestDynallocLowBitrateGated(t *testing.T) {
@@ -505,13 +590,13 @@ func TestDynallocLowBitrateGated(t *testing.T) {
 	logBandAmp := makeFlatLogBandAmp(0.0)
 	logBandAmp[10] = 10.0
 	prev := makeFlatLogBandAmp(0.0)
-	offsets, _ := dynallocAnalysis(
+	dr := dynallocAnalysis(
 		[2][maxBands]float32{logBandAmp, logBandAmp},
 		[2][maxBands]float32{prev, prev},
-		maxLM, 0, maxBands, 1, 10, false, // 10 bytes < 30+15=45
+		maxLM, 0, maxBands, 1, 10, false, false, false, // 10 bytes < 30+15=45
 	)
 	for band := range maxBands {
-		assert.Equal(t, 0, offsets[band], "low bitrate should gate dynalloc")
+		assert.Equal(t, 0, dr.offsets[band], "low bitrate should gate dynalloc")
 	}
 }
 

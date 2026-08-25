@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package silkresample
@@ -34,6 +34,7 @@ func TestInit(t *testing.T) {
 		{inputSampleRate: 16000, outputSampleRate: 16000, fsInKHz: 16, fsOutKHz: 16, inputDelay: 12},
 		{inputSampleRate: 16000, outputSampleRate: 24000, fsInKHz: 16, fsOutKHz: 24, inputDelay: 7},
 		{inputSampleRate: 16000, outputSampleRate: 48000, fsInKHz: 16, fsOutKHz: 48, inputDelay: 7},
+		{inputSampleRate: 24000, outputSampleRate: 48000, fsInKHz: 24, fsOutKHz: 48, inputDelay: 2},
 	} {
 		var resampler Resampler
 		assert.NoError(t, resampler.Init(test.inputSampleRate, test.outputSampleRate))
@@ -45,7 +46,7 @@ func TestInit(t *testing.T) {
 
 func TestInitInvalidSampleRate(t *testing.T) {
 	var resampler Resampler
-	assert.Error(t, resampler.Init(24000, 48000))
+	assert.Error(t, resampler.Init(44100, 48000))
 	assert.Error(t, resampler.Init(16000, 44100))
 }
 

@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package rangecoding
@@ -94,6 +94,95 @@ func TestEncoderFinalRangeMatchesDecoder(t *testing.T) {
 	decoder.DecodeLaplace(72<<7, 127<<6)
 
 	assert.Equal(t, encoder.FinalRange(), decoder.FinalRange())
+}
+
+func TestEncoderPatchInitialBits(t *testing.T) {
+	const (
+		bitCount = uint(3)
+		patched  = uint32(0b101)
+	)
+
+	tests := []struct {
+		name    string
+		prepare func(*Encoder, *[]uint32)
+		check   func(*testing.T, *Encoder)
+	}{
+		{
+			name:    "range state",
+			prepare: func(*Encoder, *[]uint32) {},
+			check: func(t *testing.T, encoder *Encoder) {
+				t.Helper()
+				assert.Empty(t, encoder.buf)
+				assert.Negative(t, encoder.rem)
+			},
+		},
+		{
+			name: "pending byte",
+			prepare: func(encoder *Encoder, tail *[]uint32) {
+				for i := 0; encoder.rem < 0 && i < 64; i++ {
+					symbol := uint32(i % 3)
+					encoder.EncodeUniform(3, symbol)
+					*tail = append(*tail, symbol)
+				}
+			},
+			check: func(t *testing.T, encoder *Encoder) {
+				t.Helper()
+				assert.Empty(t, encoder.buf)
+				assert.GreaterOrEqual(t, encoder.rem, 0)
+			},
+		},
+		{
+			name: "finalized byte",
+			prepare: func(encoder *Encoder, tail *[]uint32) {
+				for i := 0; len(encoder.buf) == 0 && i < 128; i++ {
+					symbol := uint32(i % 3)
+					encoder.EncodeUniform(3, symbol)
+					*tail = append(*tail, symbol)
+				}
+			},
+			check: func(t *testing.T, encoder *Encoder) {
+				t.Helper()
+				assert.NotEmpty(t, encoder.buf)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoder := &Encoder{}
+			encoder.Init()
+			for range bitCount {
+				encoder.EncodeCumulative(1, 2, 2)
+			}
+
+			var tail []uint32
+			test.prepare(encoder, &tail)
+			test.check(t, encoder)
+			assert.True(t, encoder.PatchInitialBits(patched, bitCount))
+
+			decoder := &Decoder{}
+			decoder.Init(encoder.Done())
+			for i := range bitCount {
+				want := patched >> (bitCount - 1 - i) & 1
+				assert.Equal(t, want, decoder.DecodeSymbolLogP(1), "bit %d", i)
+			}
+			for i, want := range tail {
+				got, ok := decoder.DecodeUniform(3)
+				assert.True(t, ok, "tail symbol %d", i)
+				assert.Equal(t, want, got, "tail symbol %d", i)
+			}
+		})
+	}
+
+	t.Run("unrepresentable range state", func(t *testing.T) {
+		encoder := &Encoder{}
+		encoder.Init()
+		for range symBits {
+			encoder.EncodeCumulative(1, 2, 2)
+		}
+
+		assert.False(t, encoder.PatchInitialBits(0, symBits))
+	})
 }
 
 func TestEncoderTell(t *testing.T) {
@@ -357,4 +446,52 @@ func assertFuzzOperation(t *testing.T, decoder *Decoder, op fuzzOperation) {
 	case 4:
 		assert.Equal(t, op.rawValue, decoder.DecodeRawBits(op.rawBits))
 	}
+}
+
+// TestEncodeLaplaceClampsToDecodableValue checks that when a value exceeds
+// what the tail of the Laplace distribution can represent, EncodeLaplace
+// returns the clamped value instead of the input — that is what the decoder
+// will actually recover, and callers must use it for any state they derive
+// from the encoded symbol (e.g. CELT's coarse energy prediction).
+func TestEncodeLaplaceClampsToDecodableValue(t *testing.T) {
+	const fs0, decay = 100, 1000
+
+	encoder := &Encoder{}
+	encoder.Init()
+	encoded := encoder.EncodeLaplace(fs0, decay, 500)
+	assert.NotEqual(t, 500, encoded, "500 should fall in the clamped tail")
+
+	packet := encoder.Done()
+	decoder := &Decoder{}
+	decoder.Init(packet)
+	assert.Equal(t, encoded, decoder.DecodeLaplace(fs0, decay),
+		"the decoder must recover exactly the value EncodeLaplace returned, not the original input")
+}
+
+func TestEncoderSaveRestoreRewindsOutput(t *testing.T) {
+	// A speculative encode must leave nothing behind: the bytes, the pending
+	// carry state and the bit counter all have to come back.
+	var reference Encoder
+	reference.Init()
+	reference.EncodeSymbolLogP(2, 1)
+	reference.EncodeUniform(64, 40)
+	want := append([]byte(nil), reference.Done()...)
+
+	var enc Encoder
+	enc.Init()
+	enc.EncodeSymbolLogP(2, 1)
+
+	var saved State
+	enc.SaveInto(&saved)
+	savedTell := enc.TellFrac()
+	// Burn a very different sequence, then rewind it.
+	for range 40 {
+		enc.EncodeUniform(255, 200)
+		enc.EncodeRawBits(7, 99)
+	}
+	enc.Restore(&saved)
+
+	assert.Equal(t, savedTell, enc.TellFrac(), "TellFrac must rewind")
+	enc.EncodeUniform(64, 40)
+	assert.Equal(t, want, enc.Done(), "output must match an encoder that never speculated")
 }

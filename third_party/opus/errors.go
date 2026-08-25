@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package opus
@@ -33,4 +33,10 @@ var (
 	errInvalidFrameByteBudget = errors.New("invalid frame byte budget")
 
 	errInvalidPLCFrameSize = errors.New("PLC output must contain exactly 20 ms of interleaved samples")
+
+	errInvalidApplication = errors.New("invalid application")
+
+	errInvalidLossRate = errors.New("loss rate must be 0-100")
+
+	errInvalidBandwidth = errors.New("invalid bandwidth")
 )

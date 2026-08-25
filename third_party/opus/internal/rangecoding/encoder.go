@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package rangecoding
@@ -258,9 +258,14 @@ func (e *Encoder) EncodeUniform(total, symbol uint32) {
 // (the geometric decay rate of adjacent-magnitude frequencies, Q15).
 //
 // https://datatracker.ietf.org/doc/html/rfc6716#section-4.3.2.1
-func (e *Encoder) EncodeLaplace(fs0, decay uint32, value int) {
-	low, high := laplaceInterval(fs0, decay, value)
+// EncodeLaplace encodes a Laplace-distributed value and returns the value the
+// decoder will recover, which differs from the input when the tail of the
+// distribution cannot represent it (see laplaceInterval).
+func (e *Encoder) EncodeLaplace(fs0, decay uint32, value int) int {
+	low, high, encoded := laplaceInterval(fs0, decay, value)
 	e.EncodeCumulative(low, high, laplaceTotal)
+
+	return encoded
 }
 
 // EncodeRawBits appends n bits of value to the raw-bits region at the end of
@@ -288,6 +293,45 @@ func (e *Encoder) EncodeRawBits(n uint, value uint32) {
 		e.endWindow >>= symBits
 		e.nendBits -= symBits
 	}
+}
+
+// PatchInitialBits replaces the first bitCount coded bits with the MSB-first bit
+// pattern value. It is the Go equivalent of ec_enc_patch_initial_bits().
+//
+// SILK delays its per-frame VAD/LBRR flags until the packet has been analyzed.
+// Depending on how far encoding has progressed, the initial bits may already
+// be in the first finalized byte, in the pending carry byte, or still in low.
+// Patching must not change the current range or the bit count.
+//
+// It reports whether the request is representable in the current state;
+// patching zero bits is a successful no-op.
+//
+// https://datatracker.ietf.org/doc/html/rfc6716#section-4.2.3
+func (e *Encoder) PatchInitialBits(value uint32, bitCount uint) bool {
+	if bitCount == 0 {
+		return true
+	}
+	if bitCount > symBits {
+		return false
+	}
+
+	value &= bitMask(bitCount)
+	shift := uint(symBits) - bitCount
+	mask := bitMask(bitCount) << shift
+	switch {
+	case len(e.buf) > 0:
+		//nolint:gosec // G115: value and mask are limited to one byte.
+		e.buf[0] = (e.buf[0] &^ byte(mask)) | byte(value<<shift)
+	case e.rem >= 0:
+		e.rem = (e.rem &^ int(mask)) | int(value<<shift)
+	case e.rangeSize <= codeTop>>bitCount:
+		stateMask := mask << codeShift
+		e.low = (e.low &^ stateMask) | value<<(codeShift+shift)
+	default:
+		return false
+	}
+
+	return true
 }
 
 // Tell returns a conservative upper bound, in whole bits, of the number of
@@ -401,6 +445,24 @@ func (e *Encoder) FlushInto(dst []byte) int {
 	return n
 }
 
+// FlushIntoPadded finalizes the frame into dst and zero-fills the result out to
+// size bytes when the coded data is shorter.
+//
+// CELT derives its bit allocation from the frame size the encoder was asked
+// for, and the decoder re-derives it from the size of the packet it receives.
+// Emitting a shorter packet makes the two sides compute different allocations,
+// so they disagree on how many raw bits each band's fine energy occupies and
+// the decoder reads that region at the wrong offsets. libopus avoids this by
+// initializing the range coder with the target size up front and clearing the
+// unused middle in ec_enc_done (celt/entenc.c).
+func (e *Encoder) FlushIntoPadded(dst []byte, size int) int {
+	remainingBits := e.flush()
+	n := max(e.outputSize(remainingBits), size)
+	e.writeOutput(dst, n, remainingBits)
+
+	return n
+}
+
 func (e *Encoder) flush() int {
 	remainingBits := e.flushRangeCoder()
 	if e.rem >= 0 || e.extBytes > 0 {
@@ -419,24 +481,20 @@ func (e *Encoder) outputSize(remainingBits int) int {
 	return len(e.buf) + len(e.tail) + boolToInt(e.shouldWritePartialToNewByte(freeBits))
 }
 
-func (e *Encoder) writeOutput(dst []byte, n, remainingBits int) {
-	freeBits := uint(0)
-	if remainingBits < 0 {
-		freeBits = uint(-remainingBits) //nolint:gosec // G115
-	}
-
+func (e *Encoder) writeOutput(dst []byte, n, _ int) {
+	// Layout mirrors ec_enc_done (celt/entenc.c): range-coded bytes at the
+	// front, raw bits growing backwards from the end, and the space between
+	// them cleared. Any leftover raw bits go in the byte just before the raw
+	// region, which is the last range-coded byte when the two regions meet.
 	copy(dst, e.buf)
+	clear(dst[len(e.buf) : n-len(e.tail)])
 	for index, value := range e.tail {
 		dst[n-1-index] = value
 	}
 
 	if e.nendBits > 0 {
 		partial := byte(e.endWindow & uint64(bitMask(e.nendBits))) //nolint:gosec // G115: masked to at most 8 bits.
-		if e.shouldWritePartialToNewByte(freeBits) {
-			dst[len(e.buf)] = partial
-		} else {
-			dst[len(e.buf)-1] |= partial
-		}
+		dst[n-len(e.tail)-1] |= partial
 	}
 }
 
@@ -555,37 +613,52 @@ func bitMask(n uint) uint32 {
 // values of equal magnitude share a frequency but occupy disjoint halves of the
 // cumulative axis: the positive half comes first, the negative half follows
 // immediately.  laplaceFirstDecayFrequency() computes the per-step decay.
-func laplaceInterval(fs0 uint32, decay uint32, value int) (uint32, uint32) {
+// laplaceInterval returns the coding interval for value plus the magnitude the
+// interval actually represents. The tail of the distribution only has room for
+// a bounded number of steps, so a large value gets clamped to the last one that
+// fits (ec_laplace_encode, celt/laplace.c). The clamped value is what the
+// decoder will recover, so callers must propagate it into any state they derive
+// from the encoded symbol rather than assuming their input was coded verbatim.
+func laplaceInterval(fs0 uint32, decay uint32, value int) (low, high uint32, encoded int) {
 	if value == 0 {
-		return 0, min(fs0, uint32(laplaceTotal))
+		return 0, min(fs0, uint32(laplaceTotal)), 0
 	}
 
-	magnitude := value
-	if magnitude < 0 {
-		magnitude = -magnitude
-	}
-
-	low := fs0
-	frequency := laplaceFirstDecayFrequency(fs0, decay) + laplaceMinProbability
-	currentMagnitude := 1
-	for currentMagnitude < magnitude && frequency > laplaceMinProbability {
-		low += 2 * frequency
-		frequency = ((2*frequency - 2*laplaceMinProbability) * decay) >> 15
-		frequency += laplaceMinProbability
-		currentMagnitude++
-	}
-	if currentMagnitude < magnitude {
-		deltaCount := uint32(magnitude - currentMagnitude) //nolint:gosec // G115
-		low += 2 * deltaCount * laplaceMinProbability
-		frequency = laplaceMinProbability
-	}
+	// sign is 0 for positive values and -1 for negative ones, mirroring the
+	// reference's branch-free sign handling.
+	sign := 0
 	if value < 0 {
-		return min(low, uint32(laplaceTotal)), min(low+frequency, uint32(laplaceTotal))
+		sign = -1
+	}
+	magnitude := (value + sign) ^ sign
+
+	fl := int(fs0)
+	fs := int(laplaceFirstDecayFrequency(fs0, decay))
+	step := 1
+	for ; fs > 0 && step < magnitude; step++ {
+		fs *= 2
+		fl += fs + 2*laplaceMinProbability
+		fs = (fs * int(decay)) >> 15
 	}
 
-	low += frequency
+	if fs == 0 {
+		// Past the decaying part every step costs the minimum probability, so
+		// only so many of them fit before the interval is exhausted.
+		maxSteps := (laplaceTotal - fl + laplaceMinProbability - 1) >> laplaceLogMinProbability
+		maxSteps = (maxSteps - sign) >> 1
+		extra := min(magnitude-step, maxSteps-1)
+		fl += (2*extra + 1 + sign) * laplaceMinProbability
+		fs = min(laplaceMinProbability, laplaceTotal-fl)
+		encoded = (step + extra + sign) ^ sign
+	} else {
+		fs += laplaceMinProbability
+		if sign == 0 {
+			fl += fs
+		}
+		encoded = value
+	}
 
-	return min(low, uint32(laplaceTotal)), min(low+frequency, uint32(laplaceTotal))
+	return uint32(fl), uint32(fl + fs), encoded //nolint:gosec // G115: bounded by laplaceTotal.
 }
 
 // boolToInt converts a bool to 0 or 1.
@@ -595,4 +668,49 @@ func boolToInt(value bool) int {
 	}
 
 	return 0
+}
+
+// State is a snapshot of the encoder taken mid-frame. Rewinding needs the
+// output bytes as well as the scalars: a speculative encode that is rolled back
+// leaves the next one writing over the same positions, so the first one's bytes
+// are gone by the time we might want them again.
+type State struct {
+	buf       []byte
+	tail      []byte
+	endWindow uint64
+	nendBits  uint
+	rangeSize uint32
+	low       uint32
+	rem       int
+	extBytes  int
+
+	nbitsTotal uint
+}
+
+// SaveInto captures the encoder state so a speculative encode can be undone.
+// It reuses dst's buffers, so a caller that snapshots in a loop allocates once.
+func (e *Encoder) SaveInto(dst *State) {
+	dst.buf = append(dst.buf[:0], e.buf...)
+	dst.tail = append(dst.tail[:0], e.tail...)
+	dst.endWindow = e.endWindow
+	dst.nendBits = e.nendBits
+	dst.rangeSize = e.rangeSize
+	dst.low = e.low
+	dst.rem = e.rem
+	dst.extBytes = e.extBytes
+	dst.nbitsTotal = e.nbitsTotal
+}
+
+// Restore rewinds to a state taken by SaveInto. Only states from the same frame
+// are meaningful.
+func (e *Encoder) Restore(s *State) {
+	e.buf = append(e.buf[:0], s.buf...)
+	e.tail = append(e.tail[:0], s.tail...)
+	e.endWindow = s.endWindow
+	e.nendBits = s.nendBits
+	e.rangeSize = s.rangeSize
+	e.low = s.low
+	e.rem = s.rem
+	e.extBytes = s.extBytes
+	e.nbitsTotal = s.nbitsTotal
 }

@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	pathutil "path/filepath"
 	"sync/atomic"
 	"time"
 	"xiaozhi-server-go/src/core/utils"
@@ -150,6 +151,22 @@ func (h *ConnectionHandler) sendAudioMessage(filepath string, text string, textI
 		if err != nil {
 			h.LogError(fmt.Sprintf("音频转Opus失败: %v", err))
 			return
+		}
+		if h.config.SaveTTSAudio {
+			capturePath, captureErr := utils.SaveOpusPackets(
+				pathutil.Join(pathutil.Dir(filepath), "opus_packets"),
+				h.deviceID,
+				h.sessionID,
+				h.serverAudioSampleRate,
+				h.serverAudioChannels,
+				h.serverAudioFrameDuration,
+				audioData,
+			)
+			if captureErr != nil {
+				h.LogError(fmt.Sprintf("保存 Opus 下行抓包失败: %v", captureErr))
+			} else {
+				h.LogInfo(fmt.Sprintf("[TTS] 已保存 Opus 下行抓包: %s", capturePath))
+			}
 		}
 	}
 

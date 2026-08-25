@@ -1,11 +1,13 @@
-﻿module github.com/AnimeAIChat/opus/examples/playback
+module github.com/AnimeAIChat/opus/examples/playback
 
 go 1.24.0
 
 require (
-	github.com/faiface/beep v1.1.0
 	github.com/AnimeAIChat/opus v0.1.0
+	github.com/faiface/beep v1.1.0
 )
+
+replace github.com/AnimeAIChat/opus => ../..
 
 require (
 	github.com/hajimehoshi/oto v0.7.1 // indirect
@@ -15,5 +17,3 @@ require (
 	golang.org/x/mobile v0.0.0-20190415191353-3e0bab5405d6 // indirect
 	golang.org/x/sys v0.0.0-20190626150813-e07cf5db2756 // indirect
 )
-
-replace github.com/AnimeAIChat/opus => ./../..

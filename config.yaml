@@ -70,6 +70,8 @@ roles:
 
 # 音频处理相关设置
 delete_audio: true
+# 开启后，服务端会把实际下发到客户端的 Opus 包保存为可用 FFmpeg 独立解码的 Ogg 文件。
+save_tts_audio: false
 quick_reply: true
 quick_reply_words:
   - "我在"

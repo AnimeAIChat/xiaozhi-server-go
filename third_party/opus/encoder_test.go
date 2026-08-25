@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package opus
@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"math"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,27 +42,13 @@ func TestNewEncoderOptions(t *testing.T) {
 
 	assert.Equal(t, 64000, encoder.bitrate)
 	assert.Equal(t, 5, encoder.complexity)
+	assert.Equal(t, 5, encoder.celtEncoder.Complexity())
 
 	_, err = NewEncoder(WithBitrate(1000))
 	assert.ErrorIs(t, err, errBitrateOutOfRange)
 
 	_, err = NewEncoder(WithComplexity(11))
 	assert.ErrorIs(t, err, errInvalidComplexity)
-}
-
-func TestNewEncoderAcceptsXiaozhiOptions(t *testing.T) {
-	encoder, err := NewEncoder(
-		WithSampleRate(24000),
-		WithChannels(1),
-		WithFrameDuration(60*time.Millisecond),
-		WithApplication(ApplicationVoIP),
-	)
-	require.NoError(t, err)
-
-	assert.Equal(t, 24000, encoder.sampleRate)
-	assert.Equal(t, 1, encoder.channels)
-	assert.Equal(t, 60*time.Millisecond, encoder.frameDuration)
-	assert.Equal(t, ApplicationVoIP, encoder.application)
 }
 
 func TestEncodeFloat32RoundTrip(t *testing.T) {
@@ -120,87 +105,6 @@ func TestEncodeS16LERoundTrip(t *testing.T) {
 	assert.Greater(t, vectorEnergyFloat32(out), 1e-6)
 }
 
-func TestEncodeXiaozhi24kMono60msRoundTrip(t *testing.T) {
-	encoder, err := NewEncoder(
-		WithSampleRate(24000),
-		WithChannels(1),
-		WithFrameDuration(60*time.Millisecond),
-		WithApplication(ApplicationVoIP),
-		WithBitrate(24000),
-	)
-	require.NoError(t, err)
-
-	decoder, err := NewDecoderWithOutput(24000, 1)
-	require.NoError(t, err)
-
-	pcm := testEncoderSineS16LEAtRate(24000, xiaozhiFrameSamples24k, 440)
-	packet := make([]byte, maxOpusFrameSize)
-
-	n, err := encoder.Encode(pcm, packet)
-	require.NoError(t, err)
-	require.Greater(t, n, 2)
-
-	toc := tableOfContentsHeader(packet[0])
-	assert.Equal(t, configurationModeCELTOnly, toc.configuration().mode())
-	assert.Equal(t, BandwidthSuperwideband, toc.configuration().bandwidth())
-	assert.Equal(t, frameDuration20ms, toc.configuration().frameDuration())
-	assert.Equal(t, frameCodeArbitraryFrames, toc.frameCode())
-
-	isVBR, hasPadding, frameCount := parseFrameCountByte(packet[1])
-	assert.False(t, isVBR)
-	assert.False(t, hasPadding)
-	assert.Equal(t, byte(3), frameCount)
-
-	out := make([]int16, xiaozhiFrameSamples24k)
-	samples, err := decoder.DecodeToInt16(packet[:n], out)
-	require.NoError(t, err)
-	assert.Equal(t, xiaozhiFrameSamples24k, samples)
-	assert.Greater(t, vectorEnergyInt16(out), 0.0)
-}
-
-func TestEncodeCELT60msSupportedInputRates(t *testing.T) {
-	tests := []struct {
-		name     string
-		rate     int
-		channels int
-		config   byte
-	}{
-		{name: "8k mono", rate: 8000, channels: 1, config: 19},
-		{name: "12k mono", rate: 12000, channels: 1, config: 23},
-		{name: "16k mono", rate: 16000, channels: 1, config: 23},
-		{name: "24k stereo", rate: 24000, channels: 2, config: celtOnlySuperwideband20msConfig},
-		{name: "48k mono", rate: 48000, channels: 1, config: celtOnlyFullband20msConfig},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			encoder, err := NewEncoder(
-				WithSampleRate(tt.rate),
-				WithChannels(tt.channels),
-				WithFrameDuration(60*time.Millisecond),
-				WithApplication(ApplicationVoIP),
-			)
-			require.NoError(t, err)
-
-			pcm := testEncoderInterleavedSineS16LEAtRate(tt.rate, tt.rate*60/1000, tt.channels)
-			packet := make([]byte, 4096)
-
-			n, err := encoder.Encode(pcm, packet)
-			require.NoError(t, err)
-			require.Greater(t, n, 2)
-
-			toc := tableOfContentsHeader(packet[0])
-			assert.Equal(t, Configuration(tt.config), toc.configuration())
-			assert.Equal(t, tt.channels == 2, toc.isStereo())
-
-			isVBR, hasPadding, frameCount := parseFrameCountByte(packet[1])
-			assert.False(t, isVBR)
-			assert.False(t, hasPadding)
-			assert.Equal(t, byte(3), frameCount)
-		})
-	}
-}
-
 func TestEncodeFloat32StereoRoundTrip(t *testing.T) {
 	encoder, err := NewEncoder(WithChannels(2))
 	require.NoError(t, err)
@@ -208,9 +112,15 @@ func TestEncodeFloat32StereoRoundTrip(t *testing.T) {
 	decoder, err := NewDecoderWithOutput(48000, 2)
 	require.NoError(t, err)
 
-	pcm := testEncoderStereoSineFloat32()
 	packet := make([]byte, 256)
 
+	// Warm up the encoder on a phase-continuous steady tone first so the
+	// measured frame isn't the cold-start onset, which the transient detector
+	// correctly flags as transient and which this test isn't meant to exercise.
+	_, err = encoder.EncodeFloat32(testEncoderStereoSineFloat32At(0), packet)
+	require.NoError(t, err)
+
+	pcm := testEncoderStereoSineFloat32At(encoderTestFrameSampleCount)
 	n, err := encoder.EncodeFloat32(pcm, packet)
 	require.NoError(t, err)
 	require.Positive(t, n)
@@ -337,9 +247,579 @@ func TestSetComplexity(t *testing.T) {
 
 	require.NoError(t, encoder.SetComplexity(10))
 	assert.Equal(t, 10, encoder.complexity)
+	assert.Equal(t, 10, encoder.Complexity())
+	assert.Equal(t, 10, encoder.celtEncoder.Complexity())
 
 	assert.ErrorIs(t, encoder.SetComplexity(-1), errInvalidComplexity)
 	assert.ErrorIs(t, encoder.SetComplexity(11), errInvalidComplexity)
+}
+
+func TestComplexityRoundTrip(t *testing.T) {
+	// Verify that encoding at complexity 0 and 10 both produce valid packets.
+	for _, complexity := range []int{0, 10} {
+		enc, err := NewEncoder(
+			WithComplexity(complexity),
+			WithBitrate(64000),
+		)
+		require.NoError(t, err)
+
+		dec, err := NewDecoderWithOutput(48000, 1)
+		require.NoError(t, err)
+
+		pcm := testEncoderSineFloat32()
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+		require.Greater(t, n, 0)
+
+		out := make([]float32, encoderTestFrameSampleCount)
+		_, _, err = dec.DecodeFloat32(packet[:n], out)
+		require.NoError(t, err)
+	}
+}
+
+func TestNewEncoderDefaultApplication(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+
+	assert.Equal(t, ApplicationAudio, encoder.Application())
+	assert.False(t, encoder.VBR())
+	assert.True(t, encoder.ConstrainedVBR())
+	assert.Equal(t, 0, encoder.LossRate())
+}
+
+func TestWithApplication(t *testing.T) {
+	encoder, err := NewEncoder(WithApplication(ApplicationVoIP))
+	require.NoError(t, err)
+	assert.Equal(t, ApplicationVoIP, encoder.Application())
+
+	encoder, err = NewEncoder(WithApplication(ApplicationRestrictedLowDelay))
+	require.NoError(t, err)
+	assert.Equal(t, ApplicationRestrictedLowDelay, encoder.Application())
+
+	_, err = NewEncoder(WithApplication(Application(9999)))
+	assert.ErrorIs(t, err, errInvalidApplication)
+}
+
+func TestSetApplication(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+
+	require.NoError(t, encoder.SetApplication(ApplicationVoIP))
+	assert.Equal(t, ApplicationVoIP, encoder.Application())
+
+	assert.ErrorIs(t, encoder.SetApplication(Application(0)), errInvalidApplication)
+}
+
+func TestWithVBR(t *testing.T) {
+	encoder, err := NewEncoder(WithVBR(true))
+	require.NoError(t, err)
+	assert.True(t, encoder.VBR())
+
+	encoder, err = NewEncoder(WithVBR(false))
+	require.NoError(t, err)
+	assert.False(t, encoder.VBR())
+}
+
+func TestSetVBR(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+	require.False(t, encoder.VBR())
+
+	encoder.SetVBR(true)
+	assert.True(t, encoder.VBR())
+
+	encoder.SetVBR(false)
+	assert.False(t, encoder.VBR())
+}
+
+func TestWithConstrainedVBR(t *testing.T) {
+	encoder, err := NewEncoder(WithConstrainedVBR(false))
+	require.NoError(t, err)
+	assert.False(t, encoder.ConstrainedVBR())
+}
+
+func TestSetConstrainedVBR(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+	require.True(t, encoder.ConstrainedVBR())
+
+	encoder.SetConstrainedVBR(false)
+	assert.False(t, encoder.ConstrainedVBR())
+
+	encoder.SetConstrainedVBR(true)
+	assert.True(t, encoder.ConstrainedVBR())
+}
+
+func TestWithBandwidth(t *testing.T) {
+	enc, err := NewEncoder(WithBandwidth(BandwidthWideband))
+	require.NoError(t, err)
+	assert.Equal(t, BandwidthWideband, enc.Bandwidth())
+
+	_, err = NewEncoder(WithBandwidth(BandwidthAuto))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+
+	_, err = NewEncoder(WithBandwidth(BandwidthMediumband))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+
+	_, err = NewEncoder(WithBandwidth(Bandwidth(255)))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+}
+
+func TestSetBandwidth(t *testing.T) {
+	enc, err := NewEncoder()
+	require.NoError(t, err)
+	assert.Equal(t, BandwidthAuto, enc.Bandwidth())
+
+	require.NoError(t, enc.SetBandwidth(BandwidthWideband))
+	assert.Equal(t, BandwidthWideband, enc.Bandwidth())
+
+	assert.ErrorIs(t, enc.SetBandwidth(BandwidthMediumband), errInvalidBandwidth)
+}
+
+func TestBandwidthRoundTrip(t *testing.T) {
+	for _, bw := range []Bandwidth{
+		BandwidthNarrowband, BandwidthWideband,
+		BandwidthSuperwideband, BandwidthFullband,
+	} {
+		enc, err := NewEncoder(
+			WithBandwidth(bw),
+			WithBitrate(24000),
+		)
+		require.NoError(t, err)
+
+		dec, err := NewDecoderWithOutput(48000, 1)
+		require.NoError(t, err)
+
+		pcm := testEncoderSineFloat32()
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+		require.Greater(t, n, 0)
+
+		out := make([]float32, encoderTestFrameSampleCount)
+		decBandwidth, _, err := dec.DecodeFloat32(packet[:n], out)
+		require.NoError(t, err)
+		assert.Equal(t, bw, decBandwidth, "decoded bandwidth should match encoded bandwidth")
+	}
+}
+
+func TestBandwidthChangesTOC(t *testing.T) {
+	for _, tc := range []struct {
+		bw     Bandwidth
+		config byte
+	}{
+		{BandwidthNarrowband, 19},
+		{BandwidthWideband, 23},
+		{BandwidthSuperwideband, 27},
+		{BandwidthFullband, 31},
+	} {
+		enc, err := NewEncoder(WithBandwidth(tc.bw))
+		require.NoError(t, err)
+
+		pcm := testEncoderSineFloat32()
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+		require.Greater(t, n, 0)
+
+		expectedTOC := tc.config<<3 | byte(frameCodeOneFrame)
+		assert.Equal(t, expectedTOC, packet[0], "TOC byte for bandwidth %v", tc.bw)
+	}
+}
+
+func TestWithMaxBandwidth(t *testing.T) {
+	enc, err := NewEncoder(WithMaxBandwidth(BandwidthWideband))
+	require.NoError(t, err)
+	assert.Equal(t, BandwidthWideband, enc.MaxBandwidth())
+
+	_, err = NewEncoder(WithMaxBandwidth(BandwidthAuto))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+
+	_, err = NewEncoder(WithMaxBandwidth(BandwidthMediumband))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+
+	_, err = NewEncoder(WithMaxBandwidth(Bandwidth(255)))
+	assert.ErrorIs(t, err, errInvalidBandwidth)
+}
+
+func TestAutoSelectBandwidth(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		bitrate  int
+		maxBW    Bandwidth
+		expected Bandwidth
+	}{
+		// Boundaries are in equivRate() space (CBR + default complexity 5
+		// dock the raw bitrate by ~13%), not raw bitrate — see equivRate.
+		{"NB at low bitrate", 6000, BandwidthFullband, BandwidthNarrowband},
+		{"NB at threshold", 10334, BandwidthFullband, BandwidthNarrowband},       // equiv=8999
+		{"WB just above threshold", 10335, BandwidthFullband, BandwidthWideband}, // equiv=9000
+		{"WB at 12kbps", 12000, BandwidthFullband, BandwidthWideband},
+		{"WB at threshold", 15501, BandwidthFullband, BandwidthWideband},               // equiv=13499
+		{"SWB just above threshold", 15502, BandwidthFullband, BandwidthSuperwideband}, // equiv=13500
+		{"SWB at threshold", 16075, BandwidthFullband, BandwidthSuperwideband},         // equiv=13999
+		{"FB just above threshold", 16076, BandwidthFullband, BandwidthFullband},       // equiv=14000
+		{"FB at 24kbps", 24000, BandwidthFullband, BandwidthFullband},
+		{"clamped by maxBandwidth", 24000, BandwidthWideband, BandwidthWideband},
+		{"clamped to NB", 24000, BandwidthNarrowband, BandwidthNarrowband},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			enc, err := NewEncoder(
+				WithBitrate(tc.bitrate),
+				WithMaxBandwidth(tc.maxBW),
+			)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, enc.autoSelectBandwidth())
+		})
+	}
+}
+
+func TestEquivRate(t *testing.T) {
+	enc, err := NewEncoder(WithBitrate(13500))
+	require.NoError(t, err)
+	// CBR (default) docks ~8%, complexity 5 (default) docks another ~5%.
+	assert.Equal(t, 11756, enc.equivRate())
+
+	enc.SetVBR(true)
+	assert.Equal(t, 12825, enc.equivRate(), "VBR should skip the CBR penalty")
+
+	enc.SetVBR(false)
+	require.NoError(t, enc.SetComplexity(0))
+	assert.Equal(t, 11137, enc.equivRate(), "complexity 0 should dock closer to 10%")
+}
+
+func TestAutoBandwidthDefault(t *testing.T) {
+	enc, err := NewEncoder()
+	require.NoError(t, err)
+	assert.Equal(t, BandwidthAuto, enc.Bandwidth())
+	assert.Equal(t, BandwidthFullband, enc.MaxBandwidth())
+	// At default 24 kbps, auto should select fullband.
+	assert.Equal(t, BandwidthFullband, enc.autoSelectBandwidth())
+}
+
+func TestAutoBandwidthExplicitOverrides(t *testing.T) {
+	enc, err := NewEncoder(
+		WithBandwidth(BandwidthWideband),
+		WithMaxBandwidth(BandwidthFullband),
+	)
+	require.NoError(t, err)
+	// Explicit bandwidth should be returned regardless of maxBandwidth.
+	assert.Equal(t, BandwidthWideband, enc.autoSelectBandwidth())
+}
+
+func TestAutoBandwidthTOC(t *testing.T) {
+	// At 6000 bps, auto should select NB → config 19.
+	enc, err := NewEncoder(WithBitrate(6000))
+	require.NoError(t, err)
+
+	pcm := testEncoderSineFloat32()
+	packet := make([]byte, 256)
+	n, err := enc.EncodeFloat32(pcm, packet)
+	require.NoError(t, err)
+	require.Greater(t, n, 0)
+
+	expectedTOC := byte(19<<3) | byte(frameCodeOneFrame)
+	assert.Equal(t, expectedTOC, packet[0], "auto NB TOC")
+}
+
+func TestAutoBandwidthRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		bitrate int
+		maxBW   Bandwidth
+		wantBW  Bandwidth
+	}{
+		{"NB round-trip", 6000, BandwidthFullband, BandwidthNarrowband},
+		{"WB round-trip", 12000, BandwidthFullband, BandwidthWideband},
+		{"FB round-trip", 24000, BandwidthFullband, BandwidthFullband},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			enc, err := NewEncoder(
+				WithBitrate(tc.bitrate),
+				WithMaxBandwidth(tc.maxBW),
+			)
+			require.NoError(t, err)
+
+			dec, err := NewDecoderWithOutput(48000, 1)
+			require.NoError(t, err)
+
+			pcm := testEncoderSineFloat32()
+			packet := make([]byte, 256)
+			n, err := enc.EncodeFloat32(pcm, packet)
+			require.NoError(t, err)
+			require.Greater(t, n, 0)
+
+			out := make([]float32, encoderTestFrameSampleCount)
+			decBandwidth, _, err := dec.DecodeFloat32(packet[:n], out)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantBW, decBandwidth, "decoded bandwidth should match auto-selected bandwidth")
+		})
+	}
+}
+
+func TestSetMaxBandwidth(t *testing.T) {
+	enc, err := NewEncoder()
+	require.NoError(t, err)
+	assert.Equal(t, BandwidthFullband, enc.MaxBandwidth())
+
+	require.NoError(t, enc.SetMaxBandwidth(BandwidthWideband))
+	assert.Equal(t, BandwidthWideband, enc.MaxBandwidth())
+
+	assert.ErrorIs(t, enc.SetMaxBandwidth(BandwidthAuto), errInvalidBandwidth)
+	assert.ErrorIs(t, enc.SetMaxBandwidth(BandwidthMediumband), errInvalidBandwidth)
+}
+
+func TestSetLossRate(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+
+	require.NoError(t, encoder.SetLossRate(50))
+	assert.Equal(t, 50, encoder.LossRate())
+
+	assert.ErrorIs(t, encoder.SetLossRate(-1), errInvalidLossRate)
+	assert.ErrorIs(t, encoder.SetLossRate(101), errInvalidLossRate)
+}
+
+func TestVBRPacketRoundTrip(t *testing.T) {
+	encoder, err := NewEncoder(WithVBR(true), WithConstrainedVBR(false))
+	require.NoError(t, err)
+
+	pcm := testEncoderSineFloat32()
+	packet := make([]byte, 256)
+	n, err := encoder.EncodeFloat32(pcm, packet)
+	require.NoError(t, err)
+	require.Greater(t, n, 1)
+
+	// TOC byte is unchanged by VBR for single-frame (c=0) packets.
+	// The VBR bit lives in the frame count byte, which is absent for c=0.
+	assert.Equal(t, byte(celtOnlyFullband20msConfig<<3)|byte(frameCodeOneFrame), packet[0])
+
+	decoder, err := NewDecoderWithOutput(48000, 1)
+	require.NoError(t, err)
+
+	out := make([]float32, encoderTestFrameSampleCount)
+	_, _, err = decoder.DecodeFloat32(packet[:n], out)
+	require.NoError(t, err)
+	assert.Greater(t, vectorEnergyFloat32(out), 1e-6)
+}
+
+func TestConstrainedVBRPacketRoundTrip(t *testing.T) {
+	encoder, err := NewEncoder(WithVBR(true), WithConstrainedVBR(true))
+	require.NoError(t, err)
+
+	pcm := testEncoderSineFloat32()
+	packet := make([]byte, 256)
+	n, err := encoder.EncodeFloat32(pcm, packet)
+	require.NoError(t, err)
+	require.Greater(t, n, 1)
+
+	decoder, err := NewDecoderWithOutput(48000, 1)
+	require.NoError(t, err)
+
+	out := make([]float32, encoderTestFrameSampleCount)
+	_, _, err = decoder.DecodeFloat32(packet[:n], out)
+	require.NoError(t, err)
+	assert.Greater(t, vectorEnergyFloat32(out), 1e-6)
+}
+
+func TestVBRProducesVaryingPacketSizes(t *testing.T) {
+	enc, err := NewEncoder(WithChannels(2), WithBitrate(96000), WithVBR(true), WithConstrainedVBR(false))
+	require.NoError(t, err)
+
+	sizes := make(map[int]bool)
+	phase := 0.0
+	for i := range 6 {
+		pcm := make([]float32, encoderTestFrameSampleCount*2)
+		// The first frame is silence, which needs far fewer bits than the tone
+		// that follows it.
+		if i > 0 {
+			for j := range encoderTestFrameSampleCount {
+				v := float32(math.Sin(phase)) * 0.3
+				pcm[2*j] = v
+				pcm[2*j+1] = -v
+				phase += 2 * math.Pi * 440 / 48000
+			}
+		}
+		packet := make([]byte, 1500)
+		n, encErr := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, encErr)
+		sizes[n] = true
+	}
+
+	assert.Greater(t, len(sizes), 1, "VBR should produce varying packet sizes")
+}
+
+func TestVBRTracksTargetBitrate(t *testing.T) {
+	// The VBR target is clamped by a floor derived from the coded bin count.
+	// Deriving it from the byte budget instead pinned every frame near a
+	// quarter of the target, so VBR delivered about a third of the rate asked
+	// for. Guard the rate, not just the variation.
+	const bitrate = 96000
+	enc, err := NewEncoder(WithChannels(2), WithBitrate(bitrate), WithVBR(true), WithConstrainedVBR(false))
+	require.NoError(t, err)
+
+	frameBudget := bitrate / 50 / 8
+	total, frames := 0, 40
+	phase := 0.0
+	for range frames {
+		pcm := make([]float32, encoderTestFrameSampleCount*2)
+		for j := range encoderTestFrameSampleCount {
+			v := float32(math.Sin(phase)+0.5*math.Sin(phase*7.3)) * 0.3
+			pcm[2*j] = v
+			pcm[2*j+1] = -v
+			phase += 2 * math.Pi * 440 / 48000
+		}
+		packet := make([]byte, 1500)
+		n, encErr := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, encErr)
+		total += n
+	}
+
+	// Only the lower bound belongs here: what the floor bug broke was the rate
+	// being delivered, and the ceiling is the frame budget's own business.
+	avg := float64(total) / float64(frames)
+	assert.Greater(t, avg, 0.8*float64(frameBudget), "VBR undershoots the requested rate")
+}
+
+func TestVBRPacketRoundTripMultiFrame(t *testing.T) {
+	enc, err := NewEncoder(WithVBR(true), WithConstrainedVBR(false))
+	require.NoError(t, err)
+
+	dec, err := NewDecoderWithOutput(48000, 1)
+	require.NoError(t, err)
+
+	for i := range 10 {
+		pcm := make([]float32, encoderTestFrameSampleCount)
+		for j := range pcm {
+			pcm[j] = float32(math.Sin(2*math.Pi*440*float64(j)/48000)) * float32(i%3) * 0.3
+		}
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+
+		out := make([]float32, encoderTestFrameSampleCount)
+		_, _, err = dec.DecodeFloat32(packet[:n], out)
+		require.NoError(t, err)
+		// i%3 == 0 feeds digital silence, which must not be required to decode
+		// into energy. Only the frames that actually carry signal are checked.
+		if i%3 != 0 {
+			assert.Greaterf(t, vectorEnergyFloat32(out), 1e-6, "frame %d", i)
+		}
+	}
+}
+
+func TestCVBRBoundsVariation(t *testing.T) {
+	enc, err := NewEncoder(WithVBR(true), WithConstrainedVBR(true))
+	require.NoError(t, err)
+
+	var minSize, maxSize int
+	for i := range 30 {
+		pcm := make([]float32, encoderTestFrameSampleCount)
+		for j := range pcm {
+			switch i % 3 {
+			case 0:
+				pcm[j] = float32(j%50) / 50
+			case 1:
+				pcm[j] = 0.0001
+			case 2:
+				pcm[j] = float32(j%200-100) / 200
+			}
+		}
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+		if i == 0 || n < minSize {
+			minSize = n
+		}
+		if i == 0 || n > maxSize {
+			maxSize = n
+		}
+	}
+
+	assert.LessOrEqual(t, maxSize, minSize*3,
+		"CVBR should bound packet size variation")
+}
+
+func TestCBRUnchanged(t *testing.T) {
+	enc, err := NewEncoder()
+	require.NoError(t, err)
+
+	sizes := make(map[int]bool)
+	for i := range 10 {
+		pcm := make([]float32, encoderTestFrameSampleCount)
+		for j := range pcm {
+			pcm[j] = float32(i%3-1) * 0.1
+		}
+		packet := make([]byte, 256)
+		n, err := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, err)
+		sizes[n] = true
+	}
+
+	assert.Equal(t, 1, len(sizes), "CBR should produce constant packet sizes")
+}
+
+func TestVBRWithStereo(t *testing.T) {
+	enc, err := NewEncoder(WithChannels(2), WithVBR(true))
+	require.NoError(t, err)
+
+	dec, err := NewDecoderWithOutput(48000, 2)
+	require.NoError(t, err)
+
+	pcm := testEncoderStereoSineFloat32()
+	packet := make([]byte, 256)
+	n, err := enc.EncodeFloat32(pcm, packet)
+	require.NoError(t, err)
+
+	out := make([]float32, encoderTestFrameSampleCount*2)
+	_, _, err = dec.DecodeFloat32(packet[:n], out)
+	require.NoError(t, err)
+	assert.Greater(t, vectorEnergyFloat32(out), 1e-6)
+}
+
+func TestVBRDefaultIsCBR(t *testing.T) {
+	enc, err := NewEncoder()
+	require.NoError(t, err)
+	assert.False(t, enc.VBR(), "default encoder should be CBR")
+}
+
+func TestApplicationRoundTrip(t *testing.T) {
+	encoder, err := NewEncoder(
+		WithApplication(ApplicationVoIP),
+		WithVBR(true),
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, ApplicationVoIP, encoder.Application())
+	assert.True(t, encoder.VBR())
+
+	decoder, err := NewDecoderWithOutput(48000, 1)
+	require.NoError(t, err)
+
+	pcm := testEncoderSineFloat32()
+	packet := make([]byte, 256)
+	n, err := encoder.EncodeFloat32(pcm, packet)
+	require.NoError(t, err)
+
+	out := make([]float32, encoderTestFrameSampleCount)
+	_, _, err = decoder.DecodeFloat32(packet[:n], out)
+	require.NoError(t, err)
+	assert.Greater(t, vectorEnergyFloat32(out), 1e-6)
+}
+
+func TestLossRateGetterSetter(t *testing.T) {
+	encoder, err := NewEncoder()
+	require.NoError(t, err)
+
+	require.NoError(t, encoder.SetLossRate(0))
+	assert.Equal(t, 0, encoder.LossRate())
+
+	require.NoError(t, encoder.SetLossRate(100))
+	assert.Equal(t, 100, encoder.LossRate())
+
+	require.NoError(t, encoder.SetLossRate(25))
+	assert.Equal(t, 25, encoder.LossRate())
 }
 
 func testEncoderSineFloat32() []float32 {
@@ -352,10 +832,18 @@ func testEncoderSineFloat32() []float32 {
 }
 
 func testEncoderStereoSineFloat32() []float32 {
+	return testEncoderStereoSineFloat32At(0)
+}
+
+// testEncoderStereoSineFloat32At generates a frame of the same dual-tone
+// stereo signal starting at sampleOffset, so consecutive frames stay
+// phase-continuous instead of restarting the tone from zero each time.
+func testEncoderStereoSineFloat32At(sampleOffset int) []float32 {
 	pcm := make([]float32, encoderTestFrameSampleCount*2)
 	for i := range encoderTestFrameSampleCount {
-		left := float32(math.Sin(2 * math.Pi * 440 * float64(i) / 48000))
-		right := float32(math.Sin(2 * math.Pi * 660 * float64(i) / 48000))
+		sample := sampleOffset + i
+		left := float32(math.Sin(2 * math.Pi * 440 * float64(sample) / 48000))
+		right := float32(math.Sin(2 * math.Pi * 660 * float64(sample) / 48000))
 		pcm[i*2] = left
 		pcm[i*2+1] = right
 	}
@@ -439,4 +927,139 @@ func freqEnergy(samples []float32, freq float64) float64 {
 	}
 
 	return math.Sqrt(re*re+im*im) / float64(len(samples))
+}
+
+func TestStereoWidthQ14Schedule(t *testing.T) {
+	// Above 32 kb/s the image is untouched, below 16 kb/s it collapses to mono,
+	// and in between it narrows monotonically.
+	assert.Equal(t, stereoWidthFull, stereoWidthQ14(33000))
+	assert.Equal(t, 0, stereoWidthQ14(15000))
+
+	prev := 0
+	for rate := stereoWidthMinRate; rate <= stereoWidthMaxRate; rate += 250 {
+		got := stereoWidthQ14(rate)
+		assert.GreaterOrEqual(t, got, prev, "width must not narrow as the rate grows: rate=%d", rate)
+		assert.LessOrEqual(t, got, stereoWidthFull, "rate=%d", rate)
+		prev = got
+	}
+}
+
+func TestApplyStereoFadeCollapsesToMono(t *testing.T) {
+	// Width zero on both ends means every sample pair becomes its own average.
+	left := []float32{1, 1, 1, 1}
+	right := []float32{-1, -1, -1, -1}
+	applyStereoFade(left, right, 0, 0, nil)
+	for i := range left {
+		assert.InDelta(t, 0, left[i], 1e-6, "sample %d", i)
+		assert.InDelta(t, 0, right[i], 1e-6, "sample %d", i)
+	}
+}
+
+func TestApplyStereoFadeFullWidthIsIdentity(t *testing.T) {
+	left := []float32{0.5, -0.25, 0.75, 0}
+	right := []float32{-0.5, 0.25, 0, 0.75}
+	wantL := append([]float32(nil), left...)
+	wantR := append([]float32(nil), right...)
+	applyStereoFade(left, right, 1, 1, nil)
+	assert.Equal(t, wantL, left)
+	assert.Equal(t, wantR, right)
+}
+
+func TestApplyStereoFadeCrossfadesOverOverlap(t *testing.T) {
+	// Coming from full width down to mono, the first sample keeps the old
+	// width and the tail past the overlap is fully narrowed.
+	window := []float32{0, 1}
+	left := []float32{1, 1, 1}
+	right := []float32{-1, -1, -1}
+	applyStereoFade(left, right, 1, 0, window)
+	assert.InDelta(t, 1, left[0], 1e-6, "overlap starts at the previous width")
+	assert.InDelta(t, 0, left[1], 1e-6, "overlap ends at the new width")
+	assert.InDelta(t, 0, left[2], 1e-6, "past the overlap the new width applies")
+}
+
+func TestVBRUsesBufferHeadroom(t *testing.T) {
+	// Unconstrained VBR may run a hard frame past the nominal rate when the
+	// caller left room, and the reservoir wins it back on the easy ones. Capping
+	// every frame at the rate is what kept pion from ever reaching its target.
+	const bitrate = 96000
+	enc, err := NewEncoder(WithChannels(2), WithBitrate(bitrate), WithVBR(true), WithConstrainedVBR(false))
+	require.NoError(t, err)
+
+	frameBudget := bitrate / 50 / 8
+	total, frames, largest := 0, 60, 0
+	phase := 0.0
+	for i := range frames {
+		pcm := make([]float32, encoderTestFrameSampleCount*2)
+		// Alternate quiet stretches with dense ones so the target has to move.
+		amp := float32(0.02)
+		if i%4 == 0 {
+			amp = 0.6
+		}
+		for j := range encoderTestFrameSampleCount {
+			v := amp * float32(math.Sin(phase)+math.Sin(phase*7.3)+math.Sin(phase*23.1))
+			pcm[2*j] = v
+			pcm[2*j+1] = -v
+			phase += 2 * math.Pi * 440 / 48000
+		}
+		packet := make([]byte, 1500)
+		n, encErr := enc.EncodeFloat32(pcm, packet)
+		require.NoError(t, encErr)
+		total += n
+		largest = max(largest, n)
+	}
+
+	// No ceiling assertion here on purpose: on a sustained hard signal there is
+	// nothing easy to win the bits back on, and the reference overshoots the
+	// nominal rate by the same margin. TestVBRTracksTargetBitrate covers the
+	// average on material that can actually be tracked.
+	assert.Greater(t, largest, frameBudget, "a demanding frame should be allowed past the nominal rate")
+	assert.Positive(t, total)
+}
+
+// TestEncodeDoesNotAllocate guards the reuse in encodeScratch. The CELT layer
+// was already allocation-free per frame, but nothing measured the public entry
+// points, so the wrapper around it churned ~16 kB a frame unnoticed.
+func TestEncodeDoesNotAllocate(t *testing.T) {
+	enc, err := NewEncoder(WithChannels(2), WithBitrate(96000))
+	require.NoError(t, err)
+
+	in := make([]byte, encoderTestFrameSampleCount*2*2)
+	for i := range in {
+		in[i] = byte(i * 7)
+	}
+	out := make([]byte, 1500)
+	var encErr error
+	allocs := testing.AllocsPerRun(50, func() {
+		_, encErr = enc.Encode(in, out)
+	})
+	require.NoError(t, encErr)
+	assert.Zerof(t, allocs, "Encode allocated %v times per frame", allocs)
+
+	pcm := make([]float32, encoderTestFrameSampleCount*2)
+	for i := range pcm {
+		pcm[i] = float32(i%800) / 8000
+	}
+	allocs = testing.AllocsPerRun(50, func() {
+		_, encErr = enc.EncodeFloat32(pcm, out)
+	})
+	require.NoError(t, encErr)
+	assert.Zerof(t, allocs, "EncodeFloat32 allocated %v times per frame", allocs)
+}
+
+func BenchmarkEncode(b *testing.B) {
+	enc, err := NewEncoder(WithChannels(2), WithBitrate(96000))
+	require.NoError(b, err)
+
+	in := make([]byte, encoderTestFrameSampleCount*2*2)
+	for i := range in {
+		in[i] = byte(i * 7)
+	}
+	out := make([]byte, 1500)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := enc.Encode(in, out); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

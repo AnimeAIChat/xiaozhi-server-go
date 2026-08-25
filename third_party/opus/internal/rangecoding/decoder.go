@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package rangecoding
@@ -83,7 +83,8 @@ type Decoder struct {
 const (
 	maxUniformRangeCoderBits = 8
 	laplaceTotal             = 32768
-	laplaceMinProbability    = 1
+	laplaceLogMinProbability = 0
+	laplaceMinProbability    = 1 << laplaceLogMinProbability
 	laplaceGuaranteedDeltas  = 16
 )
 
