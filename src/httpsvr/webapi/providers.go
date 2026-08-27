@@ -81,6 +81,7 @@ func missingProviderTestFields(providerType, subType string, config map[string]i
 		"LLM": {
 			"openai": {"url", "api_key", "model_name"}, "ollama": {"url", "model_name"},
 			"doubao": {"url", "api_key", "model_name"}, "coze": {"bot_id", "user_id", "personal_access_token"},
+			"dsh": {"url", "api_key"},
 		},
 		"VLLLM": {
 			"openai": {"url", "api_key", "model_name"}, "ollama": {"url", "model_name"},

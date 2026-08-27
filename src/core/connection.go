@@ -457,9 +457,11 @@ func (h *ConnectionHandler) checkDeviceInfo() {
 	if device.AgentID != nil {
 		h.agentID = *device.AgentID // 获取设备绑定的AgentID
 	} else {
-		onboardingAgent, ensureErr := database.EnsureOnboardingAgent(database.GetDB(), h.config)
-		if ensureErr != nil {
-			h.LogError(fmt.Sprintf("自动绑定初始设置助手失败: %v", ensureErr))
+		onboardingAgent, ensureErr := database.GetOnboardingAgent(database.GetDB())
+		if ensureErr == gorm.ErrRecordNotFound {
+			h.LogInfo("初始设置助手尚未创建，设备保持未绑定状态")
+		} else if ensureErr != nil {
+			h.LogError(fmt.Sprintf("查询初始设置助手失败: %v", ensureErr))
 		} else {
 			ownerID := onboardingAgent.UserID
 			device.AgentID = &onboardingAgent.ID

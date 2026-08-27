@@ -533,9 +533,59 @@
         </div>
         <div id="diagnostics-results" style="margin-top:16px"></div>
       </div>
+      <div class="card">
+        <div class="toolbar" style="justify-content:space-between;align-items:center;gap:16px">
+          <div>
+            <h3 style="margin:0">4. 创建初始设置助手</h3>
+            <p class="muted" style="margin:6px 0 0">确认已选 ASR、LLM、TTS 的本地配置完整后创建。系统只保留一个；创建后会接管当前未绑定设备，之后的新设备也会自动绑定。</p>
+          </div>
+          <button class="btn primary" id="activate-onboarding" disabled>检查配置中…</button>
+        </div>
+        <div id="onboarding-status" class="provider-test-result" aria-live="polite" style="margin-top:12px"></div>
+      </div>
     `;
 
     const resultHost = byId('diagnostics-results');
+    const onboardingHost = byId('onboarding-status');
+    const onboardingButton = byId('activate-onboarding');
+    const refreshOnboarding = async () => {
+      try {
+        const payload = await request('/api/admin/onboarding');
+        const status = payload.data || {};
+        const issues = Array.isArray(status.issues) ? status.issues : [];
+        const ready = status.ready === true;
+        const exists = status.exists === true;
+        onboardingButton.disabled = !ready || !canWriteAdmin();
+        onboardingButton.textContent = exists ? '同步初始助手配置' : '创建初始设置助手';
+        if (ready) {
+          const assistantState = exists
+            ? `初始设置助手已存在（ID ${escapeHtml(status.agentId)}），可同步当前 Provider 选择。`
+            : 'ASR、LLM、TTS 配置已就绪，可创建唯一的初始设置助手。';
+          onboardingHost.innerHTML = `<div class="provider-test-message success">${assistantState} ${Number(status.pendingDevices || 0)} 台未绑定设备会在创建后接管。</div>`;
+        } else {
+          onboardingHost.innerHTML = `<div class="provider-test-message error">创建前请处理：${escapeHtml(issues.join('；') || 'Provider 配置未就绪')}</div>`;
+        }
+      } catch (error) {
+        onboardingButton.disabled = true;
+        onboardingButton.textContent = '无法检查配置';
+        onboardingHost.innerHTML = `<div class="provider-test-message error">${escapeHtml(error?.data?.message || error?.message || '无法读取初始设置助手状态')}</div>`;
+      }
+    };
+    onboardingButton.addEventListener('click', () => {
+      confirmAction('创建初始设置助手', '将创建唯一的初始设置助手，并自动绑定当前未绑定设备。确认继续吗？', async () => {
+        onboardingButton.disabled = true;
+        onboardingButton.textContent = '创建中…';
+        try {
+          const result = await request('/api/admin/onboarding', { method: 'POST' });
+          toast(result.message || '初始设置助手已创建', 'success');
+          await refreshOnboarding();
+        } catch (error) {
+          showError(error, '创建初始设置助手失败');
+          await refreshOnboarding();
+        }
+      });
+    });
+    refreshOnboarding();
     const renderResults = (results) => {
       if (!results?.length) {
         resultHost.innerHTML = emptyState('暂无检查结果');
@@ -687,7 +737,7 @@
 
   async function renderAgents() {
     page().innerHTML = `
-      ${pageHeader('智能体', '新设备会先自动绑定“初始设置助手”，可在对话中创建、配置或切换其他智能体', `
+      ${pageHeader('智能体', '先在首次配置向导创建唯一的初始设置助手；创建后，新设备会自动绑定给它', `
         <input id="agent-search" placeholder="搜索智能体" style="min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:6px">
         <button class="btn primary" id="create-agent">新建智能体</button>
         <button class="btn" id="agent-add-device">添加设备</button>
@@ -816,10 +866,10 @@
             </select>
           </div>
           <div class="field">
-            <label>设备 ID</label>
-            <input name="deviceID" placeholder="设备完成 OTA 请求后显示的 Device ID" required>
+            <label>设备 MAC 地址</label>
+            <input name="mac" placeholder="例如 94:A9:90:31:E2:E4" autocomplete="off" spellcheck="false" required>
           </div>
-          <p class="muted">设备必须已请求过本服务的 OTA 地址。设备 ID 只会用于本次绑定，不会在页面中展示密钥。</p>
+          <p class="muted">设备必须已请求过本服务的 OTA 地址。支持冒号、短横线或无分隔符的 MAC 格式。</p>
         </form>
       `,
       footer: `<button class="btn" data-close-modal>取消</button><button class="btn primary" id="bind-device-submit">绑定</button>`,
@@ -1000,6 +1050,7 @@
 
   function deviceCard(device) {
     const deviceId = device.deviceId || device.DeviceID || '';
+	    const macAddress = device.macAddress || device.MACAddress || deviceId;
     return `
       <div class="card">
         <div class="card-title">
@@ -1007,14 +1058,14 @@
           <button class="btn ghost danger small" data-unbind-device="${escapeHtml(deviceId)}">解绑</button>
         </div>
         <div class="form">
-          <div><span class="muted">MAC 地址：</span>${escapeHtml(maskDeviceId(deviceId))}</div>
+          <div><span class="muted">MAC 地址：</span>${escapeHtml(maskDeviceId(macAddress))}</div>
           <div><span class="muted">固件版本：</span>${escapeHtml(device.version || '-')}</div>
           <div><span class="muted">最近活跃：</span>${escapeHtml(formatDate(device.lastActiveTimeV2 || device.lastActiveTime))}</div>
           <div><span class="muted">设备状态：</span>${device.mode === 'ban' ? '<span class="tag red">已禁用</span>' : '<span class="tag green">可用</span>'}</div>
           <div><span class="muted">OTA 升级：</span>${device.ota ? '<span class="tag green">开启</span>' : '<span class="tag">关闭</span>'}</div>
         </div>
         <div class="divider"></div>
-        <button class="btn small" data-copy="${escapeHtml(deviceId)}">复制 MAC</button>
+        <button class="btn small" data-copy="${escapeHtml(macAddress)}">复制 MAC</button>
         <button class="btn small" data-toggle-device="${escapeHtml(deviceId)}" data-disabled="${device.mode === 'ban' ? 'true' : 'false'}">${device.mode === 'ban' ? '启用设备' : '禁用设备'}</button>
         <button class="btn ghost small" data-clear-device-memory="${escapeHtml(deviceId)}">清空短期记忆</button>
       </div>
@@ -1329,6 +1380,7 @@
     LLM: {
       openai: { label: 'OpenAI 兼容接口', fields: [['url', 'API 地址', 'https://api.example.com/v1'], ['api_key', 'API 密钥', '填写 API Key', true], ['model_name', '模型名称', '例如：gpt-4o-mini'], ['max_tokens', '最大输出 Token', '500', false, 'number']] },
       ollama: { label: 'Ollama 本地模型', fields: [['url', 'Ollama 地址', 'http://127.0.0.1:11434'], ['model_name', '模型名称', '例如：qwen3:8b']] },
+      dsh: { label: 'DSH Xiaozhi Bridge', suggestedName: 'DSHBridge', fields: [['url', 'Bridge WebSocket 地址', 'ws://127.0.0.1:17980/xiaozhi', false, 'url', 'ws://127.0.0.1:17980/xiaozhi'], ['api_key', 'Bridge 令牌', '与 XIAOZHI_BRIDGE_TOKEN 相同', true]] },
       doubao: { label: '火山方舟', fields: [['url', 'API 地址', 'https://ark.cn-beijing.volces.com/api/v3'], ['api_key', 'API 密钥', '填写 API Key', true], ['model_name', '模型名称', '填写模型端点 ID'], ['max_tokens', '最大输出 Token', '4000', false, 'number']] },
       coze: { label: '扣子', fields: [['bot_id', '智能体 ID', '填写 Bot ID', true], ['user_id', '用户 ID', '填写 User ID', true], ['personal_access_token', '个人访问令牌', '填写 PAT', true], ['url', 'API 地址', 'https://api.coze.cn']] },
     },
@@ -1377,8 +1429,11 @@
             </div>
             <div class="field">
               <label>具体类型</label>
-              <input name="subType" id="provider-subtype" list="provider-subtype-options" value="${escapeHtml(selectedSubType)}" required>
-              <datalist id="provider-subtype-options"></datalist>
+              <select name="subType" id="provider-subtype" required></select>
+            </div>
+            <div class="field" id="provider-custom-subtype-field" hidden>
+              <label for="provider-custom-subtype">自定义具体类型</label>
+              <input name="customSubType" id="provider-custom-subtype" placeholder="例如：my_provider">
             </div>
           </div>
           <div id="provider-config-fields" class="form-grid"></div>
@@ -1396,25 +1451,42 @@
     const form = byId('provider-form');
     const typeInput = form.elements.type;
     const subTypeInput = form.elements.subType;
+    const customSubTypeInput = form.elements.customSubType;
     const jsonInput = form.elements.configJson;
     const currentConfig = () => parseJson(jsonInput.value, {}) || {};
+    const effectiveSubType = () => (subTypeInput.value === '__custom__' ? customSubTypeInput.value.trim() : subTypeInput.value.trim());
     const renderProviderFields = (resetConfig = false) => {
       const type = provider?.type || typeInput.value;
       const definitions = PROVIDER_FIELDS[type] || {};
-      const options = Object.entries(definitions).map(([value, definition]) => `<option value="${escapeHtml(value)}">${escapeHtml(`${value} · ${definition.label}`)}</option>`).join('');
-      byId('provider-subtype-options').innerHTML = options;
-      const subType = subTypeInput.value.trim().toLowerCase();
+      const knownSubType = Object.prototype.hasOwnProperty.call(definitions, selectedSubType.toLowerCase()) ? selectedSubType.toLowerCase() : '';
+      const shouldSetInitialSubType = !resetConfig && !subTypeInput.dataset.initialized;
+      const selectedBeforeRender = subTypeInput.value;
+      subTypeInput.innerHTML = `${Object.entries(definitions).map(([value, definition]) => `<option value="${escapeHtml(value)}">${escapeHtml(`${value} · ${definition.label}`)}</option>`).join('')}<option value="__custom__">自定义类型…</option>`;
+      if (resetConfig) subTypeInput.value = Object.keys(definitions)[0] || '__custom__';
+      if (shouldSetInitialSubType) {
+        subTypeInput.value = knownSubType || '__custom__';
+        customSubTypeInput.value = knownSubType ? '' : selectedSubType;
+        subTypeInput.dataset.initialized = 'true';
+      } else if (!resetConfig) {
+        subTypeInput.value = selectedBeforeRender;
+      }
+      if (!subTypeInput.value) subTypeInput.value = '__custom__';
+      const customType = subTypeInput.value === '__custom__';
+      const customTypeField = byId('provider-custom-subtype-field');
+      customTypeField.hidden = !customType;
+      customSubTypeInput.required = customType;
+      const subType = effectiveSubType().toLowerCase();
       const definition = definitions[subType];
       if (resetConfig) {
         jsonInput.value = prettyJson({ type: subType || Object.keys(definitions)[0] || 'openai' });
       }
       const configValue = currentConfig();
       const fields = definition?.fields || [];
-      byId('provider-config-fields').innerHTML = fields.length ? fields.map(([key, label, placeholder, secret, inputType]) => `
+      byId('provider-config-fields').innerHTML = fields.length ? fields.map(([key, label, placeholder, secret, inputType, defaultValue]) => `
         <div class="field">
           <label for="provider-field-${escapeHtml(key)}">${escapeHtml(label)}</label>
           <div class="${secret ? 'input-with-button' : ''}">
-            <input id="provider-field-${escapeHtml(key)}" data-provider-config-field="${escapeHtml(key)}" type="${secret ? 'password' : (inputType || 'text')}" value="${escapeHtml(configValue[key] ?? '')}" placeholder="${escapeHtml(placeholder || '')}" ${['appid', 'access_token', 'api_key', 'api_secret', 'token', 'model_name', 'model', 'voice'].includes(key) ? 'required' : ''}>
+            <input id="provider-field-${escapeHtml(key)}" data-provider-config-field="${escapeHtml(key)}" type="${secret ? 'password' : (inputType || 'text')}" value="${escapeHtml(configValue[key] ?? defaultValue ?? '')}" placeholder="${escapeHtml(placeholder || '')}" ${['appid', 'access_token', 'api_key', 'api_secret', 'token', 'model_name', 'model', 'voice'].includes(key) || (subType === 'dsh' && key === 'url') ? 'required' : ''}>
             ${secret ? `<button class="btn small" type="button" data-toggle-provider-secret aria-label="显示或隐藏${escapeHtml(label)}">显示</button>` : ''}
           </div>
         </div>
@@ -1426,11 +1498,12 @@
         input.type = hidden ? 'text' : 'password';
         button.textContent = hidden ? '隐藏' : '显示';
       }));
-      byId('provider-form-status').textContent = definition ? `已选择：${providerTypeLabel(type)} · ${definition.label}` : '可自定义具体类型，并在高级 JSON 中填写完整配置。';
+      if (definition?.suggestedName && !provider && !form.elements.name.value.trim()) form.elements.name.placeholder = `建议名称：${definition.suggestedName}`;
+      byId('provider-form-status').textContent = definition ? `已选择：${providerTypeLabel(type)} · ${definition.label}${definition.suggestedName ? `；建议供应商名称：${definition.suggestedName}` : ''}` : '请填写自定义类型，并在高级 JSON 中补充完整配置。';
     };
     const syncProviderJson = () => {
       const configValue = currentConfig();
-      configValue.type = subTypeInput.value.trim();
+      configValue.type = effectiveSubType();
       qsa('[data-provider-config-field]', form).forEach((input) => {
         const value = input.value.trim();
         if (!value) return;
@@ -1440,22 +1513,25 @@
     };
     typeInput.addEventListener('change', () => {
       const type = typeInput.value;
-      subTypeInput.value = Object.keys(PROVIDER_FIELDS[type] || {})[0] || 'openai';
+      subTypeInput.innerHTML = '';
+      customSubTypeInput.value = '';
       renderProviderFields(true);
     });
     subTypeInput.addEventListener('change', () => { syncProviderJson(); renderProviderFields(false); });
+    customSubTypeInput.addEventListener('input', syncProviderJson);
     renderProviderFields(false);
     byId('provider-submit').addEventListener('click', async () => {
       if (!form.reportValidity()) return;
       const values = formValues(form);
       const type = provider?.type || values.type;
       const name = provider?.name || values.name;
+      syncProviderJson();
       const config = parseJson(values.configJson, null);
       if (!config) {
         toast('配置 JSON 格式不正确', 'warning');
         return;
       }
-      config.type = values.subType || config.type;
+      config.type = effectiveSubType() || config.type;
       try {
         if (provider) {
           await request(`/api/user/providers/${encodeURIComponent(type)}/${encodeURIComponent(name)}`, {

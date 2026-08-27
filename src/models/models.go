@@ -49,6 +49,7 @@ type Device struct {
 	UserID           *uint          `gorm:"index"                                  json:"userID"`           // 外键关联 User
 	Name             string         `gorm:"not null"                               json:"name"`             // 设备名称
 	DeviceID         string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"deviceId"`         // 设备唯一标识,mac地址
+	MACAddress       string         `gorm:"type:varchar(17);index"                json:"macAddress"`        // 设备上报的物理 MAC 地址，统一保存为 AA:BB:CC:DD:EE:FF
 	ClientID         string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"clientId"`         // 客户端唯一标识
 	Version          string         `                                              json:"version"`          // 设备固件版本号
 	OTA              bool           `gorm:"default:true"                           json:"ota"`              // 是否支持OTA升级

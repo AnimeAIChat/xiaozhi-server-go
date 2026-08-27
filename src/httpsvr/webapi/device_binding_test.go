@@ -37,7 +37,7 @@ func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
 	if err := db.Create(otherAgent).Error; err != nil {
 		t.Fatal(err)
 	}
-	device := &models.Device{Name: "测试设备", DeviceID: "device-001", ClientID: "client-001"}
+	device := &models.Device{Name: "测试设备", DeviceID: "device-001", MACAddress: "94:A9:90:31:E2:E4", ClientID: "client-001"}
 	if err := db.Create(device).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +56,27 @@ func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
 
 	if response := bind(1, agent.ID); response.Code != http.StatusOK {
 		t.Fatalf("first bind status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	macDevice := &models.Device{Name: "MAC 设备", DeviceID: "board-002", MACAddress: "AA:BB:CC:DD:EE:FF", ClientID: "client-002"}
+	if err := db.Create(macDevice).Error; err != nil {
+		t.Fatal(err)
+	}
+	macBody, _ := json.Marshal(DeviceBindRequest{AgentID: agent.ID, MAC: "aa-bb-cc-dd-ee-ff"})
+	macRecorder := httptest.NewRecorder()
+	macContext, _ := gin.CreateTestContext(macRecorder)
+	macContext.Request = httptest.NewRequest(http.MethodPost, "/api/user/device/bind", bytes.NewReader(macBody))
+	macContext.Request.Header.Set("Content-Type", "application/json")
+	macContext.Set("user_id", uint(1))
+	service.handleDeviceBind(macContext)
+	if macRecorder.Code != http.StatusOK {
+		t.Fatalf("MAC bind status = %d, body = %s", macRecorder.Code, macRecorder.Body.String())
+	}
+	if err := db.First(macDevice, "device_id = ?", macDevice.DeviceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if macDevice.AgentID == nil || *macDevice.AgentID != agent.ID {
+		t.Fatalf("MAC device was not bound: %#v", macDevice)
 	}
 	if err := db.First(device, "device_id = ?", device.DeviceID).Error; err != nil {
 		t.Fatal(err)

@@ -47,6 +47,8 @@ func (s *DefaultAdminService) Start(
 	adminGroup.Use(AuthMiddleware(), AdminMiddleware())
 	{
 		adminGroup.POST("/admin/system", s.handleSystemPost)
+		adminGroup.GET("/admin/onboarding", s.handleOnboardingStatus)
+		adminGroup.POST("/admin/onboarding", s.handleOnboardingActivate)
 
 		adminGroup.DELETE("/admin/system/device", s.handleDeviceDeleteAdmin)
 		// providers

@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestNewDeviceAutomaticallyBindsToOnboardingAgent(t *testing.T) {
+func TestNewDeviceBindsOnlyAfterOnboardingAgentIsExplicitlyCreated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open("file:ota-onboarding-test?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -42,12 +42,6 @@ func TestNewDeviceAutomaticallyBindsToOnboardingAgent(t *testing.T) {
 		LLM:            map[string]configs.LLMConfig{"test-llm": {}},
 		TTS:            map[string]configs.TTSConfig{"test-tts": {Voice: "test-voice"}},
 	}
-	probeTx := db.Begin()
-	if _, err := database.EnsureOnboardingAgent(probeTx, config); err != nil {
-		probeTx.Rollback()
-		t.Fatalf("EnsureOnboardingAgent in transaction: %v", err)
-	}
-	probeTx.Rollback()
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	context.Request = httptest.NewRequest("POST", "/ota/", nil)
@@ -55,14 +49,26 @@ func TestNewDeviceAutomaticallyBindsToOnboardingAgent(t *testing.T) {
 	request.Board.Type = "test-board"
 	request.Language = "zh-CN"
 
-	device := (&DefaultOTAService{}).CheckAndUpdateDevice(context, config, request, "device-onboarding-001", "client-onboarding-001", "测试设备", "1.0.0")
-	if device == nil || device.AgentID == nil || device.UserID == nil {
-		t.Fatalf("device was not bound: %#v, response=%s", device, recorder.Body.String())
+	service := &DefaultOTAService{}
+	device := service.CheckAndUpdateDevice(context, config, request, "device-onboarding-001", "client-onboarding-001", "测试设备", "1.0.0")
+	if device == nil || device.AgentID != nil || device.UserID != nil {
+		t.Fatalf("device should remain unbound before explicit setup: %#v, response=%s", device, recorder.Body.String())
 	}
-	if device.AuthStatus != "onboarding" || *device.UserID != database.AdminUserID {
-		t.Fatalf("unexpected initial binding: %#v", device)
+
+	tx := db.Begin()
+	agent, created, err := database.ActivateOnboardingAgent(tx, "test-llm", "test-voice")
+	if err != nil || !created {
+		t.Fatalf("ActivateOnboardingAgent() = %#v, %t, %v", agent, created, err)
 	}
-	if !database.IsOnboardingAgent(db, *device.AgentID) {
-		t.Fatalf("device agent %d is not the onboarding agent", *device.AgentID)
+	if bound, err := database.BindUnboundDevicesToOnboardingAgent(tx, agent); err != nil || bound != 1 {
+		t.Fatalf("BindUnboundDevicesToOnboardingAgent() = %d, %v", bound, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+
+	device = service.CheckAndUpdateDevice(context, config, request, "device-onboarding-002", "client-onboarding-002", "新测试设备", "1.0.0")
+	if device == nil || device.AgentID == nil || *device.AgentID != agent.ID || device.UserID == nil || *device.UserID != database.AdminUserID || device.AuthStatus != "onboarding" {
+		t.Fatalf("new device was not automatically bound after setup: %#v", device)
 	}
 }

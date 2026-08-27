@@ -23,7 +23,8 @@ import (
 // @Router /user/device/bind [post]
 type DeviceBindRequest struct {
 	AgentID  uint   `json:"agentID" binding:"required"`
-	DeviceID string `json:"deviceID" binding:"required"`
+	DeviceID string `json:"deviceID"` // 保留兼容旧客户端的设备唯一标识
+	MAC      string `json:"mac"`      // 推荐使用设备物理 MAC 地址绑定
 	AuthCode string `json:"authCode"`
 }
 
@@ -79,8 +80,13 @@ func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
 		return
 	}
 	request.DeviceID = strings.TrimSpace(request.DeviceID)
-	if request.DeviceID == "" || request.AgentID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "deviceID and agentID are required"})
+	request.MAC = strings.TrimSpace(request.MAC)
+	if (request.DeviceID == "" && request.MAC == "") || request.AgentID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mac or deviceID and agentID are required"})
+		return
+	}
+	if request.MAC != "" && database.NormalizeMACAddress(request.MAC) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mac address"})
 		return
 	}
 
@@ -89,9 +95,19 @@ func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
 		if _, err := database.GetAgentByIDAndUser(tx, request.AgentID, userID); err != nil {
 			return err
 		}
-		device, err := database.FindDeviceByID(tx, request.DeviceID)
-		if err != nil {
-			return err
+		var deviceErr error
+		var deviceID = request.DeviceID
+		if request.MAC != "" {
+			deviceID = request.MAC
+		}
+		device, err := database.FindDeviceByID(tx, deviceID)
+		if request.MAC != "" {
+			device, deviceErr = database.FindDeviceByMAC(tx, request.MAC)
+		} else {
+			deviceErr = err
+		}
+		if deviceErr != nil {
+			return deviceErr
 		}
 		if device.UserID != nil && *device.UserID != userID {
 			return fmt.Errorf("device is already owned by another user")

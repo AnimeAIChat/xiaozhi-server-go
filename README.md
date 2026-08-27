@@ -72,6 +72,25 @@ selected_module:
 - 设备与服务端不在同一台机器时，需要允许 TCP `8000` 和 `8080` 通过系统防火墙；设备与服务端应能相互访问。
 - 本项目当前使用 WebSocket 接入设备，`transport.websocket.enabled` 应保持为 `true`。
 
+### 使用 DSH 对话桥接
+
+先启动独立的 `@xuanfeng/dsh-xiaozhi-bridge` 服务，再在私有 `.config.yaml`（或管理端的 LLM Provider 配置）中新增并选中以下 Provider：
+
+```yaml
+selected_module:
+  LLM: DSHBridge
+
+LLM:
+  DSHBridge:
+    type: dsh
+    # DSH bridge 的 WebSocket 地址，不是 Harness 的 HTTP 地址
+    url: ws://127.0.0.1:17980/xiaozhi
+    # 与桥接服务 XIAOZHI_BRIDGE_TOKEN 相同；请只写入私有配置
+    api_key: 请填写桥接令牌
+```
+
+Provider 会将小智当前连接的 `session_id` 作为桥接 `device_id`，并只发送本轮最新的用户文本；DSH 侧负责会话历史、Harness 工具和文本流。桥接发送的 `assistant_delta` 与即时兜底文本会直接进入现有 TTS 流程。当前小智服务端的 LLM 接口是按请求读取的，后台任务完成后的主动通知需要下一阶段在连接处理器中增加设备推送通道。
+
 ## 源码运行
 
 源码运行适合开发与调试。需要 Go `1.24.2`（项目指定的 toolchain）以及可用的 C 编译器供 SQLite 驱动构建；Opus 依赖已随仓库提供，无需单独安装系统 Opus 库。

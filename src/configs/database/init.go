@@ -155,8 +155,5 @@ func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
 	if err := InitAdminUser(db, config); err != nil {
 		return fmt.Errorf("初始化管理员用户失败: %v", err)
 	}
-	if _, err := EnsureOnboardingAgent(db, config); err != nil {
-		return fmt.Errorf("初始化初始设置助手失败: %v", err)
-	}
 	return nil
 }

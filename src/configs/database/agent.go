@@ -10,7 +10,7 @@ import (
 
 const OnboardingAgentName = "初始设置助手"
 
-const onboardingPrompt = `你是初始设置助手。每台新设备会先自动绑定到你，帮助个人用户完成初始设置。
+const onboardingPrompt = `你是初始设置助手。在管理员完成本地模型配置并创建你之后，新设备会自动绑定到你，帮助个人用户完成初始设置。
 先简短欢迎并说明：可以直接使用你，也可以让我列出并切换到已有的智能体。
 当用户明确要求查看、创建或修改智能体时，使用相应的本地工具；创建或修改前，若关键信息不清楚，先询问确认。
 你可以修改其他智能体的名称、提示词、LLM 和音色；不要删除智能体，也不要切换到你自己。回答简短、清晰、适合语音播放。`
@@ -34,30 +34,31 @@ func CreateDefaultAgent(tx *gorm.DB, userID uint) (*models.Agent, error) {
 	return agent, nil
 }
 
-// EnsureOnboardingAgent 确保系统存在唯一的初始设置助手。它只属于管理员，且不会覆盖用户已经调整过的配置。
-func EnsureOnboardingAgent(tx *gorm.DB, config *configs.Config) (*models.Agent, error) {
+// GetOnboardingAgent 只查询已经由管理员显式创建的初始设置助手，不会隐式创建。
+func GetOnboardingAgent(tx *gorm.DB) (*models.Agent, error) {
 	var agent models.Agent
-	err := tx.Where("user_id = ? AND is_onboarding = ?", AdminUserID, true).First(&agent).Error
+	if err := tx.Where("user_id = ? AND is_onboarding = ?", AdminUserID, true).First(&agent).Error; err != nil {
+		return nil, err
+	}
+	return &agent, nil
+}
+
+// ActivateOnboardingAgent 创建唯一的初始设置助手；若已存在，仅同步其 LLM 与音色，不会创建重复记录。
+func ActivateOnboardingAgent(tx *gorm.DB, llmName, voice string) (*models.Agent, bool, error) {
+	agent, err := GetOnboardingAgent(tx)
 	if err == nil {
-		return &agent, nil
+		agent.LLM = llmName
+		agent.Voice = voice
+		if err := UpdateAgent(tx, agent); err != nil {
+			return nil, false, fmt.Errorf("同步初始设置助手配置失败: %w", err)
+		}
+		return agent, false, nil
 	}
 	if err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("查询初始设置助手失败: %w", err)
+		return nil, false, fmt.Errorf("查询初始设置助手失败: %w", err)
 	}
 
-	llmName := ""
-	voice := ""
-	if config != nil {
-		llmName = config.SelectedModule["LLM"]
-		if ttsName := config.SelectedModule["TTS"]; ttsName != "" {
-			voice = config.TTS[ttsName].Voice
-		}
-	}
-	if llmName == "" {
-		llmName = "ChatGLMLLM"
-	}
-
-	agent = models.Agent{
+	agent = &models.Agent{
 		Name:         OnboardingAgentName,
 		LLM:          llmName,
 		Language:     "普通话",
@@ -68,10 +69,28 @@ func EnsureOnboardingAgent(tx *gorm.DB, config *configs.Config) (*models.Agent, 
 		Description:  "帮助新设备完成初始设置，并管理其他智能体。",
 		IsOnboarding: true,
 	}
-	if err := CreateAgent(tx, &agent); err != nil {
-		return nil, fmt.Errorf("创建初始设置助手失败: %w", err)
+	if err := CreateAgent(tx, agent); err != nil {
+		return nil, false, fmt.Errorf("创建初始设置助手失败: %w", err)
 	}
-	return &agent, nil
+	return agent, true, nil
+}
+
+// BindUnboundDevicesToOnboardingAgent 只接管尚未归属其他用户的未绑定设备。
+func BindUnboundDevicesToOnboardingAgent(tx *gorm.DB, agent *models.Agent) (int64, error) {
+	if agent == nil || !agent.IsOnboarding {
+		return 0, fmt.Errorf("初始设置助手无效")
+	}
+	result := tx.Model(&models.Device{}).
+		Where("agent_id IS NULL AND (user_id IS NULL OR user_id = ?)", AdminUserID).
+		Updates(map[string]interface{}{
+			"agent_id":    agent.ID,
+			"user_id":     agent.UserID,
+			"auth_status": "onboarding",
+		})
+	if result.Error != nil {
+		return 0, fmt.Errorf("绑定等待中的设备失败: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 func IsOnboardingAgent(tx *gorm.DB, id uint) bool {

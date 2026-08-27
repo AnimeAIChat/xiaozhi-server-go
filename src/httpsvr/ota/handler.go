@@ -282,6 +282,13 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 	deviceID, clientID, deviceName, version string,
 ) *models.Device {
 	var resultDevice *models.Device
+	macAddress := database.NormalizeMACAddress(req.MacAddress)
+	if macAddress == "" {
+		macAddress = database.NormalizeMACAddress(req.Board.MAC)
+	}
+	if macAddress == "" {
+		macAddress = database.NormalizeMACAddress(deviceID)
+	}
 	webapi.WithTx(c, func(tx *gorm.DB) error {
 		// 查询 设备是否已注册
 		device, err := database.FindDeviceByID(tx, deviceID) // 确保设备存在
@@ -305,14 +312,9 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 				}
 			}
 
-			onboardingAgent, err := database.EnsureOnboardingAgent(tx, cfg)
-			if err != nil {
-				utils.DefaultLogger.Error("初始化初始设置助手失败: %v", err)
-				return err
-			}
-			ownerID := onboardingAgent.UserID
 			device = &models.Device{
 				DeviceID:         deviceID,   // 设置设备ID
+				MACAddress:       macAddress, // 设备上报的物理 MAC 地址
 				ClientID:         clientID,   // 设置客户端ID
 				Name:             deviceName, // 设置设备名称
 				Version:          version,    // 设置设备版本
@@ -324,9 +326,16 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 				SSID:             req.Board.SSID,    // 设置WiFi SSID
 				Language:         req.Language,      // 设置语言
 				OTA:              true,              // 设置支持OTA升级
-				AgentID:          &onboardingAgent.ID,
-				UserID:           &ownerID,
-				AuthStatus:       "onboarding",
+			}
+			// 只有管理员显式创建初始设置助手后，新设备才自动绑定；设备接入不会反向创建助手。
+			if onboardingAgent, err := database.GetOnboardingAgent(tx); err == nil {
+				ownerID := onboardingAgent.UserID
+				device.AgentID = &onboardingAgent.ID
+				device.UserID = &ownerID
+				device.AuthStatus = "onboarding"
+			} else if err != gorm.ErrRecordNotFound {
+				utils.DefaultLogger.Error("查询初始设置助手失败: %v", err)
+				return err
 			}
 			appBytes, _ := json.Marshal(req.Application)
 			device.Application = string(appBytes)
@@ -343,8 +352,11 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 		}
 
 		appBytes, _ := json.Marshal(req.Application)
-		if device.Application != string(appBytes) {
+		if device.Application != string(appBytes) || (macAddress != "" && device.MACAddress != macAddress) {
 			device.Application = string(appBytes) // 更新应用信息
+			if macAddress != "" {
+				device.MACAddress = macAddress
+			}
 			if err := database.UpdateDevice(tx, device); err != nil {
 				utils.DefaultLogger.Error("更新设备应用信息失败: %v", err)
 			}
