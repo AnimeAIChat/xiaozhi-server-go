@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
+func TestDeviceBindingUsesDefaultUserAndDisable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open("file:device-binding-test?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -33,7 +33,7 @@ func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
 	if err := db.Create(agent).Error; err != nil {
 		t.Fatal(err)
 	}
-	otherAgent := &models.Agent{Name: "其他用户智能体", UserID: 2}
+	otherAgent := &models.Agent{Name: "另一个智能体", UserID: database.AdminUserID}
 	if err := db.Create(otherAgent).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -84,11 +84,17 @@ func TestDeviceBindingOwnershipAndDisable(t *testing.T) {
 	if device.UserID == nil || *device.UserID != 1 || device.AgentID == nil || *device.AgentID != agent.ID {
 		t.Fatalf("device ownership was not saved: %#v", device)
 	}
-	if response := bind(2, otherAgent.ID); response.Code != http.StatusForbidden {
-		t.Fatalf("cross-user bind status = %d, want %d", response.Code, http.StatusForbidden)
+	if response := bind(2, otherAgent.ID); response.Code != http.StatusOK {
+		t.Fatalf("single-user rebind status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if err := db.First(device, "device_id = ?", device.DeviceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if device.UserID == nil || *device.UserID != database.AdminUserID || device.AgentID == nil || *device.AgentID != otherAgent.ID {
+		t.Fatalf("device was not rebound to the default user: %#v", device)
 	}
 
-	memory := chat.NewDeviceAgentShortTermMemory(device.DeviceID, agent.ID)
+	memory := chat.NewDeviceAgentShortTermMemory(device.DeviceID, otherAgent.ID)
 	if err := memory.SaveMemory([]chat.Message{{Role: "user", Content: "clear me"}}); err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,12 @@ type JWTClaims struct {
 
 var jwtSecret = []byte("xiaozhi_jwt_secret")
 
+// currentUserID keeps the community edition single-user. Database user_id
+// fields are retained only for schema compatibility and always use this value.
+func currentUserID(_ *gin.Context) uint {
+	return database.AdminUserID
+}
+
 // 通用认证中间件
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -28,33 +34,15 @@ func AuthMiddleware() gin.HandlerFunc {
 			if apikey != configs.Cfg.Server.Token {
 				utils.DefaultLogger.Error("无效的API Token %s", apikey)
 			} else {
-				utils.DefaultLogger.Info("API Token验证通过，但未设置OpenID， 校验user_id和username")
-				// 检查是否设置了user_id和username
-				userID, exists := c.Get("user_id")
-				if !exists {
-					utils.DefaultLogger.Error("API Token验证通过，但未设置user_id")
-					c.JSON(401, gin.H{"status": "error", "message": "需要设置user_id"})
+				user, err := database.GetUserByID(database.GetDB(), database.AdminUserID)
+				if err != nil || user == nil {
+					utils.DefaultLogger.Error("API Token验证通过，但默认用户不存在")
+					c.JSON(401, gin.H{"status": "error", "message": "默认用户不存在"})
 					c.Abort()
 					return
 				}
-				username, exists := c.Get("username")
-				if !exists {
-					utils.DefaultLogger.Error("API Token验证通过，但未设置username")
-					c.JSON(401, gin.H{"status": "error", "message": "需要设置username"})
-					c.Abort()
-					return
-				}
-				// 校验user_id和username是否匹配
-				user, err := database.GetUserByID(database.GetDB(), userID.(uint))
-				if err != nil || user == nil || user.Username != username.(string) {
-					utils.DefaultLogger.Error("API Token验证通过，但user_id和username不匹配")
-					c.JSON(401, gin.H{"status": "error", "message": "user_id和username不匹配"})
-					c.Abort()
-					return
-				}
-				// 认证通过，设置上下文
-				c.Set("user_id", userID)
-				c.Set("username", username)
+				c.Set("user_id", database.AdminUserID)
+				c.Set("username", user.Username)
 				c.Next()
 				return
 			}
@@ -77,7 +65,8 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		c.Set("user_id", claims.UserID)
+		// 令牌仅用于认证；个人版不根据令牌中的用户 ID 隔离资源。
+		c.Set("user_id", currentUserID(c))
 		c.Set("username", claims.Username)
 		c.Next()
 	}

@@ -34,7 +34,7 @@ type AgentCreateRequest struct {
 // @Success 200 {object} models.Agent "创建成功返回Agent信息"
 // @Router /user/agent/create [post]
 func (s *DefaultUserService) handleAgentCreate(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	var req AgentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -77,7 +77,7 @@ type AgentWithDeviceIDs struct {
 // @Success 200 {object} []AgentWithDeviceIDs "Agent列表"
 // @Router /user/agent/list [get]
 func (s *DefaultUserService) handleAgentList(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	WithTx(c, func(tx *gorm.DB) error {
 		agents, err := database.ListAgentsByUser(tx, userID)
 		if err != nil {
@@ -108,7 +108,7 @@ func (s *DefaultUserService) handleAgentList(c *gin.Context) {
 // @Success 200 {object} models.Agent "Agent信息"
 // @Router /user/agent/{id} [get]
 func (s *DefaultUserService) handleAgentGet(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -136,7 +136,7 @@ func (s *DefaultUserService) handleAgentGet(c *gin.Context) {
 // @Success 200 {object} models.Agent "更新后的Agent信息"
 // @Router /user/agent/{id} [put]
 func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -185,7 +185,7 @@ func (s *DefaultUserService) handleAgentUpdate(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "删除结果"
 // @Router /user/agent/{id} [delete]
 func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		s.logger.Error("无效的Agent ID: %v", err)
@@ -212,7 +212,7 @@ func (s *DefaultUserService) handleAgentDelete(c *gin.Context) {
 // @Success 200 {object} []models.AgentDialog "对话记录列表"
 // @Router /user/agent/history_dialog_list/{id} [post]
 func (s *DefaultUserService) handleAgentHistoryDialogList(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	agentID := c.Param("id")
 	id, err := strconv.Atoi(agentID)
 	if err != nil {

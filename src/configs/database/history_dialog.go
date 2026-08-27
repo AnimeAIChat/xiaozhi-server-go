@@ -30,7 +30,7 @@ func SaveAgentDialog(
 
 	agentDialog := &models.AgentDialog{
 		AgentID:        AgentID,
-		UserID:         userID,
+		UserID:         AdminUserID,
 		Dialog:         dialogStr,
 		Conversationid: conversationid,
 		CreatedAt:      time.Now(),

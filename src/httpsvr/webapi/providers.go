@@ -20,7 +20,7 @@ func (s *DefaultUserService) handleUserProviderTest(c *gin.Context) {
 		return
 	}
 
-	providers, err := database.GetProviderByTypeInternal(providerType, c.GetUint("user_id"), false)
+	providers, err := database.GetProviderByTypeInternal(providerType, currentUserID(c), false)
 	if err != nil {
 		c.JSON(400, gin.H{"success": false, "message": err.Error()})
 		return

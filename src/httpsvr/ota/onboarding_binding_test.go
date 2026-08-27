@@ -51,8 +51,8 @@ func TestNewDeviceBindsOnlyAfterOnboardingAgentIsExplicitlyCreated(t *testing.T)
 
 	service := &DefaultOTAService{}
 	device := service.CheckAndUpdateDevice(context, config, request, "device-onboarding-001", "client-onboarding-001", "测试设备", "1.0.0")
-	if device == nil || device.AgentID != nil || device.UserID != nil {
-		t.Fatalf("device should remain unbound before explicit setup: %#v, response=%s", device, recorder.Body.String())
+	if device == nil || device.AgentID != nil || device.UserID == nil || *device.UserID != database.AdminUserID {
+		t.Fatalf("device should remain unbound but use the default user before explicit setup: %#v, response=%s", device, recorder.Body.String())
 	}
 
 	tx := db.Begin()

@@ -17,6 +17,10 @@ const onboardingPrompt = `你是初始设置助手。在管理员完成本地模
 
 // 创建 Agent（支持事务）
 func CreateAgent(tx *gorm.DB, agent *models.Agent) error {
+	if agent == nil {
+		return fmt.Errorf("智能体不能为空")
+	}
+	agent.UserID = AdminUserID
 	return tx.Create(agent).Error
 }
 

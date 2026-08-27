@@ -16,10 +16,10 @@ type Agent struct {
 	Voice              string    `gorm:"default:'zh_female_wanwanxiaohe_moon_bigtts'"       json:"voice"` // 语音，默认为zh_female_wanwanxiaohe_moon_bigtts
 	VoiceName          string    `gorm:"default:'湾湾小何'"       json:"voiceName"`                           // 语音，默认为湾湾小何
 	Prompt             string    `gorm:"type:text"            json:"prompt"`
-	ASRSpeed           int       `gorm:"default:2"            json:"asrSpeed"`   // ASR 语音识别速度，1=耐心，2=正常，3=快速
-	SpeakSpeed         int       `gorm:"default:2"            json:"speakSpeed"` // TTS 角色语速，1=慢速，2=正常，3=快速
-	Tone               int       `gorm:"default:50"           json:"tone"`       // TTS 角色音调，1-100，低音-高音
-	UserID             uint      `gorm:"not null"             json:"-"`
+	ASRSpeed           int       `gorm:"default:2"            json:"asrSpeed"`           // ASR 语音识别速度，1=耐心，2=正常，3=快速
+	SpeakSpeed         int       `gorm:"default:2"            json:"speakSpeed"`         // TTS 角色语速，1=慢速，2=正常，3=快速
+	Tone               int       `gorm:"default:50"           json:"tone"`               // TTS 角色音调，1-100，低音-高音
+	UserID             uint      `gorm:"not null;default:1"   json:"-"`                  // 个人版统一归属默认用户
 	CreatedAt          time.Time `                            json:"createdAt"`          // 创建时间
 	UpdatedAt          time.Time `                            json:"updatedAt"`          // 更新时间
 	LastConversationAt time.Time `                            json:"lastConversationAt"` // 最后对话时间
@@ -37,7 +37,7 @@ type AgentDialog struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
 	Conversationid string    `                  json:"conversationId"`
 	AgentID        uint      `gorm:"index"      json:"agentID"`          // 外键关联 Agent
-	UserID         uint      `gorm:"index"      json:"userID"`           // 外键关联 User
+	UserID         uint      `gorm:"index;default:1" json:"userID"`      // 个人版统一归属默认用户
 	Dialog         string    `gorm:"type:text"  json:"dialog,omitempty"` // 对话内容
 	CreatedAt      time.Time `                  json:"createdAt"`        // 创建时间
 	UpdatedAt      time.Time `                  json:"updatedAt"`        // 更新
@@ -46,7 +46,7 @@ type AgentDialog struct {
 type Device struct {
 	ID               uint           `gorm:"primaryKey"                             json:"id"`
 	AgentID          *uint          `gorm:"index"                                  json:"agentID"`          // 外键关联 Agent
-	UserID           *uint          `gorm:"index"                                  json:"userID"`           // 外键关联 User
+	UserID           *uint          `gorm:"index;default:1"                        json:"userID"`           // 个人版统一归属默认用户
 	Name             string         `gorm:"not null"                               json:"name"`             // 设备名称
 	DeviceID         string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"deviceId"`         // 设备唯一标识,mac地址
 	MACAddress       string         `gorm:"type:varchar(17);index"                json:"macAddress"`        // 设备上报的物理 MAC 地址，统一保存为 AA:BB:CC:DD:EE:FF

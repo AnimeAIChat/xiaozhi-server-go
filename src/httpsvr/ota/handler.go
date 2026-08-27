@@ -327,6 +327,8 @@ func (s *DefaultOTAService) CheckAndUpdateDevice(
 				Language:         req.Language,      // 设置语言
 				OTA:              true,              // 设置支持OTA升级
 			}
+			ownerID := database.AdminUserID
+			device.UserID = &ownerID
 			// 只有管理员显式创建初始设置助手后，新设备才自动绑定；设备接入不会反向创建助手。
 			if onboardingAgent, err := database.GetOnboardingAgent(tx); err == nil {
 				ownerID := onboardingAgent.UserID

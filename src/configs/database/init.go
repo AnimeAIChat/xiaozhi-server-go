@@ -155,5 +155,8 @@ func InsertDefaultConfigIfNeeded(db *gorm.DB) error {
 	if err := InitAdminUser(db, config); err != nil {
 		return fmt.Errorf("初始化管理员用户失败: %v", err)
 	}
+	if err := NormalizeSingleUserData(db); err != nil {
+		return fmt.Errorf("归并个人版默认用户数据失败: %v", err)
+	}
 	return nil
 }

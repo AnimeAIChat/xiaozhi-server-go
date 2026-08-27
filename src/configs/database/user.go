@@ -21,6 +21,31 @@ const initialAdminPasswordLength = 16
 
 const initialAdminPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 
+// NormalizeSingleUserData converts historical multi-user ownership records to
+// the single local account used by the personal open-source edition.
+func NormalizeSingleUserData(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		updates := []struct {
+			model interface{}
+			where string
+		}{
+			{&models.Agent{}, "user_id <> ?"},
+			{&models.AgentDialog{}, "user_id <> ?"},
+			{&models.Device{}, "user_id IS NULL OR user_id <> ?"},
+			{&models.ASRConfig{}, "user_id <> ?"},
+			{&models.TTSConfig{}, "user_id <> ?"},
+			{&models.LLMConfig{}, "user_id <> ?"},
+			{&models.VLLLMConfig{}, "user_id <> ?"},
+		}
+		for _, item := range updates {
+			if err := tx.Model(item.model).Where(item.where, AdminUserID).Update("user_id", AdminUserID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func generateInitialAdminPassword() (string, error) {
 	password := make([]byte, initialAdminPasswordLength)
 	for i := range password {

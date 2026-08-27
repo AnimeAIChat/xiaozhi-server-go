@@ -385,6 +385,8 @@ func normalizeProviderInput(providerType string, data interface{}) interface{} {
 }
 
 func CreateProvider(providerType, name string, data interface{}, createUserID uint) error {
+	// 个人开源版所有 Provider 都归属唯一的本地默认用户。
+	createUserID = AdminUserID
 	data = normalizeProviderInput(providerType, data)
 	providerJson, err := json.Marshal(data)
 	if err != nil {

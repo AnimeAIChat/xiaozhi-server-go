@@ -1,7 +1,6 @@
 package webapi
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +52,7 @@ type DeviceUpdateRequest struct {
 // @Success 200 {object} []models.Device "设备列表"
 // @Router /user/device/list [get]
 func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	agentID := c.Param("id")
 	id, err := strconv.Atoi(agentID)
 	if err != nil {
@@ -73,7 +72,7 @@ func (s *DefaultUserService) handleDeviceList(c *gin.Context) {
 }
 
 func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	var request DeviceBindRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bind request"})
@@ -109,9 +108,6 @@ func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
 		if deviceErr != nil {
 			return deviceErr
 		}
-		if device.UserID != nil && *device.UserID != userID {
-			return fmt.Errorf("device is already owned by another user")
-		}
 		device.UserID = &userID
 		device.AgentID = &request.AgentID
 		device.AuthStatus = "bound"
@@ -122,11 +118,7 @@ func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "another user") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "device is already owned"})
-		} else {
-			c.JSON(http.StatusNotFound, gin.H{"error": "device or agent not found"})
-		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "device or agent not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "data": boundDevice})
@@ -140,7 +132,7 @@ func (s *DefaultUserService) handleDeviceBind(c *gin.Context) {
 // @Success 200 {object} []models.Device "设备列表"
 // @Router /user/device/list [get]
 func (s *DefaultUserService) handleDeviceListByUser(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	WithTx(c, func(tx *gorm.DB) error {
 		devices, err := database.ListDevicesByUser(tx, userID)
 		if err != nil {
@@ -161,7 +153,7 @@ func (s *DefaultUserService) handleDeviceListByUser(c *gin.Context) {
 // @Success 200 {object} models.Device "设备信息"
 // @Router /user/device/{id} [get]
 func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	idStr := c.Param("id")
 
 	device, err := database.FindDeviceByIDAndUser(database.GetDB(), idStr, userID)
@@ -179,7 +171,7 @@ func (s *DefaultUserService) handleDeviceGet(c *gin.Context) {
 
 // handleDeviceMemoryClear clears the short-lived in-memory conversation context.
 func (s *DefaultUserService) handleDeviceMemoryClear(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	deviceID := strings.TrimSpace(c.Param("id"))
 	if deviceID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "device id is required"})
@@ -205,7 +197,7 @@ func (s *DefaultUserService) handleDeviceMemoryClear(c *gin.Context) {
 // @Success 200 {object} models.Device "更新后的设备信息"
 // @Router /user/device/{id} [put]
 func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 	idStr := c.Param("id")
 	var req DeviceUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -263,7 +255,7 @@ func (s *DefaultUserService) handleDeviceUpdate(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "删除结果"
 // @Router /user/device [delete]
 func (s *DefaultUserService) handleDeviceDelete(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID := currentUserID(c)
 
 	// 取body里的json数据
 	var requestData struct {
@@ -284,7 +276,8 @@ func (s *DefaultUserService) handleDeviceDelete(c *gin.Context) {
 	}
 
 	device.AgentID = nil
-	device.UserID = nil
+	ownerID := database.AdminUserID
+	device.UserID = &ownerID
 	device.AuthStatus = "pending"
 	err = database.UpdateDevice(database.GetDB(), device)
 	if err != nil {
