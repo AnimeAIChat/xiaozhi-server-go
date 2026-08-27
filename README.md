@@ -93,7 +93,7 @@ Provider 会将小智当前连接的 `session_id` 作为桥接 `device_id`，并
 
 ## 源码运行
 
-源码运行适合开发与调试。需要 Go `1.24.2`（项目指定的 toolchain）以及可用的 C 编译器供 SQLite 驱动构建；Opus 依赖已随仓库提供，无需单独安装系统 Opus 库。
+源码运行适合开发与调试。需要 Go `1.24.2`（项目指定的 toolchain）以及可用的 C 编译器供 SQLite 驱动构建；Opus 依赖已随仓库提供，目前使用纯go实现，无需单独安装系统 Opus 库。
 
 ```bash
 git clone https://github.com/AnimeAIChat/xiaozhi-server-go.git
@@ -160,6 +160,9 @@ MCP 使用方式、外部 Stdio MCP 示例和设备 MCP 说明见 [src/core/mcp/
 
 <img src="https://github.com/Eric0308/assert/blob/main/xiaozhi/qr.jpg" width="450" alt="微信交流群二维码">
 <img src="https://github.com/user-attachments/assets/074c6aec-cfb5-4a68-8fc2-2d08679e366b" width="450" alt="QQ群二维码">
+
+也可以与我联系
+<img width="808" height="707" alt="d91ed718ac658f7cee8598ec23c08b60" src="https://github.com/user-attachments/assets/d9d48e67-8ddc-4512-bf4d-de16cc30588f" />
 
 ## License
 
