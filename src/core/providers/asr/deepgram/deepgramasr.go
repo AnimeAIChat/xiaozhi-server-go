@@ -175,7 +175,7 @@ func (p *Provider) StartStreaming(ctx context.Context) error {
 	}
 
 	// Add query parameters
-	queryParams := fmt.Sprintf("?language=%s&sample_rate=%v&encoding=%v",
+	queryParams := fmt.Sprintf("?language=%s&sample_rate=%v&encoding=%v&model=nova-2&punctuate=true",
 		p.language, 16000, "linear16")
 
 	headers := http.Header{
@@ -388,6 +388,17 @@ func (p *Provider) sendAudioData(data []byte, isLast bool) error {
 }
 
 // Reset resets the ASR state
+// SendLastAudio sends the final audio chunk and marks end of stream
+func (p *Provider) SendLastAudio(data []byte) error {
+	return p.sendAudioData(data, true)
+}
+
+// CloseConnection closes the long-lived streaming connection
+func (p *Provider) CloseConnection() error {
+	p.closeConnection()
+	return nil
+}
+
 func (p *Provider) Reset() error {
 	p.connMutex.Lock()
 	defer p.connMutex.Unlock()
