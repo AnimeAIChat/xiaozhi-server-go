@@ -1,7 +1,11 @@
 package webapi
 
 import (
+	"crypto/rand"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
 	"time"
 	"xiaozhi-server-go/src/configs"
 	"xiaozhi-server-go/src/configs/database"
@@ -17,7 +21,31 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-var jwtSecret = []byte("xiaozhi_jwt_secret")
+var (
+	jwtSecret     []byte
+	jwtSecretErr  error
+	jwtSecretOnce sync.Once
+)
+
+// InitJWTSecret initializes a process-local key when no persistent key is configured.
+func InitJWTSecret() error {
+	jwtSecretOnce.Do(func() {
+		secret, configured := os.LookupEnv("XIAOZHI_JWT_SECRET")
+		if configured {
+			if strings.TrimSpace(secret) == "" || len(secret) < 32 {
+				jwtSecretErr = fmt.Errorf("XIAOZHI_JWT_SECRET must be a random secret of at least 32 bytes")
+				return
+			}
+			jwtSecret = []byte(secret)
+			return
+		}
+		jwtSecret = make([]byte, 32)
+		if _, jwtSecretErr = rand.Read(jwtSecret); jwtSecretErr != nil {
+			jwtSecretErr = fmt.Errorf("generate JWT signing key: %w", jwtSecretErr)
+		}
+	})
+	return jwtSecretErr
+}
 
 // currentUserID keeps the community edition single-user. Database user_id
 // fields are retained only for schema compatibility and always use this value.
@@ -116,6 +144,9 @@ func AdminMiddleware() gin.HandlerFunc {
 
 // 生成JWT
 func GenerateJWT(userID uint, username string) (string, error) {
+	if err := InitJWTSecret(); err != nil {
+		return "", err
+	}
 	claims := JWTClaims{
 		UserID:   userID,
 		Username: username,
@@ -131,6 +162,9 @@ func GenerateJWT(userID uint, username string) (string, error) {
 
 // 验证JWT
 func VerifyJWT(tokenString string) (*JWTClaims, error) {
+	if err := InitJWTSecret(); err != nil {
+		return nil, err
+	}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&JWTClaims{},

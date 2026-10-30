@@ -67,6 +67,9 @@ func LoadConfigAndLogger() (*configs.Config, *utils.Logger, error) {
 	if err != nil {
 		fmt.Println("未找到 .env 文件，使用系统环境变量")
 	}
+	if err := cfg.InitJWTSecret(); err != nil {
+		return nil, nil, err
+	}
 
 	// 初始化数据库连接
 	_, _, err = database.InitDB()
